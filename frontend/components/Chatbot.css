@@ -1,0 +1,8 @@
+.chatBox {
+    border: 2px solid ;
+    transition: all 0.3s ease-in-out;
+}
+
+.chatBox:active {
+    border: 2px solid rgb(255, 204, 0);
+}

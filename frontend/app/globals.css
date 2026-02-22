@@ -24,3 +24,15 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+
+.chat {
+  outline: none;
+  border: 2px solid rgb(197, 197, 197);
+  transition: all 0.25s ease-in-out;
+}
+
+
+.chat:focus {
+  border: 2px solid rgb(252, 215, 9);
+}

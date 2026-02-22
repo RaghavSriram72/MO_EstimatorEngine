@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import '../app/globals.css';
 
 interface ChatboxProps {
     messages: string[];
@@ -28,7 +29,7 @@ export default function Chatbox({ messages, setMessages }: ChatboxProps) {
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     placeholder="Enter your requirements..." 
-                    className="w-full h-32 p-4  text-black border border-yellow-500 rounded-lg outline-none focus:outline-none focus:ring-0 resize-none" 
+                    className="chat w-full h-32 p-4 text-black rounded-lg outline-none focus:outline-none focus:ring-0 resize-none shadow-xl" 
                     onKeyDown={handleKeyDown}
                 />
             </div>

@@ -21,7 +21,7 @@ export default function Home() {
             key={index} 
             className={`flex ${index % 2 === 0 ? 'justify-end' : 'justify-start'}`}
           >
-            <div className={`message p-4 m-2 text-black ${index % 2 === 0 ? 'bg-white' : 'bg-blue-100'} rounded-lg shadow max-w-xs`}>
+            <div className={`message p-4 m-2 text-black ${index % 2 === 0 ? 'bg-white' : 'bg-blue-100'} rounded-lg shadow max-w-2xl break-words whitespace-pre-wrap overflow-hidden`}>
               {message}
             </div>
           </div>
