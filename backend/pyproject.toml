@@ -1,0 +1,62 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "dotenv",
+    "langchain",
+    "langchain-openai",
+    "fastapi",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.2",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py39"
+
+[tool.ruff.lint]
+# Enable common Python linting rules
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort (import sorting)
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+    "D",   # pydocstyle (docstring conventions)
+]
+ignore = [
+    "E303",  # too many blank lines (we want 2)
+    "E304",  # blank lines found after function decorator
+    "W293",  # blank line contains whitespace (allow whitespace in blank lines, especially in comments/docstrings)
+    "D100",  # Missing docstring in public module (optional)
+    "D104",  # Missing docstring in public package (optional)
+    "D105",  # Missing docstring in magic method (optional)
+    "D107",  # Missing docstring in __init__ (optional)
+    "D203",  # Incompatible with D211 (blank line before class)
+    "D211",  # Incompatible with D203 (no blank line before class)
+    "D212",  # Incompatible with D213 (multi-line summary first line)
+    "D213",  # Incompatible with D212 (multi-line summary second line)
+]
+
+[tool.ruff.lint.pydocstyle]
+# Use Google-style docstrings
+convention = "google"
+
+[tool.ruff.lint.isort]
+# Configure import sorting
+known-first-party = ["lib", "tests"]
+combine-as-imports = true
+
+[tool.ruff.format]
+# Ruff formatter configuration
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
