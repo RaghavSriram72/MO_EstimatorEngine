@@ -6,6 +6,9 @@ from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
 
+from agent.tools.form_amount_regression import form_amount_regression
+from agent.tools.quote_adjustment import quote_adjustment
+
 SYSTEM_PROMPT = ""
 
 # Load the environment variables
@@ -28,14 +31,12 @@ llm: ChatOpenAI = ChatOpenAI(
 # Create the LangGraph agent with tools
 agent_executor = create_agent(
     model=llm,
-    tools=[],
-    system_prompt=SYSTEM_PROMPT
+    tools=[form_amount_regression, quote_adjustment],
+    system_prompt=SYSTEM_PROMPT,
 )
 
 # Execute the agent with the input
-result = agent_executor.invoke({"messages": [HumanMessage(
-    content="")]})
+result = agent_executor.invoke({"messages": [HumanMessage(content="")]})
 
 # Print the result
-# NOTE: LangGraph returns the last message in the conversation
 print(result)
