@@ -1,10 +1,9 @@
 import os
-from typing import Optional
 
 from dotenv import load_dotenv
+from langchain.agents import create_agent
 from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
-from langchain.agents import create_agent
 
 from agent.tools.form_amount_regression import form_amount_regression
 from agent.tools.quote_adjustment import quote_adjustment
@@ -15,9 +14,9 @@ SYSTEM_PROMPT = ""
 load_dotenv()
 
 # Check if the environment variables are set and assign
-llm_base_url: Optional[str] = os.getenv("LLM_BASE_URL")
-llm_model: Optional[str] = os.getenv("LLM_MODEL")
-openai_api_key: Optional[str] = os.getenv("OPENAI_API_KEY")
+llm_base_url: str | None = os.getenv("LLM_BASE_URL")
+llm_model: str | None = os.getenv("LLM_MODEL")
+openai_api_key: str | None = os.getenv("OPENAI_API_KEY")
 
 if not llm_base_url or not llm_model or not openai_api_key:
     raise ValueError("LLM_BASE_URL, LLM_MODEL, and OPENAI_API_KEY must be set")
