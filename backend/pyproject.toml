@@ -8,6 +8,7 @@ dependencies = [
     "dotenv",
     "langchain",
     "langchain-openai",
+    "langchain_core",
     "fastapi",
     "scikit-learn",
     "pandas",
