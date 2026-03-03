@@ -33,7 +33,7 @@ export default function DataCollector() {
                     </div>
                    
 
-                    <div className="w-[50vw] h-[74vh] border-2 bg-white border-[#EDEAEA] rounded-xl text-[#ABABAB]">
+                    <div className="flex flex-col w-[50vw] h-[74vh] border-2 bg-white border-[#EDEAEA] rounded-xl text-[#ABABAB]">
                         {/* SECTION 1 */}
                         <div className="flex flex-col justify-center items-start w-full p-5 border-b-2 border-[#EDEAEA]">
                             <div className="text-[10px] m-2">01 - RECORD SELECTION</div>
@@ -59,14 +59,14 @@ export default function DataCollector() {
                         </div>
 
                         {/* SECTION 3 */}
-                        <div className="flex flex-col justify-center items-start w-full p-5 ">
+                        <div className="flex flex-col justify-between items-start w-full flex-1 p-5 ">
                             <div className="text-[10px] m-2">03 - UPDATE VALUES</div>
-                            <div className="flex flex-row justify-evenly gap-35 items-center w-full">
-                                <div className="">
+                            <div className="flex flex-row gap-5 items-center w-full">
+                                <div className="flex-1">
                                     <div className="text-xs font-bold m-2">New Price</div>
-                                    <input type="number" className="border-2 border-[#EDEAEA] rounded-md w-full p-1 outline-none" />
+                                    <input type="text" className="border-2 border-[#EDEAEA] rounded-md w-full p-1 outline-none" />
                                 </div>
-                                <div>
+                                <div className="flex-1">
                                     <div className="text-xs font-bold m-2">Reason For Change</div>
                                     <input type="text" className="border-2 border-[#EDEAEA] rounded-md w-full p-1 outline-none" />
                                 </div>
