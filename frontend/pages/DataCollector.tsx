@@ -45,12 +45,12 @@ export default function DataCollector() {
                         {/* SECTION 2 */}
                         <div className="flex flex-col justify-evenly items-start w-full p-5 border-b-2 border-[#EDEAEA]">
                             <div className="text-[10px] m-2">02 - CURRENT VALUES</div>
-                            <div className="w-full flex flex-row justify-between px-5">
-                                <div className="flex flex-col justify-center items-start p-3 border-2 w-[300px] h-[100px] bg-[#FFF3C2] border-[#FFB604] rounded-md">
+                            <div className="w-full flex flex-row gap-5">
+                                <div className="flex flex-col justify-center items-start p-3 border-2 flex-1 h-[100px] bg-[#FFF3C2] border-[#FFB604] rounded-md">
                                     <div className="text-xs">E FLUTE - LIVE PRICE</div>
                                     <div className="text-[#FFB604] text-[2.8em] font-instrument">$10.00</div>
                                 </div>
-                                <div className="flex flex-col justify-center items-start p-3 border-2 w-[300px] h-[100px] border-[#EDEAEA] rounded-md">
+                                <div className="flex flex-col justify-center items-start p-3 border-2 flex-1 h-[100px] border-[#EDEAEA] rounded-md">
                                     <div className="text-xs">LAST UPDATED</div>
                                     <div className="text-[#ABABAB] text-[2.2em] font-instrument">10/10/2024</div>
                                     <div className="text-xs">By Bob</div>
@@ -75,7 +75,7 @@ export default function DataCollector() {
                             </div>
                             <div className="flex w-full flex-row justify-end items-center p-5 gap-10">
                                 <div className="text-s text-center font-bold m-2 text-[#ABABAB] border-2 border-[#EDEAEA] p-2 rounded-md w-[150px] cursor-pointer">CLEAR</div>
-                                <div className="flex flex-row gap-5 text-s font-bold m-2 bg-[#FFB604] text-black px-4 py-2 rounded-md cursor-pointer">
+                                <div className="flex flex-row gap-5 text-s font-bold m-2 bg-[#FFB604] text-black hover:text-white hover:[&_img]:invert px-4 py-2 rounded-md cursor-pointer transition-all duration-250 ease-in-out [&_img]:transition-all [&_img]:duration-250 [&_img]:ease-in-out">
                                     SUBMIT UPDATE <img src="/submitarrow.svg" alt="" />
                                 </div>
                             </div>
