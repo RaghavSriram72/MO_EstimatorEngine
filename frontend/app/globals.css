@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+@theme inline {
+  --font-ibm-plex-mono: 'IBM Plex Mono', monospace;
+  --font-instrument: 'Instrument Serif', serif;
+}
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -34,5 +38,54 @@ body {
 
 
 .chat:focus {
-  border: 2px solid rgb(252, 215, 9);
+  border: 2px solid rgb(255, 222, 35);
 }
+
+@utility nav-active {
+  background-color: #000000;
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: all 0.25s ease-in-out;
+}
+
+
+@utility nav-inactive {
+  background-color: #EDEAEA;
+  border-radius: 6px;
+  padding: 6px 12px;
+  color: #000000;
+  cursor: pointer;
+  transition: all 0.25s ease-in-out;
+
+  &:hover {
+    background-color: #d4d4d4;
+  }
+}
+
+
+@utility tab-active {
+  border: 2px solid #000000;
+  background-color: #000000;
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  color: #ffffff !important;
+  width: 100%;
+  transition: all 0.25s ease-in-out;
+}
+
+@utility tab-inactive {
+  border: 2px solid #EDEAEA;
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  color: #363535 !important;
+  transition: all 0.25s ease-in-out;
+  width: 100%;
+
+  &:hover {
+    border: 2px solid #d4d4d4;
+  }
+}
+

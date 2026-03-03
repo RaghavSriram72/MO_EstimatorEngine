@@ -23,8 +23,8 @@ export default function Chatbox({ messages, setMessages }: ChatboxProps) {
     };
 
     return (
-        <div className="chatbox flex flex-col flex-1 items-center justify-end pb-12">
-            <div className="input-area w-full max-w-2xl px-4">
+        <div className="chatbox flex flex-col flex-1 items-center justify-start pb-0 border-t-2 border-[#EDEAEA] max-h-[200px]">
+            <div className="input-area w-full py-4 px-4">
                 <textarea 
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
