@@ -64,7 +64,7 @@ export default function DataCollector() {
                             <div className="flex flex-row gap-5 items-center w-full">
                                 <div className="flex-1">
                                     <div className="text-xs font-bold m-2">New Price</div>
-                                    <input type="text" className="border-2 border-[#EDEAEA] rounded-md w-full p-1 outline-none" />
+                                    <input type="number" className="border-2 border-[#EDEAEA] rounded-md w-full p-1 outline-none" />
                                 </div>
                                 <div className="flex-1">
                                     <div className="text-xs font-bold m-2">Reason For Change</div>
