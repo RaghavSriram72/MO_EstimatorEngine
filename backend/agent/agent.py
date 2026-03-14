@@ -15,7 +15,7 @@ from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
 
 from agent.prompts.system import SYSTEM_PROMPT
-from agent.tools.form_amount_regression import form_amount_regression
+from backend.agent.tools.form_calculator import form_calculator
 from agent.tools.quote_adjustment import quote_adjustment
 
 logger = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ llm: ChatOpenAI = ChatOpenAI(
 )
 
 # Build tools: local RAG search + any MCP servers defined in mcp/config.json
-agent_tools = [form_amount_regression, quote_adjustment]
+agent_tools = [form_calculator, quote_adjustment]
 
 
 agent_executor = create_agent(
