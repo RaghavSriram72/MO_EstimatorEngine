@@ -1,10 +1,60 @@
 "use client";
 import Header from "@/components/Header";
 import Dropdown from "@/components/Dropdown";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+
+type FluteRecord = {
+    item_id?: string;
+    description?: string;
+    unit_cost?: number;
+    uom?: string;
+    last_updated?: string;
+    updated_by?: string;
+    dimensions?: string;
+};
+
 export default function DataCollector() {
     const [currentModule, setCurrentModule] = useState(0);
     const [currentFluteType, setCurrentFluteType] = useState("");
+    const [currentFluteId, setCurrentFluteId] = useState("");
+    const [fluteData, setFluteData] = useState<FluteRecord[]>([]);
+    const [flute, setFlute] = useState<FluteRecord | null>(null);
+
+    useEffect(() => {
+        if (currentModule === 0) {
+            // Fetch flute types from the backend
+            fetch("http://localhost:8000/flute-data")
+                .then(response => response.json())
+                .then(data => {
+                    console.log("Fetched flute data:", data);
+                    const records: FluteRecord[] = data.flute_data ?? [];
+                    setFluteData(records);
+                    if (records.length > 0 && records[0].description && records[0].item_id) {
+                        setCurrentFluteType(records[0].description); // Set default flute type
+                        setCurrentFluteId(records[0].item_id); // Set default flute ID
+                    }
+                })
+                .catch(error => console.error("Error fetching flute data:", error));
+        }
+    }, 
+    [])
+
+    useEffect(() => {
+        setFlute(fluteData.find((item) => item.item_id === currentFluteId) || null);
+    }, [currentFluteId, fluteData]);
+
+    const fluteOptions = fluteData
+        .filter((item) => !!item.item_id && !!item.description)
+        .map((item) => ({
+            item_id: item.item_id as string,
+            description: item.description as string,
+        }));
+
+    const formattedLastUpdated = flute?.last_updated
+        ? new Date(flute.last_updated).toLocaleDateString()
+        : "N/A";
+
+    console.log("Flute options for dropdown:", fluteOptions);
 
     return (
             <div className="grid grid-cols-[2fr_5fr_1fr] text-black w-full flex-1 overflow-hidden">
@@ -19,7 +69,7 @@ export default function DataCollector() {
                         <li 
                         className={`${currentModule == 1 ? "tab-active" : "tab-inactive"} flex items-center gap-5 w-full`} 
                         onClick={() => setCurrentModule(1)}>
-                        <span>•</span> Packaging Co
+                        <span>•</span> Packaging Costs
                         </li>
                     </ul>
                 </div>
@@ -39,21 +89,25 @@ export default function DataCollector() {
                             <div className="text-[10px] m-2">01 - RECORD SELECTION</div>
                             <div className="w-full">
                                 <div className="text-xs font-bold m-2">Flute Type</div>
-                                    <Dropdown options={["Type A", "Type B", "Type C"]} currOption={currentFluteType} onSelect={setCurrentFluteType} />
+                                    <Dropdown options={fluteOptions} currOption={currentFluteType} onSelect={setCurrentFluteType} updateCurrId={setCurrentFluteId} />
                             </div>
                         </div>
                         {/* SECTION 2 */}
                         <div className="flex flex-col justify-evenly items-start w-full p-5 border-b-2 border-[#EDEAEA]">
                             <div className="text-[10px] m-2">02 - CURRENT VALUES</div>
                             <div className="w-full flex flex-row gap-5">
-                                <div className="flex flex-col justify-center items-start p-3 border-2 flex-1 h-[100px] bg-[#FFF3C2] border-[#FFB604] rounded-md">
-                                    <div className="text-xs">E FLUTE - LIVE PRICE</div>
-                                    <div className="text-[#FFB604] text-[2.8em] font-instrument">$10.00</div>
+                                <div className="flex flex-col justify-center items-start p-4 border-2 flex-1 h-[100px] bg-[#FFF3C2] border-[#FFB604] rounded-md">
+                                    <div className="text-xs">LIVE PRICE</div>
+                                    <div className="flex flex-col justify-start  items-start">
+                                            <div className="text-[#FFB604] text-[2.4em] font-instrument">${flute?.unit_cost?.toFixed(2) ?? "0.00"}</div>
+                                            <div className="text-xs">UOM: {flute?.uom || "N/A"}</div>
+                                    </div>
+                                   
                                 </div>
                                 <div className="flex flex-col justify-center items-start p-3 border-2 flex-1 h-[100px] border-[#EDEAEA] rounded-md">
                                     <div className="text-xs">LAST UPDATED</div>
-                                    <div className="text-[#ABABAB] text-[2.2em] font-instrument">10/10/2024</div>
-                                    <div className="text-xs">By Bob</div>
+                                    <div className="text-[#ABABAB] text-[2.2em] font-instrument">{formattedLastUpdated}</div>
+                                    <div className="text-xs">By {flute?.updated_by || "Unknown"}</div>
                                 </div>
                             </div>
                         </div>

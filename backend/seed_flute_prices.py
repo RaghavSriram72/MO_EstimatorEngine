@@ -1,9 +1,8 @@
 import csv
 import os
-import re
+
 from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
-from datetime import datetime
 
 uri = "mongodb+srv://moa_db_user:eLwet5UCmRc9vtoE@moa-db.vfpnpqb.mongodb.net/?appName=MOA-DB"
 
@@ -13,40 +12,32 @@ collection = db["flute-prices"]
 
 CSV_PATH = os.path.join(os.path.dirname(__file__), "corrugate.csv")
 
-def parse_price(raw: str) -> float:
-    """Strip $ and whitespace, return float."""
-    return float(re.sub(r"[^\d.]", "", raw.strip()))
-
 inserted_count = 0
 updated_count = 0
+not_found_count = 0
 
 with open(CSV_PATH, newline="", encoding="utf-8") as f:
     reader = csv.DictReader(f)
     for row in reader:
-        record = {
-            "item_id":          row["ITEM ID"].strip(),
-            "description":      row["ITEM DESCRIPTION"].strip(),
-            "category":         row["CATEGORY"].strip(),
-            "uom":              row["UOM (C)"].strip(),
-            "unit_cost":        parse_price(row["UNIT COST (C)"]),
-            "last_updated":     datetime.utcnow(),
-            "updated_by":       "seed_script",
-        }
+        item_id = row["ITEM ID"].strip()
+        description = row["ITEM DESCRIPTION"].strip()
 
         result = collection.update_one(
-            {"item_id": record["item_id"]},  # unique key — match on item ID
-            {"$set": record},
-            upsert=True
+            {"item_id": item_id},
+            {"$set": {"description": description}},
+            upsert=False
         )
 
-        if result.upserted_id:
-            inserted_count += 1
-            status = "inserted"
-        else:
+        if result.matched_count == 0:
+            not_found_count += 1
+            status = "not_found"
+        elif result.modified_count > 0:
             updated_count += 1
             status = "updated"
+        else:
+            status = "unchanged"
 
-        print(f"[{status}] {record['item_id']} | {record['description']} | ${record['unit_cost']}")
+        print(f"[{status}] {item_id} | {description}")
 
-print(f"\nDone. {inserted_count} inserted, {updated_count} updated.")
+print(f"\nDone. {updated_count} updated, {not_found_count} not found.")
 client.close()
