@@ -76,10 +76,16 @@ export default function DataCollector() {
 
 
 
-                <div className="flex flex-col ml-5 p-1 justify-start items-start  ">
-                    <div className="ml-15 pb-3">
-                        <div className="text-[2.5em]  font-instrument">Update <span className="italic text-[#FFB604]">Flute</span> Pricing</div>
-                        <p className="text-xs">Modify Live Data for Flute Pricing Module</p>
+                <div className="flex flex-col ml-5 p-1 justify-start items  ">
+                    <div className="relative ml-15 pb-3 h-[90px] overflow-hidden">
+                        <div className={`absolute inset-0 ${currentModule === 0 ? "data-collector-title-active" : "data-collector-title-inactive"}`}>
+                            <div className="text-[3em] font-instrument">Update <span className="italic text-[#FFB604]">Flute</span> Pricing</div>
+                            <p className="text-xs">Modify Live Data for Flute Pricing Module</p>
+                        </div>
+                        <div className={`absolute inset-0 ${currentModule === 1 ? "data-collector-title-active" : "data-collector-title-inactive"}`}>
+                            <div className="text-[3em] font-instrument">Update <span className="italic text-[#FFB604]">Packaging</span> Pricing</div>
+                            <p className="text-xs">Modify Live Data for Packaging Pricing Module</p>
+                        </div>
                     </div>
                    
 
