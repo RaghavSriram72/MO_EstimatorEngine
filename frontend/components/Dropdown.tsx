@@ -16,7 +16,7 @@ export default function Dropdown({ options, currOption, onSelect, updateCurrId }
                 <img src="/dropdown.svg" className="ml-2 w-5 h-5 block"></img>
             </div>
             {isOpen && (
-                <div className="text-xs dropdown-menu absolute mt-2 w-[350px] max-h-60 overflow-y-auto bg-[#FFFBED] border-1 border-[#EDEAEA] rounded-md shadow-lg z-10">
+                <div className="text-xs dropdown-menu absolute mt-2 w-[350px] max-h-50 overflow-y-auto bg-[#FFFBED] border-1 border-[#EDEAEA] rounded-md shadow-lg z-10">
                     {options.map((option: any, index: number) => (
                         <div
                             key={option.item_id}
