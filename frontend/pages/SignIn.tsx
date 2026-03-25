@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import Alert from "@/components/Alert";
 
 export default function SignIn({setUser}: any) {
+    const ALERT_DURATION_MS = 3100;
     const [currentScreen, setCurrentScreen] = useState(0);
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
@@ -10,11 +12,28 @@ export default function SignIn({setUser}: any) {
     const [newPassword, setNewPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
 
+    const [alertMessage, setAlertMessage] = useState("");
+    const [alertCode, setAlertCode] = useState(0);
+    const [showAlert, setShowAlert] = useState(false);
+
+    function triggerAlert(message: string, code: number) {
+        setShowAlert(false);
+        setAlertMessage(message);
+        setAlertCode(code);
+        setTimeout(() => setShowAlert(true), 10);
+        setTimeout(() => setShowAlert(false), ALERT_DURATION_MS);
+    }
+
 
 
     function handleCreateAccount() {
         if (newPassword !== confirmPassword) {
-            alert("Passwords do not match!");
+            triggerAlert("Passwords do not match!", 1);
+            return;
+        }
+
+        if (newUsername == "" || newPassword == "" || confirmPassword == "") {
+            triggerAlert("Please fill all fields", 1);
             return;
         }
 
@@ -30,15 +49,19 @@ export default function SignIn({setUser}: any) {
         })
         .then((response) => {
             if (response.ok) {
-                alert("Account created successfully! Please sign in.");
+                triggerAlert("Account created successfully! Please sign in.", 0);
                 setCurrentScreen(0);
             } else {
-                alert("Error creating account. Please try again.");
+                triggerAlert("Error creating account. Please try again.", 1);
             } 
         })  
     }
 
     function handleSignIn() {
+        if (username.length === 0 || password.length === 0) {
+            triggerAlert("Please fill fields", 1);
+            return;
+        }
         fetch("http://localhost:8000/sign-in", {
             method: "POST",
             headers: {
@@ -51,18 +74,18 @@ export default function SignIn({setUser}: any) {
         })
         .then((response) => {
             if (response.ok) {
-                alert("Sign-in successful!");
+                triggerAlert("Sign-in successful!", 0);
                 localStorage.setItem("username", username);
-                setUser(true);
+                setTimeout(() => setUser(true), ALERT_DURATION_MS);
             }
             else {
-                alert("Invalid username or password. Please try again.");
+                triggerAlert("Invalid username or password", 1);
             }
         })
     }
     return (
         <div className="flex flex-col h-screen bg-[#FFFBED] text-black">
-
+            <Alert message={alertMessage} code={alertCode} visible={showAlert} />
         
             <div>
                 <div className="header border-b-2 border-[#EDEAEA] flex flex-row justify-start items-center p-3">

@@ -6,6 +6,7 @@ export default function UserDisplay() {
     const [isOpen, setIsOpen] = useState(false);
     const [username, setUsername] = useState("GUEST");
     const containerRef = useRef<HTMLDivElement>(null);
+    
 
     useEffect(() => {
         const storedUsername = localStorage.getItem("username");
@@ -30,8 +31,8 @@ export default function UserDisplay() {
                 USER: {username}
             </div>
 
-            {isOpen && (
-                <div className="absolute top-full right-0 mt-2 bg-white border-2 border-[#EDEAEA] rounded-md shadow-sm w-full z-20">
+            
+                <div className={`absolute top-full right-0 mt-2 bg-white border-2 border-[#EDEAEA] rounded-md shadow-sm w-full z-20 ${isOpen ? "sign-out-visible" : "sign-out-hidden"}`}>
                     <div
                         onClick={handleSignOut}
                         className="w-full cursor-pointer text-left px-3 py-2 text-sm text-[#777474] hover:text-black hover:bg-[#FFFBED] rounded-md transition-all duration-200 ease-in-out"
@@ -39,7 +40,7 @@ export default function UserDisplay() {
                         Sign out
                     </div>
                 </div>
-            )}
+            
         </div>
     );
 }

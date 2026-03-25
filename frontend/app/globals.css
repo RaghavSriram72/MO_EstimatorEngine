@@ -127,6 +127,33 @@ body {
 }
 
 
+
+@utility sign-out-visible {
+  opacity: 1;
+  transform: translateY(0px);
+  pointer-events: auto;
+  transition: all 0.25s ease-in-out;
+}
+
+@utility sign-out-hidden {
+  opacity: 0;
+  transform: translateY(-50px);
+  pointer-events: none;
+  transition: all 0.25s ease-in-out;
+}
+
+@utility show-alert {
+  opacity: 1;
+  transform: translateY(0px);
+  transition: all 0.5s ease-in-out;
+}
+
+@utility hide-alert {
+  opacity: 0;
+  transform: translateY(-100px);
+  transition: all 0.5s ease-in-out;
+}
+
 /* WebKit (Chrome, Edge, Safari) */
 *::-webkit-scrollbar {
   width: 10px;
@@ -144,8 +171,11 @@ body {
   background: #e0e0e0;
 }
 
+
 /* Firefox */
 * {
   scrollbar-width: thin;
   scrollbar-color: #FFB604 #FFFBED;
 }
+
+

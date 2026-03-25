@@ -1,5 +1,7 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import hashlib
 import hmac
@@ -129,15 +131,15 @@ async def create_account(payload: AccountRequest):
     
     # Check if username already exists
     if db.check_username_exists(username):
-        return {"error": "Username already exists"}
+        return JSONResponse(status_code=400, content={"error": "Username already exists"})
     
     
     # Create new user
     success = db.create_user(username, password)
     if success:
-        return {"message": "Account created successfully"}
+        return JSONResponse(status_code=201, content={"message": "Account created successfully"})
     else:
-        return {"error": "Failed to create account"}
+        return JSONResponse(status_code=400, content={"error": "Failed to create account"})
 
 
 @app.post("/sign-in")
@@ -148,11 +150,11 @@ async def sign_in(payload: AccountRequest):
 
     
     if not db.check_username_exists(username):
-        return {"error": "Invalid username or password"}
+        return JSONResponse(status_code=400, content={"error": "Invalid username or password"})
     
     user = db.get_user(username)
     if verify_password(password, user["password_hash"]):
-        return {"message": "Sign-in successful"}
+        return JSONResponse(status_code=200, content={"message": "Sign-in successful"})
     else:
-        return {"error": "Invalid username or password"}
+        return JSONResponse(status_code=400, content={"error": "Invalid username or password"})
 
