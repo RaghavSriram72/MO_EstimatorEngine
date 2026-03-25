@@ -145,13 +145,13 @@ body {
 @utility show-alert {
   opacity: 1;
   transform: translateY(0px);
-  transition: all 0.5s ease-in-out;
+  transition: all 0.4s ease-in-out;
 }
 
 @utility hide-alert {
   opacity: 0;
   transform: translateY(-100px);
-  transition: all 0.5s ease-in-out;
+  transition: all 0.4s ease-in-out;
 }
 
 /* WebKit (Chrome, Edge, Safari) */

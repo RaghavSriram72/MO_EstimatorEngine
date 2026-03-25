@@ -4,7 +4,7 @@ import { useState } from "react";
 import Alert from "@/components/Alert";
 
 export default function SignIn({setUser}: any) {
-    const ALERT_DURATION_MS = 3100;
+    const ALERT_DURATION_MS = 1500;
     const [currentScreen, setCurrentScreen] = useState(0);
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
@@ -76,7 +76,7 @@ export default function SignIn({setUser}: any) {
             if (response.ok) {
                 triggerAlert("Sign-in successful!", 0);
                 localStorage.setItem("username", username);
-                setTimeout(() => setUser(true), ALERT_DURATION_MS);
+                setTimeout(() => setUser(true), ALERT_DURATION_MS+800);
             }
             else {
                 triggerAlert("Invalid username or password", 1);
