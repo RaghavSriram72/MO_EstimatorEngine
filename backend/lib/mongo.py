@@ -1,15 +1,17 @@
 from pprint import pprint
+
 from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
 
 uri = "mongodb+srv://moa_db_user:eLwet5UCmRc9vtoE@moa-db.vfpnpqb.mongodb.net/?appName=MOA-DB"
 
-class MOADB :
+
+class MOADB:
     """MongoDB helper for flute-price collection operations."""
 
     def __init__(self):
-        self.uri  = "mongodb+srv://moa_db_user:eLwet5UCmRc9vtoE@moa-db.vfpnpqb.mongodb.net/?appName=MOA-DB"
-        self.client = client = MongoClient(self.uri, server_api=ServerApi('1'))
+        self.uri = "mongodb+srv://moa_db_user:eLwet5UCmRc9vtoE@moa-db.vfpnpqb.mongodb.net/?appName=MOA-DB"
+        self.client = client = MongoClient(self.uri, server_api=ServerApi("1"))
         self.db = client["DB"]
         self.collection = self.db["flute-prices"]
 
@@ -20,6 +22,7 @@ class MOADB :
     def list_all_objects(self):
         """Return all documents in the collection with all properties."""
         return list(self.collection.find({}))
+
 
 if __name__ == "__main__":
     db = MOADB()

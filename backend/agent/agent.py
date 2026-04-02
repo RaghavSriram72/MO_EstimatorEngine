@@ -3,6 +3,7 @@ import logging
 import os
 import sys
 
+from backend.agent.tools.form_calculator import form_calculator
 from dotenv import load_dotenv
 from langchain.agents import create_agent
 from langchain.agents.middleware import (
@@ -15,7 +16,6 @@ from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
 
 from agent.prompts.system import SYSTEM_PROMPT
-from backend.agent.tools.form_calculator import form_calculator
 from agent.tools.quote_adjustment import quote_adjustment
 
 logger = logging.getLogger(__name__)

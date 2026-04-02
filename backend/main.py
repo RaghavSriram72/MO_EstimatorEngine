@@ -1,11 +1,16 @@
+import hashlib
+import hmac
+import os
+import secrets
+
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-import hashlib
-import hmac
-import secrets
+from pymongo.mongo_client import MongoClient
+from pymongo.server_api import ServerApi
 
 app = FastAPI()
 
@@ -17,15 +22,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-from pymongo.mongo_client import MongoClient
-from pymongo.server_api import ServerApi
-
-import os
-from dotenv import load_dotenv
-
-
 
 # Create a new client and connect to the server
 
@@ -52,7 +48,6 @@ class MOADB :
 
     def check_username_exists(self, username: str) -> bool:
         """Check if a username already exists in the users collection."""
-        
         return self.users_collection.find_one({"username": username}) is not None
 
     def create_user(self, username: str, password: str) -> bool:
@@ -153,8 +148,9 @@ async def sign_in(payload: AccountRequest):
         return JSONResponse(status_code=400, content={"error": "Invalid username or password"})
     
     user = db.get_user(username)
-    if verify_password(password, user["password_hash"]):
-        return JSONResponse(status_code=200, content={"message": "Sign-in successful"})
-    else:
+    
+    if not user or not verify_password(password, user["password_hash"]):
         return JSONResponse(status_code=400, content={"error": "Invalid username or password"})
+    else:
+        return JSONResponse(status_code=200, content={"message": "Sign-in successful"})
 

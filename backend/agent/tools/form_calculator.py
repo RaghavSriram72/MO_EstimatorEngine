@@ -1,53 +1,47 @@
 import math
 
 from langchain.tools import tool
+from rectpack import PackingMode, newPacker
 
 # Calculate size per form -> apply_materials_tool -> fills in material field for each Element
 
 FORM_WIDTH = 60.0
 FORM_LENGTH = 80.0
+PADDING = 0.125
 FORM_AREA = FORM_WIDTH * FORM_LENGTH
-
-
-# Store all Form types in some data structure. should be pulled from DB?
-class Material:
-    """Class to represent a material for form calculation."""
-    def __init__(self, name, unit, unit_price):
-        self.name = (name,)
-        self.unit = unit
-        self.unit_price = unit_price
 
 
 class Element:
     """Class to represent an element for form calculation."""
-    def __init__(self, id: int, length: float, width: float, material=None):
+
+    def __init__(self, id: int, length: float, width: float):
         self.id = (id,)
         self.length = length
         self.width = width
-        self.material = material
 
 
 @tool
-def form_calculator(elements: list[Element]):
+def form_calculator(elements: list[Element], num_standees: int):
     """
     Tool to calculate number of forms to fit elements.
 
     Args:
         elements: list of Elements
+        num_standees: number of standees to calculate for
 
     Returns:
         None
     """
-    elements = _get_all_elements(elements)
-    materials = {el.material: el for el in elements if el.material is not None}
-
-    if not materials:
-        # bin-packing on all elements
-        pass
-
-    for material, element in materials.items():
-        # bin-packing on elements with material
-        pass
+    elements = [_add_padding(el) for el in _get_all_elements(elements)]
+    packer = newPacker(mode=PackingMode.Offline, rotation=True)
+    packer.add_bin(FORM_WIDTH, FORM_LENGTH, len(elements))
+    for element in elements:
+        packer.add_rect(element.length, element.width, element.id)
+    packer.pack() # type: ignore
+    forms = len(packer)
+    return forms, packer
+    
+        
 
 
 def _fits_on_form(element: Element):
@@ -109,6 +103,34 @@ def _split_element(element):
         split_width = element.width / num_splits
         split_length = element.length
     return [
-        Element(id=element.id, length=split_length, width=split_width, material=element.material)
+        # ! need to adjust name to make unique
+        Element(id=element.id, length=split_length, width=split_width)
         for _ in range(num_splits)
     ]
+
+def _add_padding(element):
+    """
+    Helper function to add padding to an element.
+
+    Args:
+        element: Element to add padding to
+
+    Returns:
+        Element with padding added
+    """
+    return Element(
+        id=element.id,
+        length=element.length + PADDING,  # Add padding to length
+        width=element.width + PADDING,  # Add padding to width
+    )
+
+if __name__ == "__main__":
+    elements = [
+        Element(id=1, length=30, width=40),
+        Element(id=2, length=50, width=70),
+        Element(id=3, length=90, width=110),
+    ]
+    num_standees = 10
+    forms_needed, packer = form_calculator.invoke({"elements": elements, "num_standees": num_standees})
+    print(f"Number of rectangles in packer: {len(packer.rect_list())}")
+    print(f"Forms needed: {forms_needed}")
