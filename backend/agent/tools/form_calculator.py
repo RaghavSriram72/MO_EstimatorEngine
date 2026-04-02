@@ -14,8 +14,8 @@ FORM_AREA = FORM_WIDTH * FORM_LENGTH
 class Element:
     """Class to represent an element for form calculation."""
 
-    def __init__(self, id: int, length: float, width: float):
-        self.id = (id,)
+    def __init__(self, id: str, length: float, width: float):
+        self.id = id
         self.length = length
         self.width = width
 
@@ -104,8 +104,8 @@ def _split_element(element):
         split_length = element.length
     return [
         # ! need to adjust name to make unique
-        Element(id=element.id, length=split_length, width=split_width)
-        for _ in range(num_splits)
+        Element(id=f"{element.id}_{i}", length=split_length, width=split_width)
+        for i in range(num_splits)
     ]
 
 def _add_padding(element):
@@ -126,11 +126,14 @@ def _add_padding(element):
 
 if __name__ == "__main__":
     elements = [
-        Element(id=1, length=30, width=40),
-        Element(id=2, length=50, width=70),
-        Element(id=3, length=90, width=110),
+        Element(id="1", length=30, width=40),
+        Element(id="2", length=50, width=70),
+        Element(id="3", length=90, width=110),
     ]
     num_standees = 10
     forms_needed, packer = form_calculator.invoke({"elements": elements, "num_standees": num_standees})
-    print(f"Number of rectangles in packer: {len(packer.rect_list())}")
+    all_rects = packer.rect_list()
+    for rect in all_rects:
+        b, x, y, w, h, rid = rect
+        print(f"Element {rid} is placed at ({x}, {y}) with width {w} and height {h} in bin {b}")
     print(f"Forms needed: {forms_needed}")
