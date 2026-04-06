@@ -43,3 +43,12 @@ next-env.d.ts
 # python
 **/.venv
 **/__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+.pytest_cache/
+
+# editors
+.vscode/
+.idea/
