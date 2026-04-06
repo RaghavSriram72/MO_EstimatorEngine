@@ -1,6 +1,7 @@
 import math
+from collections import defaultdict
+from enum import Enum
 
-from langchain.tools import tool
 from rectpack import PackingMode, newPacker
 
 # Calculate size per form -> apply_materials_tool -> fills in material field for each Element
@@ -10,18 +11,23 @@ FORM_LENGTH = 80.0
 PADDING = 0.125
 FORM_AREA = FORM_WIDTH * FORM_LENGTH
 
+class Complexity(Enum):
+    """Enum to represent complexity of an element for form calculation."""
+    SIMPLE = 1
+    MODERATE = 2
+    COMPLEX = 3
 
 class Element:
     """Class to represent an element for form calculation."""
 
-    def __init__(self, id: str, length: float, width: float):
+    def __init__(self, id: str, length: float, width: float, complexity: Complexity = Complexity.SIMPLE):
         self.id = id
         self.length = length
         self.width = width
+        self.complexity = complexity
 
 
-@tool
-def form_calculator(elements: list[Element], num_standees: int):
+def print_form_calculator(elements: list[Element], num_standees: int):
     """
     Tool to calculate number of forms to fit elements.
 
@@ -32,7 +38,7 @@ def form_calculator(elements: list[Element], num_standees: int):
     Returns:
         None
     """
-    elements = [_add_padding(el) for el in _get_all_elements(elements)]
+    elements = [_add_padding(el) for el in _get_all_elements(elements)] * num_standees
     packer = newPacker(mode=PackingMode.Offline, rotation=True)
     packer.add_bin(FORM_WIDTH, FORM_LENGTH, len(elements))
     for element in elements:
@@ -103,7 +109,6 @@ def _split_element(element):
         split_width = element.width / num_splits
         split_length = element.length
     return [
-        # ! need to adjust name to make unique
         Element(id=f"{element.id}_{i}", length=split_length, width=split_width)
         for i in range(num_splits)
     ]
@@ -118,22 +123,36 @@ def _add_padding(element):
     Returns:
         Element with padding added
     """
-    return Element(
-        id=element.id,
-        length=element.length + PADDING,  # Add padding to length
-        width=element.width + PADDING,  # Add padding to width
-    )
+    if min(element.length, element.width) + PADDING > FORM_WIDTH:
+        if max(element.length, element.width) + PADDING < FORM_LENGTH:
+            if element.length > element.width:
+                element.length += PADDING
+            else:
+                element.width += PADDING
+    else:
+        element.length += PADDING
+        element.width += PADDING
+    return element
 
 if __name__ == "__main__":
     elements = [
-        Element(id="1", length=30, width=40),
-        Element(id="2", length=50, width=70),
-        Element(id="3", length=90, width=110),
+        Element(id="back", length=120, width=72, complexity=Complexity.SIMPLE),
+        Element(id="elph", length=35, width=72, complexity=Complexity.COMPLEX),
+        Element(id="glinda", length=35, width=72, complexity=Complexity.COMPLEX),
+        Element(id="w", length=16, width=24, complexity=Complexity.MODERATE),
+        Element(id="i", length=6, width=18, complexity=Complexity.MODERATE),
+        Element(id="c", length=12, width=18, complexity=Complexity.MODERATE),
+        Element(id="k", length=14, width=18, complexity=Complexity.MODERATE),
+        Element(id="e", length=14, width=18, complexity=Complexity.MODERATE),
+        Element(id="d", length=14, width=18, complexity=Complexity.MODERATE),
     ]
-    num_standees = 10
-    forms_needed, packer = form_calculator.invoke({"elements": elements, "num_standees": num_standees})
+    num_standees = 100
+    forms_needed, packer = print_form_calculator(elements, num_standees)
     all_rects = packer.rect_list()
+    bin_dict = defaultdict(list)
     for rect in all_rects:
         b, x, y, w, h, rid = rect
-        print(f"Element {rid} is placed at ({x}, {y}) with width {w} and height {h} in bin {b}")
+        bin_dict[b].append(rid)
+    for bin in bin_dict:
+        print(f"Form {bin}: {bin_dict[bin]}")
     print(f"Forms needed: {forms_needed}")
