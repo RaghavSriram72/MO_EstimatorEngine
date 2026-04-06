@@ -10,6 +10,8 @@ class Project:
 
     def static_cost_calculator(self):
         # per print form cost
+        # blank form calculation
+        
 
         # per standee cost
 
