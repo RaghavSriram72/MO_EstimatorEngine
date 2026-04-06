@@ -20,8 +20,8 @@ class Complexity(Enum):
 class Element:
     """Class to represent an element for form calculation."""
 
-    def __init__(self, id: str, length: float, width: float, complexity: Complexity = Complexity.SIMPLE):
-        self.id = id
+    def __init__(self, name: str, length: float, width: float, complexity: Complexity = Complexity.SIMPLE):
+        self.name = name
         self.length = length
         self.width = width
         self.complexity = complexity
@@ -42,7 +42,7 @@ def print_form_calculator(elements: list[Element], num_standees: int):
     packer = newPacker(mode=PackingMode.Offline, rotation=True)
     packer.add_bin(FORM_WIDTH, FORM_LENGTH, len(elements))
     for element in elements:
-        packer.add_rect(element.length, element.width, element.id)
+        packer.add_rect(element.length, element.width, element.name)
     packer.pack() # type: ignore
     forms = len(packer)
     return forms, packer
@@ -109,7 +109,7 @@ def _split_element(element):
         split_width = element.width / num_splits
         split_length = element.length
     return [
-        Element(id=f"{element.id}_{i}", length=split_length, width=split_width)
+        Element(name=f"{element.name}_{i}", length=split_length, width=split_width)
         for i in range(num_splits)
     ]
 
@@ -136,15 +136,15 @@ def _add_padding(element):
 
 if __name__ == "__main__":
     elements = [
-        Element(id="back", length=120, width=72, complexity=Complexity.SIMPLE),
-        Element(id="elph", length=35, width=72, complexity=Complexity.COMPLEX),
-        Element(id="glinda", length=35, width=72, complexity=Complexity.COMPLEX),
-        Element(id="w", length=16, width=24, complexity=Complexity.MODERATE),
-        Element(id="i", length=6, width=18, complexity=Complexity.MODERATE),
-        Element(id="c", length=12, width=18, complexity=Complexity.MODERATE),
-        Element(id="k", length=14, width=18, complexity=Complexity.MODERATE),
-        Element(id="e", length=14, width=18, complexity=Complexity.MODERATE),
-        Element(id="d", length=14, width=18, complexity=Complexity.MODERATE),
+        Element(name="back", length=120, width=72, complexity=Complexity.SIMPLE),
+        Element(name="elph", length=35, width=72, complexity=Complexity.COMPLEX),
+        Element(name="glinda", length=35, width=72, complexity=Complexity.COMPLEX),
+        Element(name="w", length=16, width=24, complexity=Complexity.MODERATE),
+        Element(name="i", length=6, width=18, complexity=Complexity.MODERATE),
+        Element(name="c", length=12, width=18, complexity=Complexity.MODERATE),
+        Element(name="k", length=14, width=18, complexity=Complexity.MODERATE),
+        Element(name="e", length=14, width=18, complexity=Complexity.MODERATE),
+        Element(name="d", length=14, width=18, complexity=Complexity.MODERATE),
     ]
     num_standees = 100
     forms_needed, packer = print_form_calculator(elements, num_standees)
