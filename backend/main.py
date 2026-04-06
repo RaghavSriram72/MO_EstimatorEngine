@@ -36,10 +36,11 @@ class MOADB :
     """MongoDB helper for flute-price collection operations."""
 
     def __init__(self):
-        self.uri  = "mongodb+srv://moa_db_user:eLwet5UCmRc9vtoE@moa-db.vfpnpqb.mongodb.net/?appName=MOA-DB"
+        load_dotenv()  # Load environment variables from .env file
+        self.uri  = os.getenv("MONGO_URI")
         self.client = client = MongoClient(self.uri, server_api=ServerApi('1'))
         self.db = client["DB"]
-        self.flute_collection = self.db["flute-prices"]
+        self.standee_collection = self.db["standee-fixed-costs"]
         self.users_collection = self.db["users"]
 
     def get_flute_names_and_ids(self):
@@ -71,6 +72,14 @@ class MOADB :
     def get_user(self, username: str):
         """Retrieve a user document by username."""
         return self.users_collection.find_one({"username": username})
+
+    def get_standee_data(self, standee_category: str, data_field: str):
+        """Return the specified data field for a given standee category."""
+        result = self.standee_collection.find_one({"standee_type": standee_category})
+        if result and data_field in result:
+            return result[data_field]
+        else:
+            return None  # or raise an exception if preferred
 
 
 def hash_password(password: str) -> str:
@@ -116,11 +125,16 @@ async def health_check():
 
 
 
-@app.get("/flute-data")
-async def get_flute_data():
+@app.get("/standee-data")
+async def get_standee_data(standee_type: int, data_type: str):
     db = MOADB()
-    flute_data = db.get_flute_names_and_ids()
-    return {"flute_data": flute_data}
+    type_mapping = {
+        0: "Simple Standee",
+        1: "Moderate Standee",
+        2: "Complex Standee"
+    }
+    standee_data = db.get_standee_data(type_mapping[standee_type], data_type.strip())
+    return {"data": standee_data}
 
 
 @app.post("/create-account")

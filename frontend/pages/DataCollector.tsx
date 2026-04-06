@@ -15,46 +15,79 @@ type FluteRecord = {
 
 export default function DataCollector() {
     const [currentModule, setCurrentModule] = useState(0);
-    const [currentFluteType, setCurrentFluteType] = useState("");
+    const [currentDataType, setCurrentDataType] = useState("");
     const [currentFluteId, setCurrentFluteId] = useState("");
     const [fluteData, setFluteData] = useState<FluteRecord[]>([]);
     const [flute, setFlute] = useState<FluteRecord | null>(null);
 
+    const [currentDataValue, setCurrentDataValue] = useState<any | null>(null);
+
+    const dataOptions = [
+        "imposition_cost_per_hour",
+        "imposition_total_hours",
+        "imposition_total_cost",
+        "engineering_design_cost_per_project",
+        "instruction_sheet_engineering_cost_per_project",
+        "instruction_sheet_cost",
+        "number_of_instruction_sheets",
+        "instruction_sheet_total_cost",
+        "hardware_cost",
+        "zund_cost_per_hour",
+        "zund_print_form_minutes",
+        "zund_blank_form_minutes",
+        "cutting_die_print_form_cost",
+        "cutting_die_blank_form_cost",
+    ]
+
     useEffect(() => {
-        if (currentModule === 0) {
-            // Fetch flute types from the backend
-            fetch("http://localhost:8000/flute-data")
-                .then(response => response.json())
-                .then(data => {
-                    console.log("Fetched flute data:", data);
-                    const records: FluteRecord[] = data.flute_data ?? [];
-                    setFluteData(records);
-                    if (records.length > 0 && records[0].description && records[0].item_id) {
-                        setCurrentFluteType(records[0].description); // Set default flute type
-                        setCurrentFluteId(records[0].item_id); // Set default flute ID
-                    }
-                })
-                .catch(error => console.error("Error fetching flute data:", error));
-        }
+        // if (currentModule === 0) {
+        //     // Fetch flute types from the backend
+        //     fetch("http://localhost:8000/flute-data")
+        //         .then(response => response.json())
+        //         .then(data => {
+        //             console.log("Fetched flute data:", data);
+        //             const records: FluteRecord[] = data.flute_data ?? [];
+        //             setFluteData(records);
+        //             if (records.length > 0 && records[0].description && records[0].item_id) {
+        //                 setCurrentFluteType(records[0].description); // Set default flute type
+        //                 setCurrentFluteId(records[0].item_id); // Set default flute ID
+        //             }
+        //         })
+        //         .catch(error => console.error("Error fetching flute data:", error));
+        // }
     }, 
     [])
 
+    
+
+    
+
     useEffect(() => {
-        setFlute(fluteData.find((item) => item.item_id === currentFluteId) || null);
-    }, [currentFluteId, fluteData]);
+        if (currentDataType && [0, 1, 2].includes(currentModule)) {
+            fetch(`http://localhost:8000/standee-data?standee_type=${currentModule}&data_type=${currentDataType}`)
+                .then(response => response.json())
+                .then(data => {
+                    setCurrentDataValue(data.data);
+                })
+                .catch(error => console.error("Error fetching standee data:", error));
+        }
+    }, [currentDataType, currentModule]);
 
-    const fluteOptions = fluteData
-        .filter((item) => !!item.item_id && !!item.description)
-        .map((item) => ({
-            item_id: item.item_id as string,
-            description: item.description as string,
-        }));
 
-    const formattedLastUpdated = flute?.last_updated
-        ? new Date(flute.last_updated).toLocaleDateString()
-        : "N/A";
+    function determineUOM() {
+            if (currentDataType.includes("cost")) {
+                return "USD";
+            } else if (currentDataType.includes("hour")) {
+                return "Hours";
+            }
+            else if (currentDataType.includes("number_of_instruction_sheets")) {
+                return "Sheets";
+            }
+            else if(currentDataType.includes("minutes")) {
+                return "Minutes";
+            }
 
-    console.log("Flute options for dropdown:", fluteOptions);
+    }
 
     return (
             <div className="grid grid-cols-[2fr_5fr_1fr] text-black w-full flex-1 overflow-hidden">
@@ -64,12 +97,22 @@ export default function DataCollector() {
                         <li 
                         className={`${currentModule == 0 ? "tab-active " : "tab-inactive"} flex items-center gap-5 w-full `}
                         onClick={() => setCurrentModule(0)}>
-                            <span>•</span> Flute Pricing
+                            <span>•</span> Simple Standee Costs
                         </li>
                         <li 
                         className={`${currentModule == 1 ? "tab-active" : "tab-inactive"} flex items-center gap-5 w-full`} 
                         onClick={() => setCurrentModule(1)}>
-                        <span>•</span> Packaging Costs
+                        <span>•</span> Moderate Standee Costs
+                        </li>
+                        <li 
+                        className={`${currentModule == 2 ? "tab-active" : "tab-inactive"} flex items-center gap-5 w-full`} 
+                        onClick={() => setCurrentModule(2)}>
+                        <span>•</span> Complex Standee Costs
+                        </li>
+                        <li 
+                        className={`${currentModule == 3 ? "tab-active" : "tab-inactive"} flex items-center gap-5 w-full`} 
+                        onClick={() => setCurrentModule(3)}>
+                        <span>•</span> Corrugate Costs
                         </li>
                     </ul>
                 </div>
@@ -79,12 +122,16 @@ export default function DataCollector() {
                 <div className="flex flex-col ml-5 p-1 justify-start items  ">
                     <div className="relative ml-15 pb-3 h-[90px] overflow-hidden">
                         <div className={`absolute inset-0 ${currentModule === 0 ? "data-collector-title-active" : "data-collector-title-inactive"}`}>
-                            <div className="text-[3em] font-instrument">Update <span className="italic text-[#FFB604]">Flute</span> Pricing</div>
+                            <div className="text-[3em] font-instrument">Update <span className="italic text-[#FFB604]">Simple</span> Standee Pricing</div>
                             <p className="text-xs">Modify Live Data for Flute Pricing Module</p>
                         </div>
                         <div className={`absolute inset-0 ${currentModule === 1 ? "data-collector-title-active" : "data-collector-title-inactive"}`}>
-                            <div className="text-[3em] font-instrument">Update <span className="italic text-[#FFB604]">Packaging</span> Pricing</div>
+                            <div className="text-[3em] font-instrument">Update <span className="italic text-[#FFB604]">Moderate</span> Standee Pricing</div>
                             <p className="text-xs">Modify Live Data for Packaging Pricing Module</p>
+                        </div>
+                        <div className={`absolute inset-0 ${currentModule === 2 ? "data-collector-title-active" : "data-collector-title-inactive"}`}>
+                            <div className="text-[3em] font-instrument">Update <span className="italic text-[#FFB604]">Complex</span> Standee Pricing</div>
+                            <p className="text-xs">Modify Live Data for Corrugate Pricing Module</p>
                         </div>
                     </div>
                    
@@ -94,8 +141,8 @@ export default function DataCollector() {
                         <div className="flex flex-col justify-center items-start w-full p-5 border-b-2 border-[#EDEAEA]">
                             <div className="text-[10px] m-2">01 - RECORD SELECTION</div>
                             <div className="w-full">
-                                <div className="text-xs font-bold m-2">Flute Type</div>
-                                    <Dropdown options={fluteOptions} currOption={currentFluteType} onSelect={setCurrentFluteType} updateCurrId={setCurrentFluteId} />
+                                <div className="text-xs font-bold m-2">Data Type</div>
+                                    <Dropdown options={dataOptions} currOption={currentDataType} onSelect={setCurrentDataType} />
                             </div>
                         </div>
                         {/* SECTION 2 */}
@@ -105,16 +152,16 @@ export default function DataCollector() {
                                 <div className="flex flex-col justify-center items-start p-4 border-2 flex-1 h-[100px] bg-[#FFF3C2] border-[#FFB604] rounded-md">
                                     <div className="text-xs">LIVE PRICE</div>
                                     <div className="flex flex-col justify-start  items-start">
-                                            <div className="text-[#FFB604] text-[2.4em] font-instrument">${flute?.unit_cost?.toFixed(2) ?? "0.00"}</div>
-                                            <div className="text-xs">UOM: {flute?.uom || "N/A"}</div>
+                                            <div className="text-[#FFB604] text-[2.4em] font-instrument">{currentDataType.includes("cost") ? "$" : ""}{currentDataValue?.toFixed(2) ?? "0.00"}</div>
+                                            <div className="text-xs">UOM: {determineUOM()}</div>
                                     </div>
                                    
                                 </div>
-                                <div className="flex flex-col justify-center items-start p-3 border-2 flex-1 h-[100px] border-[#EDEAEA] rounded-md">
+                                {/* <div className="flex flex-col justify-center items-start p-3 border-2 flex-1 h-[100px] border-[#EDEAEA] rounded-md">
                                     <div className="text-xs">LAST UPDATED</div>
                                     <div className="text-[#ABABAB] text-[2.2em] font-instrument">{formattedLastUpdated}</div>
                                     <div className="text-xs">By {flute?.updated_by || "Unknown"}</div>
-                                </div>
+                                </div> */}
                             </div>
                         </div>
 

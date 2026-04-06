@@ -15,18 +15,17 @@ class MOADB :
         self.uri  = os.getenv("MONGO_URI")
         self.client = client = MongoClient(self.uri, server_api=ServerApi('1'))
         self.db = client["DB"]
-        self.collection = self.db["flute-prices"]
+        self.collection = self.db["standee-fixed-costs"]
 
-    def get_flute_names_and_ids(self):
-        """Return unique sorted list of all flute item IDs in the collection."""
-        return self.collection.find("item_id")
+    def get_standee_data(self, standee_category: str, data_field: str):
+        """Return the specified data field for a given standee category."""
+        result = self.collection.find_one({"standee_type": standee_category})
+        if result and data_field in result:
+            return result[data_field]
+        else:
+            return None  # or raise an exception if preferred
 
-    def list_all_objects(self):
-        """Return all documents in the collection with all properties."""
-        return list(self.collection.find({}))
 
 if __name__ == "__main__":
     db = MOADB()
-    all_docs = db.list_all_objects()
-    for doc in all_docs:
-        pprint(doc)
+    print(db.get_standee_data("Simple Standee", "imposition_cost_per_hour"))

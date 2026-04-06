@@ -108,7 +108,8 @@ body {
   width: 100%;
 
   &:hover {
-    border: 2px solid #d4d4d4;
+    background-color: #DBDBDB;
+    border: 2px solid #a1a1a1;
   }
 }
 

@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default function Dropdown({ options, currOption, onSelect, updateCurrId }: any) { 
+export default function Dropdown({ options, currOption, onSelect }: any) { 
     const [isOpen, setIsOpen] = React.useState(false);
 
     const toggleDropdown = () => {
@@ -19,15 +19,14 @@ export default function Dropdown({ options, currOption, onSelect, updateCurrId }
                 <div className="text-xs dropdown-menu absolute mt-2 w-[350px] max-h-50 overflow-y-auto bg-[#FFFBED] border-1 border-[#EDEAEA] rounded-md shadow-lg z-10">
                     {options.map((option: any, index: number) => (
                         <div
-                            key={option.item_id}
+                            key={option}
                             onClick={() => {
-                                onSelect(option.description);
-                                updateCurrId(option.item_id);
+                                onSelect(option);
                                 setIsOpen(false);
                             }                     } 
                             className="dropdown-item px-4 py-2 hover:bg-[#EDEAEA] cursor-pointer"
                         >
-                            {option.description}
+                            {option}
                         </div>
                     ))}
                 </div>  
