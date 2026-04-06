@@ -1,11 +1,12 @@
 import csv
 import os
-
+from dotenv import load_dotenv
+load_dotenv()  # Load environment variables from .env file
 from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
 
-uri = "mongodb+srv://moa_db_user:eLwet5UCmRc9vtoE@moa-db.vfpnpqb.mongodb.net/?appName=MOA-DB"
 
+uri = os.getenv("MONGO_URI")
 client = MongoClient(uri, server_api=ServerApi('1'))
 db = client["DB"]
 collection = db["flute-prices"]
