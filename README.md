@@ -81,4 +81,10 @@ The frontend will be available at `http://localhost:3000`.
 
 ---
 
+## Environment Variables
+
+In the `backend` folder create a `.env` file and add the following lines 
+```md
+MONGO_URI = (Provided URI in google doc)
+```
 
