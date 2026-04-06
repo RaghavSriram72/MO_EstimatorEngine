@@ -36,7 +36,7 @@ class MOADB :
         self.uri  = os.getenv("MONGO_URI")
         self.client = client = MongoClient(self.uri, server_api=ServerApi('1'))
         self.db = client["DB"]
-        self.standee_collection = self.db["standee-fixed-costs"]
+        self.standee_collection = self.db["standee-static-costs"]
         self.users_collection = self.db["users"]
 
     def get_flute_names_and_ids(self):
@@ -128,7 +128,9 @@ async def get_standee_data(standee_type: int, data_type: str):
         1: "Moderate Standee",
         2: "Complex Standee"
     }
+
     standee_data = db.get_standee_data(type_mapping[standee_type], data_type.strip())
+    print(f"Retrieved standee data for type {type_mapping[standee_type]} and field '{data_type}': {standee_data}"  )
     return {"data": standee_data}
 
 
