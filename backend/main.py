@@ -37,15 +37,14 @@ class MOADB :
         self.client = client = MongoClient(self.uri, server_api=ServerApi('1'))
         self.db = client["DB"]
         self.standee_collection = self.db["standee-static-costs"]
+        self.corrugated_collection = self.db["corrugate"]
+        self.comp_collection = self.db["comp"]
+        self.freight_collection = self.db["freight"]
+        self.labels_collection = self.db["labels"]
+        self.pallet_collection = self.db["pallet"]
+        self.print_blank_collection = self.db["print_blank_ratio"]
+        self.shipper_box_collection = self.db["shipper_boxes"]
         self.users_collection = self.db["users"]
-
-    def get_flute_names_and_ids(self):
-        """Return all flute records as JSON-safe dictionaries."""
-        return list(self.flute_collection.find({}, {"_id": 0}))
-
-    def list_all_objects(self):
-        """Return all documents in the collection with all properties."""
-        return list(self.flute_collection.find({}))
 
     def check_username_exists(self, username: str) -> bool:
         """Check if a username already exists in the users collection."""
@@ -75,6 +74,145 @@ class MOADB :
             return result[data_field]
         else:
             return None  # or raise an exception if preferred
+    
+    def set_standee_data(self, standee_category: str, data_field: str, value):
+        """Update the specified data field for a given standee category."""
+        result = self.standee_collection.update_one(
+            {"standee_type": standee_category},
+            {"$set": {data_field: value}}
+        )
+        return result.modified_count > 0  # Return True if the update was successful
+    
+    def get_comp_cost(self,comp_type: str):
+        """Return the cost for a given comp type."""
+        result = self.comp_collection.find_one({"comp_type": comp_type})
+        if result and "cost" in result:
+            return result["cost"]
+        else:
+            return None  # or raise an exception if preferred
+
+    def set_comp_cost(self, comp_type: str, cost: float):
+        """Set the cost for a given comp type."""
+        result = self.comp_collection.find_one({"comp_type": comp_type})
+        if result and "cost" in result:
+            result["cost"] = cost
+        else:
+            return None  # or raise an exception if preferred
+    
+
+
+    def get_corrugate_cost(self):
+        """Return the current corrugate cost."""
+        result = self.corrugated_collection.find_one({})
+        if result and "cost" in result:
+            return result["cost"]
+        else:
+            return None  # or raise an exception if preferred
+
+    def set_corrugate_cost(self, cost: float):
+        """Set the current corrugate cost."""
+        result = self.corrugated_collection.find_one({})
+        if result and "cost" in result:
+            result["cost"] = cost
+        else:
+            return None  # or raise an exception if preferred
+    
+
+
+
+    def get_freight_cost(self, freight_type: int):
+        """Return the current freight cost for a given freight type."""
+        result = self.freight_collection.find_one({"freight_type": freight_type})
+        if result and "cost" in result:
+            return result["cost"]
+        else:
+            return None  # or raise an exception if preferred
+    
+
+    def set_freight_cost(self, freight_type: int, cost: float):
+        """Set the current freight cost for a given freight type."""
+        result = self.freight_collection.find_one({"freight_type": freight_type})
+        if result and "cost" in result:
+            result["cost"] = cost
+        else:
+            return None  # or raise an exception if preferred
+
+    def get_label_cost(self, label_type: str):
+        """Return the current label cost for a given label type."""
+        result = self.labels_collection.find_one({"label_type": label_type})
+        if result and "cost" in result:
+            return result["cost"]
+        else:
+            return None  # or raise an exception if preferred
+
+    def set_label_cost(self, label_type: str, cost: float):
+        """Set the current label cost for a given label type."""
+        result = self.labels_collection.find_one({"label_type": label_type})
+        if result and "cost" in result:
+            result["cost"] = cost
+        else:
+            return None  # or raise an exception if preferred
+    
+
+
+    def get_pallet_cost(self):
+        """Return the current pallet cost for a given pallet type."""
+        result = self.pallet_collection.find_one({})
+        if result and "cost" in result:
+            return result["cost"]
+        else:
+            return None  # or raise an exception if preferred
+
+    def set_pallet_cost(self, cost: float):
+        """Set the current pallet cost for a given pallet type."""
+        result = self.pallet_collection.find_one({})
+        if result and "cost" in result:
+            result["cost"] = cost
+        else:
+            return None  # or raise an exception if preferred
+
+
+
+    def get_print_blank_ratio(self, print_forms: int):
+        """Return the current print blank ratio."""
+        result = self.print_blank_collection.find_one({"print_forms": print_forms})
+        if result and "blank_forms" in result:
+            return result["blank_forms"]
+        else:
+            return None  # or raise an exception if preferred
+
+    def set_print_blank_ratio(self, print_forms: int, blank_forms: int):
+        """Set the current print blank ratio."""
+        result = self.print_blank_collection.find_one({"print_forms": print_forms})
+        if result and "blank_forms" in result:
+            result["blank_forms"] = blank_forms
+        else:
+            return None  # or raise an exception if preferred
+    
+
+    def get_shipper_box_cost(self, box_type: str):
+        """Return the current shipper box cost for a given box type."""
+        result = self.shipper_box_collection.find_one({})
+        if result and "cost" in result:
+            return result["cost"]
+        else:
+            return None  # or raise an exception if preferred
+
+    def set_shipper_box_cost(self, box_type: str, cost: float):
+        """Set the current shipper box cost for a given box type."""
+        result = self.shipper_box_collection.find_one({})
+        if result and "cost" in result:
+            result["cost"] = cost
+        else:
+            return None  # or raise an exception if preferred
+
+
+
+
+    
+    
+
+
 
 
 def hash_password(password: str) -> str:
