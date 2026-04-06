@@ -1,6 +1,6 @@
-# Project Name
+# Midnight Oil Estimator Engine
 
-Midnight Oil Estimator Engine
+An intelligent chatbot that instantly generates accurate quotes for standees — guiding customers through size, material, and quantity to deliver fast, consistent pricing.
 
 ---
 
