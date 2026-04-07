@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import math
 import os
 import secrets
 
@@ -172,6 +173,21 @@ class MOADB :
             return None  # or raise an exception if preferred
 
 
+    def get_pallet_labor_cost(self):
+        """Return the current pallet labor cost."""
+        result = self.pallet_collection.find_one({})
+        if result and "labor_cost" in result:
+            return result["labor_cost"]
+        else:
+            return None  # or raise an exception if preferred
+    
+    def set_pallet_labor_cost(self, labor_cost: float):
+        """Set the current pallet labor cost."""
+        result = self.pallet_collection.find_one({})
+        if result and "labor_cost" in result:
+            result["labor_cost"] = labor_cost
+        else:
+            return None  # or raise an exception if preferred
 
     def get_print_blank_ratio(self, print_forms: int):
         """Return the current print blank ratio."""
@@ -190,7 +206,7 @@ class MOADB :
             return None  # or raise an exception if preferred
     
 
-    def get_shipper_box_cost(self, box_type: str):
+    def get_shipper_box_cost(self):
         """Return the current shipper box cost for a given box type."""
         result = self.shipper_box_collection.find_one({})
         if result and "cost" in result:
@@ -198,7 +214,7 @@ class MOADB :
         else:
             return None  # or raise an exception if preferred
 
-    def set_shipper_box_cost(self, box_type: str, cost: float):
+    def set_shipper_box_cost(self, cost: float):
         """Set the current shipper box cost for a given box type."""
         result = self.shipper_box_collection.find_one({})
         if result and "cost" in result:
@@ -208,10 +224,56 @@ class MOADB :
 
 
 
-
     
     
 
+def fixed_cost_calcualtor(print_forms: int, num_standees: int, standee_type: int, internal=True):
+    db = MOADB()
+    standee_map = {
+        1: "Simple Standee",
+        2: "Moderate Standee",
+        3: "Complex Standee"
+    }
+
+    print_forms = print_forms // num_standees
+
+    standee_type_str = standee_map.get(standee_type, "Unknown Standee Type")
+
+    blank_forms = print_forms * 1.5
+
+    imposition_cost = print_forms * 55
+
+    comp_cost = blank_forms * db.get_comp_cost("Blank") + print_forms * db.get_comp_cost("Colour")
+
+    engineering_design = db.get_standee_data(standee_type_str, "engineering_design_cost_per_project")
+    instruction_sheet = db.get_standee_data(standee_type_str, "instruction_sheet_engineering_cost_per_project") + db.get_standee_data(standee_type_str, "instruction_sheet_total_cost")
+
+    corrugate_cost = db.get_corrugate_cost() * (blank_forms + print_forms)
+
+    hardware_cost = db.get_standee_data(standee_type_str, "hardware_cost")
+
+    zund_cost_print = math.ceil((db.get_standee_data(standee_type_str, "zund_print_form_minutes") * print_forms) / 60)
+
+    zund_cost_blank = math.ceil((db.get_standee_data(standee_type_str, "zund_blank_form_minutes") * blank_forms) / 60)
+
+
+    zund_cost = zund_cost_print + zund_cost_blank * db.get_standee_data(standee_type_str, "zund_cost_per_hour")
+
+    die_cost_print = db.get_standee_data(standee_type_str, "cutting_die_print_form_cost") * print_forms
+    die_cost_blank = db.get_standee_data(standee_type_str, "cutting_die_blank_form_cost") * blank_forms
+
+   
+
+
+   return "ur mom"
+    
+
+
+
+
+
+
+    
 
 
 
