@@ -1,8 +1,13 @@
+import hashlib
+import hmac
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+
 from lib.db import MOADB
+
 app = FastAPI()
 
 # Configure CORS for Next.js frontend
@@ -18,6 +23,24 @@ app.add_middleware(
 class AccountRequest(BaseModel):
     username: str
     password: str
+
+    
+def _verify_password(password: str, stored_hash: str) -> bool:
+    """Verify a password against a stored PBKDF2 hash string."""
+    try:
+        algorithm, iterations, salt_hex, digest_hex = stored_hash.split("$")
+        if algorithm != "pbkdf2_sha256":
+            return False
+
+        recomputed = hashlib.pbkdf2_hmac(
+            "sha256",
+            password.encode("utf-8"),
+            bytes.fromhex(salt_hex),
+            int(iterations),
+        )
+        return hmac.compare_digest(recomputed.hex(), digest_hex)
+    except (ValueError, TypeError):
+        return False
 
 
 @app.get("/")
@@ -71,7 +94,7 @@ async def sign_in(payload: AccountRequest):
 
     user = db.get_user(username)
 
-    if not user or not db._verify_password(password, user["password_hash"]):
+    if not user or not _verify_password(password, user["password_hash"]):
         return JSONResponse(status_code=400, content={"error": "Invalid username or password"})
     else:
         return JSONResponse(status_code=200, content={"message": "Sign-in successful"})

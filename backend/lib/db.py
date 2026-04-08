@@ -1,5 +1,4 @@
 import hashlib
-import hmac
 import os
 import secrets
 
@@ -191,21 +190,3 @@ def _hash_password(password: str) -> str:
     salt = secrets.token_bytes(16)
     digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
     return f"pbkdf2_sha256${iterations}${salt.hex()}${digest.hex()}"
-
-
-def _verify_password(password: str, stored_hash: str) -> bool:
-    """Verify a password against a stored PBKDF2 hash string."""
-    try:
-        algorithm, iterations, salt_hex, digest_hex = stored_hash.split("$")
-        if algorithm != "pbkdf2_sha256":
-            return False
-
-        recomputed = hashlib.pbkdf2_hmac(
-            "sha256",
-            password.encode("utf-8"),
-            bytes.fromhex(salt_hex),
-            int(iterations),
-        )
-        return hmac.compare_digest(recomputed.hex(), digest_hex)
-    except (ValueError, TypeError):
-        return False
