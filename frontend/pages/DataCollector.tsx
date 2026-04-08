@@ -20,7 +20,7 @@ export default function DataCollector() {
     const [fluteData, setFluteData] = useState<FluteRecord[]>([]);
     const [flute, setFlute] = useState<FluteRecord | null>(null);
 
-    const [currentDataValue, setCurrentDataValue] = useState<any | null>(null);
+    const [currentDataValue, setCurrentDataValue] = useState<any>(0);
 
     const dataOptions = [
         "imposition_cost_per_hour",
@@ -152,7 +152,7 @@ export default function DataCollector() {
                                 <div className="flex flex-col justify-center items-start p-4 border-2 flex-1 h-[100px] bg-[#FFF3C2] border-[#FFB604] rounded-md">
                                     <div className="text-xs">LIVE PRICE</div>
                                     <div className="flex flex-col justify-start  items-start">
-                                            <div className="text-[#FFB604] text-[2.4em] font-instrument">{currentDataType.includes("cost") ? "$" : ""}{currentDataValue?.toFixed(2) ?? "0.00"}</div>
+                                            <div className="text-[#FFB604] text-[2.4em] font-instrument">{currentDataType.includes("cost") ? "$" : ""}{ currentDataValue.toFixed(2) ?? "0.00"}</div>
                                             <div className="text-xs">UOM: {determineUOM()}</div>
                                     </div>
                                    

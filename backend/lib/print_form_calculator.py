@@ -1,5 +1,4 @@
 import math
-from collections import defaultdict
 from enum import Enum
 
 from rectpack import PackingMode, newPacker
@@ -26,26 +25,42 @@ class Element:
         self.width = width
         self.complexity = complexity
 
+class Form:
+    """Class to represent a form for form calculation."""
 
-def print_form_calculator(elements: list[Element], num_standees: int):
+    def __init__(self, id: str, elements: list[str], complexity: Complexity = Complexity.SIMPLE):
+        self.id = id
+        self.elements = elements
+        self.complexity = complexity
+
+
+def print_form_calculator(initial_elements: list[Element], num_standees: int):
     """
     Tool to calculate number of forms to fit elements.
 
     Args:
-        elements: list of Elements
+        initial_elements: list of Elements
         num_standees: number of standees to calculate for
 
     Returns:
         None
     """
-    elements = [_add_padding(el) for el in _get_all_elements(elements)] * num_standees
+    elements = {el.name: _add_padding(el) for el in _get_all_elements(initial_elements)}
+    all_elements = list(elements.values()) * num_standees
     packer = newPacker(mode=PackingMode.Offline, rotation=True)
-    packer.add_bin(FORM_WIDTH, FORM_LENGTH, len(elements))
-    for element in elements:
+    packer.add_bin(FORM_WIDTH, FORM_LENGTH, len(all_elements))
+    for element in all_elements:
         packer.add_rect(element.length, element.width, element.name)
     packer.pack() # type: ignore
-    forms = len(packer)
-    return forms, packer
+    all_rects = packer.rect_list()
+    bin_dict = {}
+    for b, _, _, _, _, rid in all_rects:
+        if b not in bin_dict:
+            bin_dict[b] = Form(id=b, elements=[])
+        bin_dict[b].elements.append(rid)
+        if elements[rid].complexity.value > bin_dict[b].complexity.value:
+            bin_dict[b].complexity = elements[rid].complexity
+    return elements, bin_dict
     
         
 
@@ -147,12 +162,8 @@ if __name__ == "__main__":
         Element(name="d", length=14, width=18, complexity=Complexity.MODERATE),
     ]
     num_standees = 100
-    forms_needed, packer = print_form_calculator(elements, num_standees)
-    all_rects = packer.rect_list()
-    bin_dict = defaultdict(list)
-    for rect in all_rects:
-        b, x, y, w, h, rid = rect
-        bin_dict[b].append(rid)
+    elements, bin_dict = print_form_calculator(elements, num_standees)
+    forms_needed = len(bin_dict)
     for bin in bin_dict:
-        print(f"Form {bin}: {bin_dict[bin]}")
+        print(f"Form {bin}: {bin_dict[bin].elements}, Complexity: {bin_dict[bin].complexity}")
     print(f"Forms needed: {forms_needed}")
