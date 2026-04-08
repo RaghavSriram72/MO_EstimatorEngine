@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-
+from lib.db import MOADB
 app = FastAPI()
 
 # Configure CORS for Next.js frontend
@@ -71,7 +71,7 @@ async def sign_in(payload: AccountRequest):
 
     user = db.get_user(username)
 
-    if not user or not _verify_password(password, user["password_hash"]):
+    if not user or not db._verify_password(password, user["password_hash"]):
         return JSONResponse(status_code=400, content={"error": "Invalid username or password"})
     else:
         return JSONResponse(status_code=200, content={"message": "Sign-in successful"})
