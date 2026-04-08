@@ -207,5 +207,5 @@ def _verify_password(password: str, stored_hash: str) -> bool:
             int(iterations),
         )
         return hmac.compare_digest(recomputed.hex(), digest_hex)
-    except ValueError, TypeError:
+    except (ValueError, TypeError):
         return False

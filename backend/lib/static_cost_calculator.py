@@ -43,4 +43,4 @@ def fixed_cost_calcualtor(print_forms: list[Form], num_standees: int, standee_ty
     die_cost_print = db.get_standee_data(standee_type_str, "cutting_die_print_form_cost") * print_forms
     die_cost_blank = db.get_standee_data(standee_type_str, "cutting_die_blank_form_cost") * blank_forms
 
-    return "ur mom"
+    return 10
