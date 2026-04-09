@@ -2,7 +2,7 @@ import math
 
 from rectpack import PackingMode, newPacker
 
-from lib.classes import Complexity, Element
+from lib.classes import Complexity, Element, Form
 
 # Calculate size per form -> apply_materials_tool -> fills in material field for each Element
 
@@ -30,7 +30,15 @@ def print_form_calculator(initial_elements: list[Element], num_standees: int):
     for element in element_list:
         packer.add_rect(element.length, element.width, element.name)
     packer.pack()  # type: ignore
-    return elements, len(packer), len(packer) * num_standees
+    all_rects = packer.rect_list()
+    bin_dict = {}
+    for b, _, _, _, _, rid in all_rects:
+        if b not in bin_dict:
+            bin_dict[b] = Form(id=b, elements=[])
+        bin_dict[b].elements.append(rid)
+        if elements[rid].complexity.value > bin_dict[b].complexity.value:
+            bin_dict[b].complexity = elements[rid].complexity
+    return elements, bin_dict
 
 
 def _fits_on_form(element: Element):
@@ -131,7 +139,8 @@ if __name__ == "__main__":
         Element(name="d", length=14, width=18, complexity=Complexity.MODERATE),
     ]
     num_standees = 10
-    elements, forms_per_standee, total_forms = print_form_calculator(elements, num_standees)
-    print(f"Elements: {elements}")
-    print(f"Forms per standee: {forms_per_standee}")
-    print(f"Total forms: {total_forms}")
+    elements, forms = print_form_calculator(elements, num_standees)
+    print(f"Forms per standee: {len(forms)}")
+    print(f"Total forms: {len(forms) * num_standees}")
+    for bin in forms:
+        print(f"Form {bin}: {forms[bin].elements}, complexity: {forms[bin].complexity}")
