@@ -30,6 +30,7 @@ class Form:
 
 class Project:
     """Class to represent a overall standee project."""
+
     def __init__(self, name: str, print_forms: list[Form], num_standees: int):
         self.name = name
         self.print_forms = print_forms

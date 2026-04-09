@@ -1,15 +1,14 @@
 import math
-from enum import Enum
 
 from rectpack import PackingMode, newPacker
 
-from lib.classes import Complexity, Element, Form
+from lib.classes import Complexity, Element
 
 # Calculate size per form -> apply_materials_tool -> fills in material field for each Element
 
 FORM_WIDTH = 60.0
 FORM_LENGTH = 80.0
-PADDING = 0.125
+PADDING = 0.25
 FORM_AREA = FORM_WIDTH * FORM_LENGTH
 
 
@@ -25,23 +24,13 @@ def print_form_calculator(initial_elements: list[Element], num_standees: int):
         None
     """
     elements = {el.name: _add_padding(el) for el in _get_all_elements(initial_elements)}
-    all_elements = list(elements.values()) * num_standees
+    element_list = list(elements.values())
     packer = newPacker(mode=PackingMode.Offline, rotation=True)
-    packer.add_bin(FORM_WIDTH, FORM_LENGTH, len(all_elements))
-    for element in all_elements:
+    packer.add_bin(FORM_WIDTH, FORM_LENGTH, len(element_list))
+    for element in element_list:
         packer.add_rect(element.length, element.width, element.name)
-    packer.pack() # type: ignore
-    all_rects = packer.rect_list()
-    bin_dict = {}
-    for b, _, _, _, _, rid in all_rects:
-        if b not in bin_dict:
-            bin_dict[b] = Form(id=b, elements=[])
-        bin_dict[b].elements.append(rid)
-        if elements[rid].complexity.value > bin_dict[b].complexity.value:
-            bin_dict[b].complexity = elements[rid].complexity
-    return elements, bin_dict
-    
-        
+    packer.pack()  # type: ignore
+    return elements, len(packer), len(packer) * num_standees
 
 
 def _fits_on_form(element: Element):
@@ -103,9 +92,9 @@ def _split_element(element):
         split_width = element.width / num_splits
         split_length = element.length
     return [
-        Element(name=f"{element.name}_{i}", length=split_length, width=split_width)
-        for i in range(num_splits)
+        Element(name=f"{element.name}_{i}", length=split_length, width=split_width) for i in range(num_splits)
     ]
+
 
 def _add_padding(element):
     """
@@ -128,6 +117,7 @@ def _add_padding(element):
         element.width += PADDING
     return element
 
+
 if __name__ == "__main__":
     elements = [
         Element(name="back", length=120, width=72, complexity=Complexity.SIMPLE),
@@ -140,9 +130,8 @@ if __name__ == "__main__":
         Element(name="e", length=14, width=18, complexity=Complexity.MODERATE),
         Element(name="d", length=14, width=18, complexity=Complexity.MODERATE),
     ]
-    num_standees = 100
-    elements, bin_dict = print_form_calculator(elements, num_standees)
-    forms_needed = len(bin_dict)
-    for bin in bin_dict:
-        print(f"Form {bin}: {bin_dict[bin].elements}, Complexity: {bin_dict[bin].complexity}")
-    print(f"Forms needed: {forms_needed}")
+    num_standees = 10
+    elements, forms_per_standee, total_forms = print_form_calculator(elements, num_standees)
+    print(f"Elements: {elements}")
+    print(f"Forms per standee: {forms_per_standee}")
+    print(f"Total forms: {total_forms}")
