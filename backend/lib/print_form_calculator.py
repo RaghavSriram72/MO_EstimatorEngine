@@ -3,35 +3,14 @@ from enum import Enum
 
 from rectpack import PackingMode, newPacker
 
+from lib.classes import Complexity, Element, Form
+
 # Calculate size per form -> apply_materials_tool -> fills in material field for each Element
 
 FORM_WIDTH = 60.0
 FORM_LENGTH = 80.0
 PADDING = 0.125
 FORM_AREA = FORM_WIDTH * FORM_LENGTH
-
-class Complexity(Enum):
-    """Enum to represent complexity of an element for form calculation."""
-    SIMPLE = 1
-    MODERATE = 2
-    COMPLEX = 3
-
-class Element:
-    """Class to represent an element for form calculation."""
-
-    def __init__(self, name: str, length: float, width: float, complexity: Complexity = Complexity.SIMPLE):
-        self.name = name
-        self.length = length
-        self.width = width
-        self.complexity = complexity
-
-class Form:
-    """Class to represent a form for form calculation."""
-
-    def __init__(self, id: str, elements: list[str], complexity: Complexity = Complexity.SIMPLE):
-        self.id = id
-        self.elements = elements
-        self.complexity = complexity
 
 
 def print_form_calculator(initial_elements: list[Element], num_standees: int):

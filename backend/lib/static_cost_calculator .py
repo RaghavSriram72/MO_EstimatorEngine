@@ -1,27 +1,31 @@
-from lib.print_form_calculator import Element
-
-
-class Project:
-    def __init__(self, name: str, print_forms: list[Element], num_standees: int):
-        self.name = name
-        self.print_forms = print_forms
-        self.num_standees = num_standees
-
-
-    def static_cost_calculator(self):
-        # per print form cost
-        # blank form calculation
-        
-
-        # per standee cost
-
-        # per project cost
-        return 0
-    
 import math
+from enum import Enum
 
+from lib.classes import Complexity, Element, Form, Project
 from lib.db import MOADB
-from lib.print_form_calculator import Form
+
+
+def static_cost_calculator(
+    print_forms: list[Form], num_standees: int, standee_type: int, print_form_material: str, internal=True
+):
+    db = MOADB()
+    # per print form cost
+    # blank form calculation
+    total_num_print_forms = len(print_forms)
+    print_forms_per_standee = total_num_print_forms // num_standees
+    blank_form_ratio = db.get_print_blank_ratio(print_forms_per_standee)
+    blank_forms_per_standee = math.ceil(blank_form_ratio * print_forms_per_standee)
+    total_blank_forms = blank_forms_per_standee * num_standees
+    total_forms = total_blank_forms + total_num_print_forms
+    # corrugate cost calculation
+    corrugate_cost = db.get_corrugate_cost() * total_forms
+    # print form material cost calculation
+    print_form_material_cost = db.get_material_cost(print_form_material) * total_num_print_forms
+
+    # per standee cost
+
+    # per project cost
+    return 0
 
 
 def fixed_cost_calcualtor(print_forms: list[Form], num_standees: int, standee_type: int, internal=True):
