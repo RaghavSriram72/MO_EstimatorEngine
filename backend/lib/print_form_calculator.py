@@ -35,7 +35,7 @@ def print_form_calculator(initial_elements: list[Element], num_standees: int):
     for b, _, _, _, _, rid in all_rects:
         if b not in bin_dict:
             bin_dict[b] = Form(id=b, elements=[])
-        bin_dict[b].elements.append(rid)
+        bin_dict[b].elements.append(elements[rid])
         if elements[rid].complexity.value > bin_dict[b].complexity.value:
             bin_dict[b].complexity = elements[rid].complexity
     return elements, bin_dict
@@ -90,17 +90,25 @@ def _split_element(element):
         list of Elements that can fit within a form
     """
     if element.length > element.width:
-        # split along length
+        # split perpindicular to length
         num_splits = math.ceil(element.length / FORM_LENGTH)
         split_length = element.length / num_splits
         split_width = element.width
+        split_linear_inches = (element.get_linear_inches() / num_splits) + element.width
     else:
-        # split along width
+        # split perpindicular to width
         num_splits = math.ceil(element.width / FORM_WIDTH)
         split_width = element.width / num_splits
         split_length = element.length
+        split_linear_inches = (element.get_linear_inches() / num_splits) + element.length
     return [
-        Element(name=f"{element.name}_{i}", length=split_length, width=split_width) for i in range(num_splits)
+        Element(
+            name=f"{element.name}_{i}",
+            length=split_length,
+            width=split_width,
+            linear_inches=split_linear_inches,
+        )
+        for i in range(num_splits)
     ]
 
 
@@ -143,4 +151,7 @@ if __name__ == "__main__":
     print(f"Forms per standee: {len(forms)}")
     print(f"Total forms: {len(forms) * num_standees}")
     for bin in forms:
-        print(f"Form {bin}: {forms[bin].elements}, complexity: {forms[bin].complexity}")
+        print(
+            f"""Form {bin}: {[element.name for element in forms[bin].elements]},
+            complexity: {forms[bin].complexity}"""
+        )
