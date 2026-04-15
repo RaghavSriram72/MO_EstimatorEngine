@@ -87,4 +87,13 @@ class Project:
         self.pallet_count = self.print_forms_per_standee
         self.pallet_cost = None
         self.hardware_cost = None
+        self.shipper_box_cost = None
+        self.label_cost = None
+        self.instruction_sheet_cost = None
+        self.freight_assembly_cost = None
+        self.freight_mount_assembly_cost = None
+        self.blank_comp_count = None
+        self.colour_comp_count = None
+        self.blank_comp_cost = None
+        self.colour_comp_cost = None
         self.engineering_design_cost = None
