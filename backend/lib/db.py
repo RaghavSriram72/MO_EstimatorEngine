@@ -25,6 +25,7 @@ class MOADB:
         self.shipper_box_collection = self.db["shipper_boxes"]
         self.users_collection = self.db["users"]
         self.print_materials = self.db["print_materials"]
+        self.die_cost = self.db["die_cost"]
 
     def check_username_exists(self, username: str) -> bool:
         """Check if a username already exists in the users collection."""
@@ -200,6 +201,21 @@ class MOADB:
             self.print_materials.update_one({"material_id": material_type}, {"$set": {"cost": cost}})
         except Exception as e:
             raise ValueError(f"Failed to set print material cost for type {material_type}: {str(e)}")
+        
+    def get_die_cost(self) -> float:
+        """Return the current die cost."""
+        result = self.die_cost.find_one({})
+        if result and "cost" in result:
+            return result["cost"]
+        else:
+            raise ValueError("Die cost not found")
+    
+    def set_die_cost(self, cost: float) -> None:
+        """Set the current die cost."""
+        try:
+            self.die_cost.update_one({}, {"$set": {"cost": cost}})
+        except Exception as e:
+            raise ValueError(f"Failed to set die cost: {str(e)}")
 
 
 def _hash_password(password: str) -> str:

@@ -14,6 +14,7 @@ class Complexity(Enum):
     MODERATE = 2
     COMPLEX = 3
 
+
 class PrintMaterial(Enum):
     """Enum to represent print form material for form calculation."""
 
@@ -43,7 +44,7 @@ class Element:
 
     def get_linear_inches(self, modifier: float = 1.0) -> float:
         """Calculate linear inches for the element, using either the provided linear inches or the perimeter.
-        
+
         Args:
             modifier: Multiplier to apply to the linear inches, used for die cost calculation.
 
@@ -69,14 +70,14 @@ class Form:
         self.complexity = complexity
         self.die_cost = 0
 
-    def get_die_cost(self, die_map: dict[Complexity, tuple[float, float]]) -> float:
+    def get_die_cost(self, die_map: dict[Complexity, float], die_unit_cost: float) -> float:
         """Calculate die cost for the form based on the complexity of its elements and a provided die map."""
         cost = 0
         for element in self.elements:
-            multiplier, cost_per_inch = die_map[element.complexity]
+            multiplier = die_map[element.complexity]
             cost += (
-                element.get_linear_inches(multiplier if not element.linear_inches_provided else 1.0)
-                * cost_per_inch
+                element.get_linear_inches(multiplier if not element.linear_inches_provided else 1)
+                * die_unit_cost
             )
         return cost
 
@@ -94,7 +95,7 @@ class Project:
         colour_comp_count: int = 0,
         full_out_source: bool = False,
         partial_out_source: bool = False,
-        inhouse: bool = True
+        inhouse: bool = True,
     ):
         self.STANDEE_MAP = {
             Complexity.SIMPLE: "Simple Standee",
@@ -106,7 +107,6 @@ class Project:
         self.print_forms = print_forms
         self.num_standees = num_standees
         self.inhouse = inhouse
-
 
         self.print_forms_per_standee = len(print_forms)
         self.print_form_total = self.print_forms_per_standee * self.num_standees
@@ -142,7 +142,7 @@ class Project:
         standee_key = self.STANDEE_MAP[self.standee_type]
 
         self.blank_form_ratio = db.get_print_blank_ratio(self.print_forms_per_standee)
-        self.blank_forms_per_standee = math.ceil(self.blank_form_ratio * self.print_forms_per_standee)
+        self.blank_forms_per_standee = self.blank_form_ratio * self.print_forms_per_standee
         self.blank_form_total = self.blank_forms_per_standee * self.num_standees
         self.total_forms = self.blank_form_total + self.print_form_total
 
@@ -158,17 +158,16 @@ class Project:
         ) / 60
         self.zund_cut_cost = self.zund_hours * db.get_standee_data(standee_key, "zund_cost_per_hour")
 
+        die_unit_cost = db.get_die_cost()
         die_complexity_map = {
-            complexity: (
-                db.get_standee_data(term, "cutting_die_inches_multiplier"),
-                10
-            )
+            complexity: db.get_standee_data(term, "cutting_die_inches_multiplier")
             for complexity, term in self.STANDEE_MAP.items()
         }
         self.die_cost = 0
         for form in self.print_forms:
-            self.die_cost += form.get_die_cost(die_complexity_map)
+            self.die_cost += form.get_die_cost(die_complexity_map, die_unit_cost)
 
+        self.pallet_count = self.print_forms_per_standee
         self.pallet_cost = (
             db.get_pallet_labor_cost() * self.print_forms_per_standee
             + db.get_pallet_cost() * self.print_forms_per_standee
@@ -188,7 +187,6 @@ class Project:
         self.colour_comp_cost = db.get_comp_cost("Color") * self.colour_comp_count
         self.engineering_design_cost = db.get_standee_data(standee_key, "engineering_design_cost_per_project")
 
-    
     def get_static_cost(self) -> float:
         self.calculate_static_costs()
         return (
@@ -208,20 +206,7 @@ class Project:
             + (self.colour_comp_cost or 0)
             + (self.engineering_design_cost or 0)
         )
-        
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
+
     # def static_cost_calculator(
     # print_forms: list[Form],
     # num_standees: int,
