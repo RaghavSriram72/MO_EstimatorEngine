@@ -1,7 +1,6 @@
 import math
 from enum import Enum
 
-from lib.classes import Complexity, Element, Form, Project
 from lib.db import MOADB
 
 
@@ -74,12 +73,19 @@ class Form:
 class Project:
     """Class to represent a overall standee project."""
 
-    def __init__(self, name: str, print_forms: list[Form], num_standees: int, standee_type: Complexity, blank_comp_count: int, colour_comp_count: int):
-        self.db = MOADB()
+    def __init__(
+        self,
+        name: str,
+        print_forms: list[Form],
+        num_standees: int,
+        standee_type: Complexity,
+        blank_comp_count: int = 0,
+        colour_comp_count: int = 0,
+    ):
         self.STANDEE_MAP = {
-        Complexity.SIMPLE: "Simple Standee",
-        Complexity.MODERATE: "Moderate Standee",
-        Complexity.COMPLEX: "Complex Standee",
+            Complexity.SIMPLE: "Simple Standee",
+            Complexity.MODERATE: "Moderate Standee",
+            Complexity.COMPLEX: "Complex Standee",
         }
         self.standee_type = standee_type
         self.name = name
@@ -88,26 +94,59 @@ class Project:
 
         self.print_forms_per_standee = len(print_forms)
         self.print_form_total = self.print_forms_per_standee * self.num_standees
-        self.blank_form_ratio = self.db.get_print_blank_ratio(self.print_forms_per_standee)
+        self.blank_comp_count = blank_comp_count
+        self.colour_comp_count = colour_comp_count
+
+        # DB-dependent fields: set during calculate_static_costs()
+        self.blank_form_ratio = None
+        self.blank_forms_per_standee = None
+        self.blank_form_total = None
+        self.total_forms = None
+        self.print_form_cost = None  # TODO: define print form material costing
+        self.blank_form_cost = None  # TODO: define blank form material costing
+        self.corrugate_cost = None
+        self.imposition_rate = None
+        self.imposition_cost = None
+        self.zund_hours = None
+        self.zund_cut_cost = None
+        self.die_cost = None
+        self.pallet_count = self.print_forms_per_standee
+        self.pallet_cost = None
+        self.hardware_cost = None
+        self.shipper_box_cost = None
+        self.label_cost = None
+        self.instruction_sheet_cost = None
+        self.freight_assembly_cost = None
+        self.freight_mount_assembly_cost = None
+        self.blank_comp_cost = None
+        self.colour_comp_cost = None
+        self.engineering_design_cost = None
+
+    def calculate_static_costs(self) -> None:
+        db = MOADB()
+        standee_key = self.STANDEE_MAP[self.standee_type]
+
+        self.blank_form_ratio = db.get_print_blank_ratio(self.print_forms_per_standee)
         self.blank_forms_per_standee = math.ceil(self.blank_form_ratio * self.print_forms_per_standee)
         self.blank_form_total = self.blank_forms_per_standee * self.num_standees
         self.total_forms = self.blank_form_total + self.print_form_total
-        self.print_form_cost = 0 #NOT SURE HOW TO DO THIS
-        self.blank_form_cost = 0 #NOT SURE HOW TO DO THIS
-        self.corrugate_cost = self.db.get_corrugate_cost() * self.total_forms
-        self.imposition_rate = self.db.get_standee_data(self.STANDEE_MAP[standee_type], "imposition_cost_per_hour")
+
+        self.corrugate_cost = db.get_corrugate_cost() * self.total_forms
+
+        self.imposition_rate = db.get_standee_data(standee_key, "imposition_cost_per_hour")
         self.imposition_cost = self.imposition_rate * self.print_forms_per_standee
+
         self.zund_hours = (
-            self.db.get_standee_data(self.STANDEE_MAP[self.standee_type], "zund_print_form_minutes")
+            db.get_standee_data(standee_key, "zund_print_form_minutes")
             * self.print_forms_per_standee
             * self.num_standees
         ) / 60
-        self.zund_cut_cost = self.zund_hours * self.db.get_standee_data(self.STANDEE_MAP[self.standee_type], "zund_cost_per_hour")
-        
+        self.zund_cut_cost = self.zund_hours * db.get_standee_data(standee_key, "zund_cost_per_hour")
+
         die_complexity_map = {
             complexity: (
-                self.db.get_standee_data(term, "cutting_die_inches_multiplier"),
-                self.db.get_standee_data(term, "cutting_die_cost_per_linear_inch"),
+                db.get_standee_data(term, "cutting_die_inches_multiplier"),
+                db.get_standee_data(term, "cutting_die_cost_per_linear_inch"),
             )
             for complexity, term in self.STANDEE_MAP.items()
         }
@@ -115,43 +154,44 @@ class Project:
         for form in self.print_forms:
             self.die_cost += form.get_die_cost(die_complexity_map)
 
-        self.pallet_count = self.print_forms_per_standee
         self.pallet_cost = (
-            self.db.get_pallet_labor_cost() * self.print_forms_per_standee + self.db.get_pallet_cost() * self.print_forms_per_standee
+            db.get_pallet_labor_cost() * self.print_forms_per_standee
+            + db.get_pallet_cost() * self.print_forms_per_standee
         )
-        self.hardware_cost = self.db.get_standee_data(self.STANDEE_MAP[self.standee_type], "hardware_cost") * self.num_standees
-        self.shipper_box_cost = self.db.get_shipper_box_cost() * self.num_standees
-        desc_label_cost = self.db.get_label_cost("Description")
-        handling_label_cost = self.db.get_label_cost("Handling")
+        self.hardware_cost = db.get_standee_data(standee_key, "hardware_cost") * self.num_standees
+        self.shipper_box_cost = db.get_shipper_box_cost() * self.num_standees
+        desc_label_cost = db.get_label_cost("Description")
+        handling_label_cost = db.get_label_cost("Handling")
         self.label_cost = (2 * desc_label_cost + handling_label_cost) * self.num_standees
-        self.instruction_sheet_cost = self.db.get_standee_data(self.STANDEE_MAP[self.standee_type], "instruction_sheet_total_cost") * self.num_standees
-        self.freight_assembly_cost = self.db.get_freight_cost(1) * self.num_standees # this and below are for different scenarios
-        self.freight_mount_assembly_cost = self.db.get_freight_cost(2) * self.num_standees
-        self.blank_comp_count = blank_comp_count # should be param
-        self.colour_comp_count = colour_comp_count # should be param
-        self.blank_comp_cost = self.db.get_comp_cost("Blank") * self.blank_comp_count
-        self.colour_comp_cost = self.db.get_comp_cost("Colour") * self.colour_comp_count
-        self.engineering_design_cost = self.db.get_standee_data(self.STANDEE_MAP[self.standee_type], "engineering_design_cost_per_project")
+        self.instruction_sheet_cost = (
+            db.get_standee_data(standee_key, "instruction_sheet_total_cost") * self.num_standees
+        )
+        self.freight_assembly_cost = db.get_freight_cost(1) * self.num_standees
+        self.freight_mount_assembly_cost = db.get_freight_cost(2) * self.num_standees
+        self.blank_comp_cost = db.get_comp_cost("Blank") * self.blank_comp_count
+        self.colour_comp_cost = db.get_comp_cost("Colour") * self.colour_comp_count
+        self.engineering_design_cost = db.get_standee_data(standee_key, "engineering_design_cost_per_project")
 
     
     def get_static_cost(self) -> float:
+        self.calculate_static_costs()
         return (
-            self.print_form_cost
-            + self.blank_form_cost
-            + self.corrugate_cost
-            + self.imposition_cost
-            + self.zund_cut_cost
-            + self.die_cost
-            + self.pallet_cost
-            + self.hardware_cost
-            + self.shipper_box_cost
-            + self.label_cost
-            + self.instruction_sheet_cost
-            + self.freight_assembly_cost
-            + self.freight_mount_assembly_cost
-            + self.blank_comp_cost
-            + self.colour_comp_cost
-            + self.engineering_design_cost
+            (self.print_form_cost or 0)
+            + (self.blank_form_cost or 0)
+            + (self.corrugate_cost or 0)
+            + (self.imposition_cost or 0)
+            + (self.zund_cut_cost or 0)
+            + (self.die_cost or 0)
+            + (self.pallet_cost or 0)
+            + (self.hardware_cost or 0)
+            + (self.shipper_box_cost or 0)
+            + (self.label_cost or 0)
+            + (self.instruction_sheet_cost or 0)
+            + (self.freight_assembly_cost or 0)
+            + (self.freight_mount_assembly_cost or 0)
+            + (self.blank_comp_cost or 0)
+            + (self.colour_comp_cost or 0)
+            + (self.engineering_design_cost or 0)
         )
         
    
