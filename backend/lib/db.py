@@ -24,6 +24,7 @@ class MOADB:
         self.print_blank_collection = self.db["print_blank_ratio"]
         self.shipper_box_collection = self.db["shipper_boxes"]
         self.users_collection = self.db["users"]
+        self.print_materials = self.db["print_materials"]
 
     def check_username_exists(self, username: str) -> bool:
         """Check if a username already exists in the users collection."""
@@ -182,6 +183,23 @@ class MOADB:
             self.shipper_box_collection.update_one({}, {"$set": {"cost": cost}})
         except Exception as e:
             raise ValueError(f"Failed to set shipper box cost: {str(e)}")
+
+    def get_print_material_cost(self, material_type: int) -> float:
+        """Return the current print material cost for a given material type."""
+        result = self.print_materials.find_one({"material_id": material_type})
+        if result and "cost" in result:
+            if material_type == 1:  # LB 95 Sheet
+                return result["cost"] / 1000  # Convert cost per sheet to cost per form
+            return result["cost"]
+        else:
+            raise ValueError(f"Print material cost not found for material type {material_type}")
+
+    def set_print_material_cost(self, material_type: int, cost: float) -> None:
+        """Set the current print material cost for a given material type."""
+        try:
+            self.print_materials.update_one({"material_id": material_type}, {"$set": {"cost": cost}})
+        except Exception as e:
+            raise ValueError(f"Failed to set print material cost for type {material_type}: {str(e)}")
 
 
 def _hash_password(password: str) -> str:

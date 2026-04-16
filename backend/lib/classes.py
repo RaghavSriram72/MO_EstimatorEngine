@@ -14,6 +14,14 @@ class Complexity(Enum):
     MODERATE = 2
     COMPLEX = 3
 
+class PrintMaterial(Enum):
+    """Enum to represent print form material for form calculation."""
+
+    LB_95_SHEET = 1
+    LB_95_ROLL = 2
+    HI_TACK = 3
+    BUSMARK = 4
+
 
 class Element:
     """Class to represent an element for form calculation."""
@@ -152,7 +160,7 @@ class Project:
 
         die_complexity_map = {
             complexity: (
-                db.get_standee_data(term, "cutting_die_given_linear_inches_multiplier"),
+                db.get_standee_data(term, "cutting_die_inches_multiplier"),
                 10
             )
             for complexity, term in self.STANDEE_MAP.items()

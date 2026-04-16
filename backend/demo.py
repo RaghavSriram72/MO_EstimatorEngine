@@ -7,6 +7,7 @@ complexity_map = {
     Complexity.COMPLEX: "Complex",
 }
 
+
 def demo():
     elements = [
         Element(name="back", length=120, width=72, complexity=Complexity.SIMPLE),
@@ -21,8 +22,10 @@ def demo():
     ]
 
     for element in elements:
-        print(f"{element.name}: {element.length}x{element.width}, complexity: {complexity_map[element.complexity]}")
-    
+        print(
+            f"{element.name}: {element.length}x{element.width}, complexity: {complexity_map[element.complexity]}"
+        )
+
     print()
     num_standees = 10
     standee_type = Complexity.MODERATE
