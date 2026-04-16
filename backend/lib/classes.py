@@ -1,7 +1,10 @@
 import math
 from enum import Enum
 
-from lib.db import MOADB
+try:
+    from lib.db import MOADB
+except ModuleNotFoundError:
+    from db import MOADB
 
 
 class Complexity(Enum):
@@ -81,6 +84,9 @@ class Project:
         standee_type: Complexity,
         blank_comp_count: int = 0,
         colour_comp_count: int = 0,
+        full_out_source: bool = False,
+        partial_out_source: bool = False,
+        inhouse: bool = True
     ):
         self.STANDEE_MAP = {
             Complexity.SIMPLE: "Simple Standee",
@@ -91,6 +97,8 @@ class Project:
         self.name = name
         self.print_forms = print_forms
         self.num_standees = num_standees
+        self.inhouse = inhouse
+
 
         self.print_forms_per_standee = len(print_forms)
         self.print_form_total = self.print_forms_per_standee * self.num_standees
@@ -103,7 +111,6 @@ class Project:
         self.blank_form_total = None
         self.total_forms = None
         self.print_form_cost = None  # TODO: define print form material costing
-        self.blank_form_cost = None  # TODO: define blank form material costing
         self.corrugate_cost = None
         self.imposition_rate = None
         self.imposition_cost = None
@@ -145,8 +152,8 @@ class Project:
 
         die_complexity_map = {
             complexity: (
-                db.get_standee_data(term, "cutting_die_inches_multiplier"),
-                db.get_standee_data(term, "cutting_die_cost_per_linear_inch"),
+                db.get_standee_data(term, "cutting_die_given_linear_inches_multiplier"),
+                10
             )
             for complexity, term in self.STANDEE_MAP.items()
         }
@@ -161,15 +168,16 @@ class Project:
         self.hardware_cost = db.get_standee_data(standee_key, "hardware_cost") * self.num_standees
         self.shipper_box_cost = db.get_shipper_box_cost() * self.num_standees
         desc_label_cost = db.get_label_cost("Description")
-        handling_label_cost = db.get_label_cost("Handling")
+        handling_label_cost = db.get_label_cost("Shipping")
         self.label_cost = (2 * desc_label_cost + handling_label_cost) * self.num_standees
         self.instruction_sheet_cost = (
             db.get_standee_data(standee_key, "instruction_sheet_total_cost") * self.num_standees
         )
-        self.freight_assembly_cost = db.get_freight_cost(1) * self.num_standees
-        self.freight_mount_assembly_cost = db.get_freight_cost(2) * self.num_standees
+        if not self.inhouse:
+            self.freight_assembly_cost = db.get_freight_cost(1) * self.num_standees
+            self.freight_mount_assembly_cost = db.get_freight_cost(2) * self.num_standees
         self.blank_comp_cost = db.get_comp_cost("Blank") * self.blank_comp_count
-        self.colour_comp_cost = db.get_comp_cost("Colour") * self.colour_comp_count
+        self.colour_comp_cost = db.get_comp_cost("Color") * self.colour_comp_count
         self.engineering_design_cost = db.get_standee_data(standee_key, "engineering_design_cost_per_project")
 
     
@@ -177,7 +185,6 @@ class Project:
         self.calculate_static_costs()
         return (
             (self.print_form_cost or 0)
-            + (self.blank_form_cost or 0)
             + (self.corrugate_cost or 0)
             + (self.imposition_cost or 0)
             + (self.zund_cut_cost or 0)

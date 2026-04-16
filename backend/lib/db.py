@@ -15,12 +15,12 @@ class MOADB:
         self.uri = os.getenv("MONGO_URI")
         self.client = client = MongoClient(self.uri, server_api=ServerApi("1"))
         self.db = client["DB"]
-        self.standee_collection = self.db["standee-static-costs"]
+        self.standee_collection = self.db["standee_static_costs"]
         self.corrugated_collection = self.db["corrugate"]
         self.comp_collection = self.db["comp"]
         self.freight_collection = self.db["freight"]
         self.labels_collection = self.db["labels"]
-        self.pallet_collection = self.db["pallet"]
+        self.pallet_collection = self.db["pallets"]
         self.print_blank_collection = self.db["print_blank_ratio"]
         self.shipper_box_collection = self.db["shipper_boxes"]
         self.users_collection = self.db["users"]
@@ -139,15 +139,15 @@ class MOADB:
     def get_pallet_labor_cost(self) -> float:
         """Return the current pallet labor cost."""
         result = self.pallet_collection.find_one({})
-        if result and "labor_cost" in result:
-            return result["labor_cost"]
+        if result and "labor" in result:
+            return result["labor"]
         else:
             raise ValueError("Pallet labor cost not found")
 
     def set_pallet_labor_cost(self, labor_cost: float) -> None:
         """Set the current pallet labor cost."""
         try:
-            self.pallet_collection.update_one({}, {"$set": {"labor_cost": labor_cost}})
+            self.pallet_collection.update_one({}, {"$set": {"labor": labor_cost}})
         except Exception as e:
             raise ValueError(f"Failed to set pallet labor cost: {str(e)}")
 

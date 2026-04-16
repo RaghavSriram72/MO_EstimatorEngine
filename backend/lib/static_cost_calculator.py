@@ -18,6 +18,7 @@ def static_cost_calculator(
     print_form_material: str,
     blank_comp_count: int = 0,
     colour_comp_count: int = 0,
+    cutting_die_given_linear_inches: int = 0
 ):
     db = MOADB()
     # per form cost
@@ -34,6 +35,7 @@ def static_cost_calculator(
     # print form material cost calculation (TODO)
     # imposition cost
     imposition_rate = db.get_standee_data(STANDEE_MAP[standee_type], "imposition_cost_per_hour")
+    print(imposition_rate)
     impositon_cost = imposition_rate * print_forms_per_standee
     # zund cutting cost
     zund_hours = (
@@ -45,8 +47,8 @@ def static_cost_calculator(
     # die creation cost
     die_complexity_map = {
         complexity: (
-            db.get_standee_data(term, "cutting_die_inches_multiplier"),
-            db.get_standee_data(term, "cutting_die_cost_per_linear_inch"),
+            db.get_standee_data(term, "cutting_die_given_linear_inches_multiplier"),
+            cutting_die_given_linear_inches
         )
         for complexity, term in STANDEE_MAP.items()
     }
@@ -62,7 +64,7 @@ def static_cost_calculator(
     hardware_cost = db.get_standee_data(STANDEE_MAP[standee_type], "hardware_cost") * num_standees
     shipper_box_cost = db.get_shipper_box_cost() * num_standees
     desc_label_cost = db.get_label_cost("Description")
-    handling_label_cost = db.get_label_cost("Handling")
+    handling_label_cost = db.get_label_cost("Shipping")
     label_cost = (2 * desc_label_cost + handling_label_cost) * num_standees
     # instruction sheet cost
     instruction_sheet_cost = (
@@ -74,8 +76,12 @@ def static_cost_calculator(
     # per project cost
     # comp cost
     blank_comp_cost = db.get_comp_cost("Blank") * blank_comp_count
-    colour_comp_cost = db.get_comp_cost("Colour") * colour_comp_count
+    colour_comp_cost = db.get_comp_cost("Color") * colour_comp_count
     # engineering design cost
     engineering_design_cost = db.get_standee_data(
         STANDEE_MAP[standee_type], "engineering_design_cost_per_project"
     )
+
+
+if __name__ == "__main__":
+    print(static_cost_calculator([], 10, Complexity.SIMPLE, ""))
