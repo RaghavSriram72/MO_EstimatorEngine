@@ -6,6 +6,7 @@ import React, { useRef, useEffect } from "react";
 
 import MidnightAI from "@/pages/MidnightAI";
 import DataCollector from "@/pages/DataCollector";
+import Inputter from "@/pages/Inputter";
 import SignIn from "@/pages/SignIn";
 
 export default function Home() {
@@ -30,7 +31,7 @@ export default function Home() {
       {userSignedIn && (<Header currentScreen={currentScreen} setCurrentScreen={setCurrentScreen}/>)}
 
       {userSignedIn && currentScreen === "MIDNIGHT AI" ? (
-        <MidnightAI />
+        <Inputter />
       ) : (
         <DataCollector />
       )}
