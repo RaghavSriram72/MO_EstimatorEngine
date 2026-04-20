@@ -231,6 +231,36 @@ class MOADB:
         except Exception as e:
             raise ValueError(f"Failed to set die cost: {str(e)}")
 
+    def get_busmark_cost(self) -> float:
+        """Return the current die cost."""
+        result = self.by_unit_costs_collection.find_one({"name": "roll_busmark"})
+        if result and "cost" in result and result["type"] == "standee_material":
+            return (result["cost"] * 80/12.0)
+        else:
+            raise ValueError("Busmark cost not found")
+
+    def set_busmark_cost(self, cost: float) -> None:
+        """Set the current die cost."""
+        try:
+            self.by_unit_costs_collection.update_one({"name": "roll_busmark"}, {"$set": {"cost": cost}})
+        except Exception as e:
+            raise ValueError(f"Failed to set busmark cost: {str(e)}")
+
+    def get_95_cost(self) -> float:
+        """Return the current die cost."""
+        result = self.by_unit_costs_collection.find_one({"name": "sheet_95_pound"})
+        if result and "cost" in result and result["type"] == "standee_material":
+            return (result["cost"] / 1000.0)
+        else:
+            raise ValueError("95 pound sheet cost not found")
+
+    def set_95_cost(self, cost: float) -> None:
+        """Set the current die cost."""
+        try:
+            self.by_unit_costs_collection.update_one({"name": "sheet_95_pound"}, {"$set": {"cost": cost}})
+        except Exception as e:
+            raise ValueError(f"Failed to set 95 pound sheet cost: {str(e)}")
+
 
 def _hash_password(password: str) -> str:
     """Hash a password using PBKDF2-HMAC-SHA256 with random salt."""

@@ -145,6 +145,14 @@ class Project:
         #     4: "Internal Print / External Mount & Die Cut/External Assembly",
         #     5: "External Print / Finishing / Packout",
         # }
+        if scenario in (1, 2, 3):
+            form_cost = db.get_busmark_cost()
+            self.print_form_cost = form_cost * self.print_form_total
+        elif scenario in (4):
+            form_cost = db.get_95_cost()
+            self.print_form_cost = form_cost * self.print_form_total
+        
+        
         db = MOADB()
         standee_key = self.STANDEE_MAP[self.standee_type]
 
@@ -184,16 +192,15 @@ class Project:
             + db.get_pallet_cost() * self.pallet_count
         )
         self.hardware_cost = db.get_standee_data(standee_key, "hardware_cost") * self.num_standees
-        if scenario == 2:
+        if scenario != 1:
             self.shipper_box_cost = db.get_shipper_box_cost() * self.num_standees
         
         desc_label_cost = db.get_label_cost("label_description")
         handling_label_cost = db.get_label_cost("label_shipping")
-        if scenario in (1, 3):
-            self.label_cost = (2 * desc_label_cost + handling_label_cost) * self.num_standees
-            self.instruction_sheet_cost = (
-                db.get_standee_data(standee_key, "instruction_sheet_total_cost") * self.num_standees
-            )
+        self.label_cost = (2 * desc_label_cost + handling_label_cost) * self.num_standees
+        self.instruction_sheet_cost = (
+            db.get_standee_data(standee_key, "instruction_sheet_total_cost") * self.num_standees
+        )
         if not self.inhouse:
             self.freight_assembly_cost = db.get_freight_cost(1) * self.num_standees
             self.freight_mount_assembly_cost = db.get_freight_cost(2) * self.num_standees
