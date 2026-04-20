@@ -10,6 +10,7 @@ dependencies = [
     "langchain-openai",
     "langchain_core",
     "fastapi",
+    "matplotlib",
     "scikit-learn",
     "pandas",
     "pymongo",

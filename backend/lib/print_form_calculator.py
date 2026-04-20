@@ -1,4 +1,6 @@
 import math
+from importlib import import_module
+from pathlib import Path
 
 from rectpack import PackingMode, newPacker
 
@@ -10,6 +12,12 @@ FORM_WIDTH = 60.0
 FORM_LENGTH = 80.0
 PADDING = 0.25
 FORM_AREA = FORM_WIDTH * FORM_LENGTH
+
+COMPLEXITY_COLORS = {
+    Complexity.SIMPLE: "#7fc97f",
+    Complexity.MODERATE: "#fdc086",
+    Complexity.COMPLEX: "#beaed4",
+}
 
 
 def print_form_calculator(initial_elements: list[Element], num_standees: int):
@@ -23,6 +31,98 @@ def print_form_calculator(initial_elements: list[Element], num_standees: int):
     Returns:
         None
     """
+    elements, bin_dict, _ = _pack_elements(initial_elements)
+    return elements, bin_dict
+
+
+def visualize_form_layout(
+    initial_elements: list[Element],
+    output_dir: str = "form_visualizations",
+    dpi: int = 150,
+):
+    """Render each packed form as an image with element bounding boxes.
+
+    Args:
+        initial_elements: List of elements to pack onto 60x80 forms.
+        output_dir: Directory where per-form images are saved.
+        dpi: Output image DPI.
+
+    Returns:
+        A list of file paths to generated images.
+    """
+    try:
+        patches = import_module("matplotlib.patches")
+        plt = import_module("matplotlib.pyplot")
+    except ImportError as exc:  # pragma: no cover - depends on runtime environment
+        msg = "matplotlib is required to visualize form layouts. Install it with: pip install matplotlib"
+        raise ImportError(msg) from exc
+
+    _, _, placements = _pack_elements(initial_elements)
+    save_dir = Path(output_dir)
+    save_dir.mkdir(parents=True, exist_ok=True)
+
+    image_paths = []
+    for form_id in sorted(placements):
+        fig, ax = plt.subplots(figsize=(7.5, 10))
+        ax.set_xlim(0, FORM_WIDTH)
+        ax.set_ylim(0, FORM_LENGTH)
+        ax.set_aspect("equal", adjustable="box")
+
+        # Draw form boundary first so all elements remain visible inside it.
+        ax.add_patch(
+            patches.Rectangle(
+                (0, 0),
+                FORM_WIDTH,
+                FORM_LENGTH,
+                linewidth=2,
+                edgecolor="black",
+                facecolor="none",
+            )
+        )
+
+        for placement in placements[form_id]:
+            element = placement["element"]
+            x = placement["x"]
+            y = placement["y"]
+            width = placement["width"]
+            length = placement["length"]
+
+            fill = COMPLEXITY_COLORS.get(element.complexity, "#8da0cb")
+            ax.add_patch(
+                patches.Rectangle(
+                    (x, y),
+                    width,
+                    length,
+                    linewidth=1,
+                    edgecolor="black",
+                    facecolor=fill,
+                    alpha=0.75,
+                )
+            )
+            ax.text(
+                x + width / 2,
+                y + length / 2,
+                f"{element.name}\n{width:.2f} x {length:.2f}",
+                ha="center",
+                va="center",
+                fontsize=7,
+            )
+
+        ax.set_title(f"Form {form_id} Layout ({FORM_WIDTH:.0f} x {FORM_LENGTH:.0f} in)")
+        ax.set_xlabel("Width (in)")
+        ax.set_ylabel("Length (in)")
+        ax.grid(True, linestyle="--", linewidth=0.4, alpha=0.4)
+
+        out_path = save_dir / f"form_{form_id}.png"
+        fig.savefig(str(out_path), dpi=dpi, bbox_inches="tight")
+        plt.close(fig)
+        image_paths.append(str(out_path))
+
+    return image_paths
+
+
+def _pack_elements(initial_elements: list[Element]):
+    """Pack elements and return forms plus rectangle coordinates for each packed element."""
     elements = {el.name: _add_padding(el) for el in _get_all_elements(initial_elements)}
     element_list = list(elements.values())
     packer = newPacker(mode=PackingMode.Offline, rotation=True)
@@ -30,15 +130,27 @@ def print_form_calculator(initial_elements: list[Element], num_standees: int):
     for element in element_list:
         packer.add_rect(element.length, element.width, element.name)
     packer.pack()  # type: ignore
+
     all_rects = packer.rect_list()
     bin_dict = {}
-    for b, _, _, _, _, rid in all_rects:
+    placements = {}
+    for b, x, y, w, h, rid in all_rects:
         if b not in bin_dict:
             bin_dict[b] = Form(id=b, elements=[])
+            placements[b] = []
         bin_dict[b].elements.append(elements[rid])
         if elements[rid].complexity.value > bin_dict[b].complexity.value:
             bin_dict[b].complexity = elements[rid].complexity
-    return elements, bin_dict
+        placements[b].append(
+            {
+                "element": elements[rid],
+                "x": x,
+                "y": y,
+                "width": w,
+                "length": h,
+            }
+        )
+    return elements, bin_dict, placements
 
 
 def _fits_on_form(element: Element):
@@ -122,20 +234,27 @@ def _add_padding(element):
     Returns:
         Element with padding added
     """
-    if min(element.length, element.width) + PADDING > FORM_WIDTH:
-        if max(element.length, element.width) + PADDING < FORM_LENGTH:
-            if element.length > element.width:
-                element.length += PADDING
+    padded_element = Element(
+        name=element.name,
+        length=element.length,
+        width=element.width,
+        linear_inches=element.linear_inches,
+        complexity=element.complexity,
+    )
+    if min(padded_element.length, padded_element.width) + PADDING > FORM_WIDTH:
+        if max(padded_element.length, padded_element.width) + PADDING < FORM_LENGTH:
+            if padded_element.length > padded_element.width:
+                padded_element.length += PADDING
             else:
-                element.width += PADDING
+                padded_element.width += PADDING
     else:
-        element.length += PADDING
-        element.width += PADDING
-    return element
+        padded_element.length += PADDING
+        padded_element.width += PADDING
+    return padded_element
 
 
 if __name__ == "__main__":
-    elements = [
+    input_elements = [
         Element(name="back", length=120, width=72, complexity=Complexity.SIMPLE),
         Element(name="elph", length=35, width=72, complexity=Complexity.COMPLEX),
         Element(name="glinda", length=35, width=72, complexity=Complexity.COMPLEX),
@@ -147,11 +266,14 @@ if __name__ == "__main__":
         Element(name="d", length=14, width=18, complexity=Complexity.MODERATE),
     ]
     num_standees = 10
-    elements, forms = print_form_calculator(elements, num_standees)
+    elements, forms = print_form_calculator(input_elements, num_standees)
     print(f"Forms per standee: {len(forms)}")
     print(f"Total forms: {len(forms) * num_standees}")
     for bin in forms:
         print(
-            f"""Form {bin}: {[element.name for element in forms[bin].elements]},
-            complexity: {forms[bin].complexity}"""
+            f"""Form {bin}: {[element.name for element in forms[bin].elements]}, complexity: {forms[bin].complexity}"""
         )
+    image_paths = visualize_form_layout(input_elements)
+    print(f"Saved {len(image_paths)} layout image(s):")
+    for path in image_paths:
+        print(path)
