@@ -22,9 +22,7 @@ def demo():
     ]
 
     for element in elements:
-        print(
-            f"{element.name}: {element.length}x{element.width}, complexity: {complexity_map[element.complexity]}"
-        )
+        print(f"{element.name}: {element.length}x{element.width}, complexity: {complexity_map[element.complexity]}")
 
     print()
     num_standees = 10
@@ -48,7 +46,7 @@ def demo():
     print(f"  Die cost:                 ${project.die_cost or 0:.2f}")
     print(f"  Pallet cost:              ${project.pallet_cost or 0:.2f}")
     print(f"  Hardware cost:            ${project.hardware_cost or 0:.2f}")
-    print(f"  Shipper box cost:         ${project.shipper_box_cost or 0:.2f}")
+    print(f"  Shipping box cost:         ${project.shipping_box_cost or 0:.2f}")
     print(f"  Label cost:               ${project.label_cost or 0:.2f}")
     print(f"  Instruction sheet cost:   ${project.instruction_sheet_cost or 0:.2f}")
     print(f"  Freight assembly cost:    ${project.freight_assembly_cost or 0:.2f}")
