@@ -125,7 +125,6 @@ class Project:
         self.label_cost = None
         self.instruction_sheet_cost = None
         self.freight_assembly_cost = None
-        self.freight_mount_assembly_cost = None
         self.blank_comp_cost = None
         self.color_comp_cost = None
         self.engineering_design_cost = None
@@ -139,16 +138,15 @@ class Project:
         #     4: "Internal Print / External Mount & Die Cut/External Assembly",
         #     5: "External Print / Finishing / Packout",
         # }
+        db = MOADB()
+        standee_key = self.STANDEE_MAP[self.standee_type]
+
         if scenario in (1, 2, 3):
             form_cost = db.get_busmark_cost()
             self.print_form_cost = form_cost * self.print_form_total
-        elif scenario in (4):
+        elif scenario in (4,):
             form_cost = db.get_95_cost()
             self.print_form_cost = form_cost * self.print_form_total
-        
-        
-        db = MOADB()
-        standee_key = self.STANDEE_MAP[self.standee_type]
 
         self.blank_form_ratio = db.get_print_blank_ratio(self.print_forms_per_standee)
         self.blank_forms_per_standee = self.blank_form_ratio * self.print_forms_per_standee
@@ -189,15 +187,14 @@ class Project:
         if scenario != 1:
             self.shipper_box_cost = db.get_shipper_box_cost() * self.num_standees
         
-        desc_label_cost = db.get_label_cost("label_description")
-        handling_label_cost = db.get_label_cost("label_shipping")
+        desc_label_cost = db.get_label_cost("Description")
+        handling_label_cost = db.get_label_cost("Shipping")
         self.label_cost = (2 * desc_label_cost + handling_label_cost) * self.num_standees
         self.instruction_sheet_cost = (
             db.get_standee_data(standee_key, "instruction_sheet_total_cost") * self.num_standees
         )
         if scenario not in (1, 2):
-            self.freight_assembly_cost = db.get_freight_cost(1) * self.num_standees
-            self.freight_mount_assembly_cost = db.get_freight_cost(2) * self.num_standees
+            self.freight_assembly_cost = db.get_freight_cost(scenario) * self.num_standees
         self.blank_comp_cost = db.get_comp_cost("blank_comp") * self.blank_comp_count
         self.color_comp_cost = db.get_comp_cost("color_comp") * self.color_comp_count
         self.engineering_design_cost = db.get_standee_data(standee_key, "engineering_design_cost_per_project")
@@ -217,7 +214,6 @@ class Project:
             + (self.label_cost or 0)
             + (self.instruction_sheet_cost or 0)
             + (self.freight_assembly_cost or 0)
-            + (self.freight_mount_assembly_cost or 0)
             + (self.blank_comp_cost or 0)
             + (self.color_comp_cost or 0)
             + (self.engineering_design_cost or 0)
