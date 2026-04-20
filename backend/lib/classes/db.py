@@ -88,6 +88,10 @@ class MOADB:
             self.print_blank_collection.update_one({"print_forms": print_forms}, {"$set": {"blank_forms": blank_forms}})
         except Exception as e:
             raise ValueError(f"Failed to set print blank ratio: {str(e)}")
+        
+    def close(self):
+        """Close the MongoDB client connection."""
+        self.client.close()
 
 
 def _hash_password(password: str) -> str:

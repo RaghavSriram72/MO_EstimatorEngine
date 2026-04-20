@@ -1,5 +1,4 @@
-from lib.classes import Complexity, Form
-from lib.db import MOADB
+from lib.classes import MOADB, Complexity, Form
 
 DIE_COST = "die_cost"
 BLANK_COMP = "blank_comp"
@@ -30,7 +29,6 @@ class Project:
         print_forms: list[Form],
         num_standees: int,
         standee_type: Complexity,
-        print_form_material: str,
         blank_comp_count: int = 0,
         color_comp_count: int = 0,
         full_out_source: bool = False,
@@ -47,7 +45,6 @@ class Project:
         self.print_forms = print_forms
         self.num_standees = num_standees
         self.inhouse = inhouse
-        self.print_form_material = print_form_material
 
         self.print_forms_per_standee = len(print_forms)
         self.print_form_total = self.print_forms_per_standee * self.num_standees
@@ -89,6 +86,8 @@ class Project:
         # }
         db = MOADB()
         standee_key = self.STANDEE_MAP[self.standee_type]
+
+        # ! need per scenario print form cost calculation
 
         self.blank_form_ratio = db.get_print_blank_ratio(self.print_forms_per_standee)
         self.blank_forms_per_standee = self.blank_form_ratio * self.print_forms_per_standee
@@ -145,6 +144,7 @@ class Project:
         self.blank_comp_cost = db.get_unit_cost(BLANK_COMP) * self.blank_comp_count
         self.color_comp_cost = db.get_unit_cost(COLOR_COMP) * self.color_comp_count
         self.engineering_design_cost = db.get_standee_data(standee_key, "engineering_design_cost_per_project")
+        db.close()
 
     def get_static_cost(self, scenario: int) -> float:
         """Calculate and return the total static cost for the project, summing all individual cost components."""

@@ -1,8 +1,5 @@
-import os
 import unittest
 
-from dotenv import load_dotenv
-from lib.db import MOADB
 
 from lib.classes import Complexity, Element, Project
 from lib.print_form_calculator import print_form_calculator
