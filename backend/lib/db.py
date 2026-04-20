@@ -110,27 +110,26 @@ class MOADB:
             raise ValueError(f"Failed to set corrugate cost: {str(e)}")
 
     def get_freight_cost(self, freight_type: int) -> float:
-        """Return the current freight cost for a given freight type."""
-        result = self.by_unit_costs_collection.find_one({"name": freight_type})
-        if result and "cost" in result and result["type"] == "freight":
-            return result["cost"]
-        else:
-            raise ValueError(f"Freight cost not found for freight type {freight_type}")
+        """Return ``cost`` from ``freight`` where ``freight_type`` matches."""
+        doc = self.freight_collection.find_one({"freight_type": freight_type})
+        if doc and "cost" in doc:
+            return float(doc["cost"])
+        raise ValueError(f"Freight cost not found for freight type {freight_type}")
 
     def set_freight_cost(self, freight_type: int, cost: float) -> None:
-        """Set the current freight cost for a given freight type."""
-        try:
-            self.by_unit_costs_collection.update_one({"name": freight_type}, {"$set": {"cost": cost}})
-        except Exception as e:
-            raise ValueError(f"Failed to set freight cost for type {freight_type}: {str(e)}")
+        """Set ``cost`` on the ``freight`` row for ``freight_type`` (upsert)."""
+        self.freight_collection.update_one(
+            {"freight_type": freight_type},
+            {"$set": {"cost": cost}},
+            upsert=True,
+        )
 
     def get_label_cost(self, label_type: str) -> float:
-        """Return the current label cost for a given label type."""
-        result = self.by_unit_costs_collection.find_one({"name": label_type})
-        if result and "cost" in result and result["type"] == "label":
-            return result["cost"]
-        else:
-            raise ValueError(f"Label cost not found for label type '{label_type}'")
+        """Return ``cost`` from ``labels`` where ``label_type`` matches (e.g. Description, Shipping)."""
+        doc = self.labels_collection.find_one({"label_type": label_type})
+        if doc and "cost" in doc:
+            return float(doc["cost"])
+        raise ValueError(f"Label cost not found for label type '{label_type}'")
 
     def set_label_cost(self, label_type: str, cost: float) -> None:
         """Set the current label cost for a given label type."""
@@ -187,12 +186,11 @@ class MOADB:
             raise ValueError(f"Failed to set print blank ratio: {str(e)}")
 
     def get_shipper_box_cost(self) -> float:
-        """Return the current shipper box cost for a given box type."""
-        result = self.by_unit_costs_collection.find_one({"name": "shipper_box"})
-        if result and "cost" in result and result["type"] == "box":
-            return result["cost"]
-        else:
-            raise ValueError("Shipper box cost not found")
+        """Return ``cost`` from ``shipper_boxes`` where ``type`` is ``Shipper Box``."""
+        doc = self.shipper_box_collection.find_one({"type": "Shipper Box"})
+        if doc and "cost" in doc:
+            return float(doc["cost"])
+        raise ValueError("Shipper box cost not found")
 
     def set_shipper_box_cost(self, cost: float) -> None:
         """Set the current shipper box cost for a given box type."""
