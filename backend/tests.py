@@ -78,11 +78,8 @@ class TestStaticCostCalculator(unittest.TestCase):
             standee_type=Complexity.MODERATE,
             blank_comp_count=2,
             color_comp_count=2,
-            full_out_source=False,
-            partial_out_source=False,
-            inhouse=True,
         )
-        total_cost = project.get_static_cost()
+        total_cost = project.get_static_cost(scenario=1)
         self.assertAlmostEqual(total_cost, 2256.97, delta=1.0)
 
     def test_static_cost_calculator_sonic_standee(self):
@@ -105,11 +102,8 @@ class TestStaticCostCalculator(unittest.TestCase):
             standee_type=Complexity.MODERATE,
             blank_comp_count=6,
             color_comp_count=14,
-            full_out_source=True,
-            partial_out_source=False,
-            inhouse=False,
         )
-        total_cost = project.get_static_cost()
+        total_cost = project.get_static_cost(scenario=4)
         self.assertAlmostEqual(total_cost, 307270.99, delta=1.0)
 
 
@@ -128,9 +122,6 @@ class TestStaticCostCalculator(unittest.TestCase):
             standee_type=Complexity.MODERATE,
             blank_comp_count=4,
             color_comp_count=4,
-            full_out_source=False,
-            partial_out_source=False,
-            inhouse=True,
         )
-        total_cost = project.get_static_cost()
-        self.assertAlmostEqual(total_cost, 8,884.20, delta=1.0)
+        total_cost = project.get_static_cost(scenario=1)
+        self.assertAlmostEqual(total_cost, 8884.20, delta=1.0)
