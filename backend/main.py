@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from lib.db import MOADB
+from backend.lib.classes.db import MOADB
 
 app = FastAPI()
 
