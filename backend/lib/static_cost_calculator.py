@@ -17,8 +17,8 @@ def static_cost_calculator(
     standee_type: Complexity,
     print_form_material: str,
     blank_comp_count: int = 0,
-    colour_comp_count: int = 0,
-    cutting_die_given_linear_inches: int = 0
+    color_comp_count: int = 0,
+    cutting_die_given_linear_inches: int = 0,
 ):
     db = MOADB()
     # per form cost
@@ -48,7 +48,7 @@ def static_cost_calculator(
     die_complexity_map = {
         complexity: (
             db.get_standee_data(term, "cutting_die_given_linear_inches_multiplier"),
-            cutting_die_given_linear_inches
+            cutting_die_given_linear_inches,
         )
         for complexity, term in STANDEE_MAP.items()
     }
@@ -76,7 +76,7 @@ def static_cost_calculator(
     # per project cost
     # comp cost
     blank_comp_cost = db.get_comp_cost("Blank") * blank_comp_count
-    colour_comp_cost = db.get_comp_cost("Color") * colour_comp_count
+    color_comp_cost = db.get_comp_cost("Color") * color_comp_count
     # engineering design cost
     engineering_design_cost = db.get_standee_data(
         STANDEE_MAP[standee_type], "engineering_design_cost_per_project"

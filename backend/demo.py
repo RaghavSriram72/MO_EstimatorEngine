@@ -54,7 +54,7 @@ def demo():
     print(f"  Freight assembly cost:    ${project.freight_assembly_cost or 0:.2f}")
     print(f"  Freight mt. assembly cost:${project.freight_mount_assembly_cost or 0:.2f}")
     print(f"  Blank comp cost:          ${project.blank_comp_cost or 0:.2f}")
-    print(f"  Colour comp cost:         ${project.colour_comp_cost or 0:.2f}")
+    print(f"  color comp cost:         ${project.color_comp_cost or 0:.2f}")
     print(f"  Engineering design cost:  ${project.engineering_design_cost or 0:.2f}")
     print(f"  {'─' * 38}")
     print(f"  Total static cost:        ${total_cost:.2f}")

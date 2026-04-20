@@ -1,4 +1,3 @@
-import math
 from enum import Enum
 
 try:
@@ -6,6 +5,13 @@ try:
 except ModuleNotFoundError:
     from db import MOADB
 
+
+UNIT_MAP = {
+    "linear_inches": 1.0,
+    "linear_feet": 12.0,
+    "each": 1.0,
+    "hour": 1.0,
+}
 
 class Complexity(Enum):
     """Enum to represent complexity of an element for form calculation."""
@@ -92,7 +98,7 @@ class Project:
         num_standees: int,
         standee_type: Complexity,
         blank_comp_count: int = 0,
-        colour_comp_count: int = 0,
+        color_comp_count: int = 0,
         full_out_source: bool = False,
         partial_out_source: bool = False,
         inhouse: bool = True,
@@ -111,7 +117,7 @@ class Project:
         self.print_forms_per_standee = len(print_forms)
         self.print_form_total = self.print_forms_per_standee * self.num_standees
         self.blank_comp_count = blank_comp_count
-        self.colour_comp_count = colour_comp_count
+        self.color_comp_count = color_comp_count
 
         # DB-dependent fields: set during calculate_static_costs()
         self.blank_form_ratio = None
@@ -134,10 +140,11 @@ class Project:
         self.freight_assembly_cost = None
         self.freight_mount_assembly_cost = None
         self.blank_comp_cost = None
-        self.colour_comp_cost = None
+        self.color_comp_cost = None
         self.engineering_design_cost = None
 
     def calculate_static_costs(self) -> None:
+        """Calculate static costs for a project based on the print forms, number of standees, and standee type."""
         db = MOADB()
         standee_key = self.STANDEE_MAP[self.standee_type]
 
@@ -174,8 +181,8 @@ class Project:
         )
         self.hardware_cost = db.get_standee_data(standee_key, "hardware_cost") * self.num_standees
         self.shipper_box_cost = db.get_shipper_box_cost() * self.num_standees
-        desc_label_cost = db.get_label_cost("Description")
-        handling_label_cost = db.get_label_cost("Shipping")
+        desc_label_cost = db.get_label_cost("label_description")
+        handling_label_cost = db.get_label_cost("label_shipping")
         self.label_cost = (2 * desc_label_cost + handling_label_cost) * self.num_standees
         self.instruction_sheet_cost = (
             db.get_standee_data(standee_key, "instruction_sheet_total_cost") * self.num_standees
@@ -183,11 +190,12 @@ class Project:
         if not self.inhouse:
             self.freight_assembly_cost = db.get_freight_cost(1) * self.num_standees
             self.freight_mount_assembly_cost = db.get_freight_cost(2) * self.num_standees
-        self.blank_comp_cost = db.get_comp_cost("Blank") * self.blank_comp_count
-        self.colour_comp_cost = db.get_comp_cost("Color") * self.colour_comp_count
+        self.blank_comp_cost = db.get_comp_cost("blank_comp") * self.blank_comp_count
+        self.color_comp_cost = db.get_comp_cost("color_comp") * self.color_comp_count
         self.engineering_design_cost = db.get_standee_data(standee_key, "engineering_design_cost_per_project")
 
     def get_static_cost(self) -> float:
+        """Calculate and return the total static cost for the project, summing all individual cost components."""
         self.calculate_static_costs()
         return (
             (self.print_form_cost or 0)
@@ -203,7 +211,7 @@ class Project:
             + (self.freight_assembly_cost or 0)
             + (self.freight_mount_assembly_cost or 0)
             + (self.blank_comp_cost or 0)
-            + (self.colour_comp_cost or 0)
+            + (self.color_comp_cost or 0)
             + (self.engineering_design_cost or 0)
         )
 
@@ -213,7 +221,7 @@ class Project:
     # standee_type: Complexity,
     # print_form_material: str,
     # blank_comp_count: int = 0,
-    # colour_comp_count: int = 0,
+    # color_comp_count: int = 0,
     # ) -> float:
     #     db = MOADB()
     #     # per form cost
@@ -270,7 +278,7 @@ class Project:
     #     # per project cost
     #     # comp cost
     #     blank_comp_cost = db.get_comp_cost("Blank") * blank_comp_count
-    #     colour_comp_cost = db.get_comp_cost("Colour") * colour_comp_count
+    #     color_comp_cost = db.get_comp_cost("color") * color_comp_count
     #     # engineering design cost
     #     engineering_design_cost = db.get_standee_data(
     #         STANDEE_MAP[standee_type], "engineering_design_cost_per_project"

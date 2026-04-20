@@ -15,6 +15,7 @@ class MOADB:
         self.uri = os.getenv("MONGO_URI")
         self.client = client = MongoClient(self.uri, server_api=ServerApi("1"))
         self.db = client["DB"]
+        self.by_unit_costs_collection = self.db["by_unit_costs"]
         self.standee_collection = self.db["standee_static_costs"]
         self.corrugated_collection = self.db["corrugate"]
         self.comp_collection = self.db["comp"]
@@ -63,10 +64,25 @@ class MOADB:
         )
         return result.modified_count > 0  # Return True if the update was successful
 
+    def get_imposition_cost(self, print_forms: int) -> float:
+        """Return the imposition cost for a given number of print forms."""
+        result = self.by_unit_costs_collection.find_one({"name": "imposition_labor"})
+        if result and "cost" in result and result["type"] == "imposition":
+            return result["cost"] * print_forms
+        else:
+            raise ValueError("Imposition cost not found")
+
+    def set_imposition_cost(self, cost: float) -> None:
+        """Set the imposition cost."""
+        try:
+            self.by_unit_costs_collection.update_one({"name": "imposition_labor"}, {"$set": {"cost": cost}})
+        except Exception as e:
+            raise ValueError(f"Failed to set imposition cost: {str(e)}")
+
     def get_comp_cost(self, comp_type: str) -> float:
         """Return the cost for a given comp type."""
-        result = self.comp_collection.find_one({"comp_type": comp_type})
-        if result and "cost" in result:
+        result = self.by_unit_costs_collection.find_one({"name": comp_type})
+        if result and "cost" in result and result["type"] == "comp":
             return result["cost"]
         else:
             raise ValueError(f"Cost not found for comp type '{comp_type}'")
@@ -74,14 +90,14 @@ class MOADB:
     def set_comp_cost(self, comp_type: str, cost: float) -> None:
         """Set the cost for a given comp type."""
         try:
-            self.comp_collection.update_one({"comp_type": comp_type}, {"$set": {"cost": cost}})
+            self.by_unit_costs_collection.update_one({"name": comp_type}, {"$set": {"cost": cost}})
         except Exception as e:
             raise ValueError(f"Failed to set cost for comp type '{comp_type}': {str(e)}")
 
     def get_corrugate_cost(self) -> float:
         """Return the current corrugate cost."""
-        result = self.corrugated_collection.find_one({})
-        if result and "cost" in result:
+        result = self.by_unit_costs_collection.find_one({"name": "blank_corrugate"})
+        if result and "cost" in result and result["type"] == "standee_material":
             return result["cost"]
         else:
             raise ValueError("Corrugate cost not found")
@@ -89,14 +105,14 @@ class MOADB:
     def set_corrugate_cost(self, cost: float) -> None:
         """Set the current corrugate cost."""
         try:
-            self.corrugated_collection.update_one({}, {"$set": {"cost": cost}})
+            self.by_unit_costs_collection.update_one({"name": "blank_corrugate"}, {"$set": {"cost": cost}})
         except Exception as e:
             raise ValueError(f"Failed to set corrugate cost: {str(e)}")
 
     def get_freight_cost(self, freight_type: int) -> float:
         """Return the current freight cost for a given freight type."""
-        result = self.freight_collection.find_one({"freight_type": freight_type})
-        if result and "cost" in result:
+        result = self.by_unit_costs_collection.find_one({"name": freight_type})
+        if result and "cost" in result and result["type"] == "freight":
             return result["cost"]
         else:
             raise ValueError(f"Freight cost not found for freight type {freight_type}")
@@ -104,14 +120,14 @@ class MOADB:
     def set_freight_cost(self, freight_type: int, cost: float) -> None:
         """Set the current freight cost for a given freight type."""
         try:
-            self.freight_collection.update_one({"freight_type": freight_type}, {"$set": {"cost": cost}})
+            self.by_unit_costs_collection.update_one({"name": freight_type}, {"$set": {"cost": cost}})
         except Exception as e:
             raise ValueError(f"Failed to set freight cost for type {freight_type}: {str(e)}")
 
     def get_label_cost(self, label_type: str) -> float:
         """Return the current label cost for a given label type."""
-        result = self.labels_collection.find_one({"label_type": label_type})
-        if result and "cost" in result:
+        result = self.by_unit_costs_collection.find_one({"name": label_type})
+        if result and "cost" in result and result["type"] == "label":
             return result["cost"]
         else:
             raise ValueError(f"Label cost not found for label type '{label_type}'")
@@ -119,14 +135,14 @@ class MOADB:
     def set_label_cost(self, label_type: str, cost: float) -> None:
         """Set the current label cost for a given label type."""
         try:
-            self.labels_collection.update_one({"label_type": label_type}, {"$set": {"cost": cost}})
+            self.by_unit_costs_collection.update_one({"name": label_type}, {"$set": {"cost": cost}})
         except Exception as e:
             raise ValueError(f"Failed to set label cost for type '{label_type}': {str(e)}")
 
     def get_pallet_cost(self) -> float:
         """Return the current pallet cost for a given pallet type."""
-        result = self.pallet_collection.find_one({})
-        if result and "cost" in result:
+        result = self.by_unit_costs_collection.find_one({"name": "pallet"})
+        if result and "cost" in result and result["type"] == "pallet":
             return result["cost"]
         else:
             raise ValueError("Pallet cost not found")
@@ -134,22 +150,22 @@ class MOADB:
     def set_pallet_cost(self, cost: float) -> None:
         """Set the current pallet cost."""
         try:
-            self.pallet_collection.update_one({}, {"$set": {"cost": cost}})
+            self.by_unit_costs_collection.update_one({"name": "pallet"}, {"$set": {"cost": cost}})
         except Exception as e:
             raise ValueError(f"Failed to set pallet cost: {str(e)}")
 
     def get_pallet_labor_cost(self) -> float:
         """Return the current pallet labor cost."""
-        result = self.pallet_collection.find_one({})
-        if result and "labor" in result:
-            return result["labor"]
+        result = self.by_unit_costs_collection.find_one({"name": "pallet_labor"})
+        if result and "cost" in result and result["type"] == "pallet":
+            return result["cost"]
         else:
             raise ValueError("Pallet labor cost not found")
 
     def set_pallet_labor_cost(self, labor_cost: float) -> None:
         """Set the current pallet labor cost."""
         try:
-            self.pallet_collection.update_one({}, {"$set": {"labor": labor_cost}})
+            self.by_unit_costs_collection.update_one({"name": "pallet_labor"}, {"$set": {"cost": labor_cost}})
         except Exception as e:
             raise ValueError(f"Failed to set pallet labor cost: {str(e)}")
 
@@ -172,8 +188,8 @@ class MOADB:
 
     def get_shipper_box_cost(self) -> float:
         """Return the current shipper box cost for a given box type."""
-        result = self.shipper_box_collection.find_one({})
-        if result and "cost" in result:
+        result = self.by_unit_costs_collection.find_one({"name": "shipper_box"})
+        if result and "cost" in result and result["type"] == "box":
             return result["cost"]
         else:
             raise ValueError("Shipper box cost not found")
@@ -181,16 +197,14 @@ class MOADB:
     def set_shipper_box_cost(self, cost: float) -> None:
         """Set the current shipper box cost for a given box type."""
         try:
-            self.shipper_box_collection.update_one({}, {"$set": {"cost": cost}})
+            self.by_unit_costs_collection.update_one({"name": "shipper_box"}, {"$set": {"cost": cost}})
         except Exception as e:
             raise ValueError(f"Failed to set shipper box cost: {str(e)}")
 
     def get_print_material_cost(self, material_type: int) -> float:
         """Return the current print material cost for a given material type."""
-        result = self.print_materials.find_one({"material_id": material_type})
-        if result and "cost" in result:
-            if material_type == 1:  # LB 95 Sheet
-                return result["cost"] / 1000  # Convert cost per sheet to cost per form
+        result = self.by_unit_costs_collection.find_one({"name": material_type})
+        if result and "cost" in result and result["type"] == "standee_material":
             return result["cost"]
         else:
             raise ValueError(f"Print material cost not found for material type {material_type}")
@@ -198,22 +212,22 @@ class MOADB:
     def set_print_material_cost(self, material_type: int, cost: float) -> None:
         """Set the current print material cost for a given material type."""
         try:
-            self.print_materials.update_one({"material_id": material_type}, {"$set": {"cost": cost}})
+            self.by_unit_costs_collection.update_one({"name": material_type}, {"$set": {"cost": cost}})
         except Exception as e:
             raise ValueError(f"Failed to set print material cost for type {material_type}: {str(e)}")
-        
+
     def get_die_cost(self) -> float:
         """Return the current die cost."""
-        result = self.die_cost.find_one({})
-        if result and "cost" in result:
+        result = self.by_unit_costs_collection.find_one({"name": "die_cost"})
+        if result and "cost" in result and result["type"] == "die":
             return result["cost"]
         else:
             raise ValueError("Die cost not found")
-    
+
     def set_die_cost(self, cost: float) -> None:
         """Set the current die cost."""
         try:
-            self.die_cost.update_one({}, {"$set": {"cost": cost}})
+            self.by_unit_costs_collection.update_one({"name": "die_cost"}, {"$set": {"cost": cost}})
         except Exception as e:
             raise ValueError(f"Failed to set die cost: {str(e)}")
 
