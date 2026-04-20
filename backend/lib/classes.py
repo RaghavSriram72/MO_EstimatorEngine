@@ -21,15 +21,6 @@ class Complexity(Enum):
     COMPLEX = 3
 
 
-class PrintMaterial(Enum):
-    """Enum to represent print form material for form calculation."""
-
-    LB_95_SHEET = 1
-    LB_95_ROLL = 2
-    HI_TACK = 3
-    BUSMARK = 4
-
-
 class Element:
     """Class to represent an element for form calculation."""
 
@@ -50,7 +41,7 @@ class Element:
 
     def get_linear_inches(self, modifier: float = 1.0) -> float:
         """Calculate linear inches for the element, using either the provided linear inches or the perimeter.
-
+        
         Args:
             modifier: Multiplier to apply to the linear inches, used for die cost calculation.
 
@@ -76,14 +67,14 @@ class Form:
         self.complexity = complexity
         self.die_cost = 0
 
-    def get_die_cost(self, die_map: dict[Complexity, float], die_unit_cost: float) -> float:
+    def get_die_cost(self, die_map: dict[Complexity, tuple[float, float]]) -> float:
         """Calculate die cost for the form based on the complexity of its elements and a provided die map."""
         cost = 0
         for element in self.elements:
-            multiplier = die_map[element.complexity]
+            multiplier, cost_per_inch = die_map[element.complexity]
             cost += (
-                element.get_linear_inches(multiplier if not element.linear_inches_provided else 1)
-                * die_unit_cost
+                element.get_linear_inches(multiplier if not element.linear_inches_provided else 1.0)
+                * cost_per_inch
             )
         return cost
 
@@ -97,11 +88,12 @@ class Project:
         print_forms: list[Form],
         num_standees: int,
         standee_type: Complexity,
+        print_form_material: str,
         blank_comp_count: int = 0,
         color_comp_count: int = 0,
         full_out_source: bool = False,
         partial_out_source: bool = False,
-        inhouse: bool = True,
+        inhouse: bool = True
     ):
         self.STANDEE_MAP = {
             Complexity.SIMPLE: "Simple Standee",
@@ -113,6 +105,7 @@ class Project:
         self.print_forms = print_forms
         self.num_standees = num_standees
         self.inhouse = inhouse
+        self.print_form_material = print_form_material
 
         self.print_forms_per_standee = len(print_forms)
         self.print_form_total = self.print_forms_per_standee * self.num_standees
@@ -143,13 +136,20 @@ class Project:
         self.color_comp_cost = None
         self.engineering_design_cost = None
 
-    def calculate_static_costs(self) -> None:
-        """Calculate static costs for a project based on the print forms, number of standees, and standee type."""
+    def calculate_static_costs(self, scenario: int) -> None:
+
+        # SCENARIO_MAP = {
+        #     1: "Internal Print / Internal Finishing / Packed Out (Box)",
+        #     2: "Internal Print / Internal Finishing / Assembled",
+        #     3: "Internal Print / Internal Finishing/External Assembly",
+        #     4: "Internal Print / External Mount & Die Cut/External Assembly",
+        #     5: "External Print / Finishing / Packout",
+        # }
         db = MOADB()
         standee_key = self.STANDEE_MAP[self.standee_type]
 
         self.blank_form_ratio = db.get_print_blank_ratio(self.print_forms_per_standee)
-        self.blank_forms_per_standee = self.blank_form_ratio * self.print_forms_per_standee
+        self.blank_forms_per_standee = math.ceil(self.blank_form_ratio * self.print_forms_per_standee)
         self.blank_form_total = self.blank_forms_per_standee * self.num_standees
         self.total_forms = self.blank_form_total + self.print_form_total
 
@@ -163,30 +163,38 @@ class Project:
             * self.print_forms_per_standee
             * self.num_standees
         ) / 60
-        self.zund_cut_cost = self.zund_hours * db.get_standee_data(standee_key, "zund_cost_per_hour")
 
-        die_unit_cost = db.get_die_cost()
+        if scenario not in (4, 5):
+            self.zund_cut_cost = self.zund_hours * db.get_standee_data(standee_key, "zund_cost_per_hour")
+
         die_complexity_map = {
-            complexity: db.get_standee_data(term, "cutting_die_inches_multiplier")
+            complexity: (
+                db.get_standee_data(term, "cutting_die_given_linear_inches_multiplier"),
+                10
+            )
             for complexity, term in self.STANDEE_MAP.items()
         }
         self.die_cost = 0
-        for form in self.print_forms:
-            self.die_cost += form.get_die_cost(die_complexity_map, die_unit_cost)
 
-        self.pallet_count = self.print_forms_per_standee
+        if scenario in (4, 5):
+            for form in self.print_forms:
+                self.die_cost += form.get_die_cost(die_complexity_map)
+
         self.pallet_cost = (
-            db.get_pallet_labor_cost() * self.print_forms_per_standee
-            + db.get_pallet_cost() * self.print_forms_per_standee
+            db.get_pallet_labor_cost() * self.pallet_count
+            + db.get_pallet_cost() * self.pallet_count
         )
         self.hardware_cost = db.get_standee_data(standee_key, "hardware_cost") * self.num_standees
-        self.shipper_box_cost = db.get_shipper_box_cost() * self.num_standees
+        if scenario == 2:
+            self.shipper_box_cost = db.get_shipper_box_cost() * self.num_standees
+        
         desc_label_cost = db.get_label_cost("label_description")
         handling_label_cost = db.get_label_cost("label_shipping")
-        self.label_cost = (2 * desc_label_cost + handling_label_cost) * self.num_standees
-        self.instruction_sheet_cost = (
-            db.get_standee_data(standee_key, "instruction_sheet_total_cost") * self.num_standees
-        )
+        if scenario in (1, 3):
+            self.label_cost = (2 * desc_label_cost + handling_label_cost) * self.num_standees
+            self.instruction_sheet_cost = (
+                db.get_standee_data(standee_key, "instruction_sheet_total_cost") * self.num_standees
+            )
         if not self.inhouse:
             self.freight_assembly_cost = db.get_freight_cost(1) * self.num_standees
             self.freight_mount_assembly_cost = db.get_freight_cost(2) * self.num_standees
@@ -194,9 +202,8 @@ class Project:
         self.color_comp_cost = db.get_comp_cost("color_comp") * self.color_comp_count
         self.engineering_design_cost = db.get_standee_data(standee_key, "engineering_design_cost_per_project")
 
-    def get_static_cost(self) -> float:
-        """Calculate and return the total static cost for the project, summing all individual cost components."""
-        self.calculate_static_costs()
+    def get_static_cost(self, scenario: int) -> float:
+        self.calculate_static_costs(scenario)
         return (
             (self.print_form_cost or 0)
             + (self.corrugate_cost or 0)
@@ -214,7 +221,20 @@ class Project:
             + (self.color_comp_cost or 0)
             + (self.engineering_design_cost or 0)
         )
-
+        
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
     # def static_cost_calculator(
     # print_forms: list[Form],
     # num_standees: int,
