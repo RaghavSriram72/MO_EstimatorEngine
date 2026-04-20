@@ -255,15 +255,15 @@ def _add_padding(element):
 
 if __name__ == "__main__":
     input_elements = [
-        Element(name="back", length=120, width=72, complexity=Complexity.SIMPLE),
-        Element(name="elph", length=35, width=72, complexity=Complexity.COMPLEX),
-        Element(name="glinda", length=35, width=72, complexity=Complexity.COMPLEX),
-        Element(name="w", length=16, width=24, complexity=Complexity.MODERATE),
-        Element(name="i", length=6, width=18, complexity=Complexity.MODERATE),
-        Element(name="c", length=12, width=18, complexity=Complexity.MODERATE),
-        Element(name="k", length=14, width=18, complexity=Complexity.MODERATE),
-        Element(name="e", length=14, width=18, complexity=Complexity.MODERATE),
-        Element(name="d", length=14, width=18, complexity=Complexity.MODERATE),
+        Element(name="Dr. Robotnik", width=41, length=15, complexity=Complexity.COMPLEX),
+        Element(name="Tails", width=27, length=22, complexity=Complexity.COMPLEX),
+        Element(name="Sonic 3 TT", width=120, length=30, complexity=Complexity.MODERATE),
+        Element(name="Knuckles", width=34, length=47, complexity=Complexity.COMPLEX),
+        Element(name="Shadow", width=96, length=60, complexity=Complexity.COMPLEX),
+        Element(name="Sonic", width=40, length=50, complexity=Complexity.COMPLEX),
+        Element(name="Backer", width=122, length=72, complexity=Complexity.SIMPLE),
+        Element(name="Base", width=120, length=18, complexity=Complexity.SIMPLE),
+        Element(name="Base Lug", width=31, length=9, complexity=Complexity.SIMPLE),
     ]
     num_standees = 10
     elements, forms = print_form_calculator(input_elements, num_standees)

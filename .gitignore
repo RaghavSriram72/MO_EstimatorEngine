@@ -48,6 +48,7 @@ next-env.d.ts
 *.egg-info/
 dist/
 .pytest_cache/
+**/form_visualizations/
 
 # editors
 .vscode/
