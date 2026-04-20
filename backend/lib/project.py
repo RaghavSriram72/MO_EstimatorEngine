@@ -129,13 +129,13 @@ class Project:
             db.get_unit_cost(PALLET_LABOR) * self.pallet_count + db.get_unit_cost(PALLET) * self.pallet_count
         )
         self.hardware_cost = db.get_standee_data(standee_key, "hardware_cost") * self.num_standees
-        if scenario == 2:
+        if scenario != 1:
             self.shipping_box_cost = db.get_unit_cost(SHIPPING_BOX) * self.num_standees
 
         desc_label_cost = db.get_unit_cost(DESCRIPTION_LABEL)
         handling_label_cost = db.get_unit_cost(SHIPPING_LABEL)
-        if scenario in (1, 3):
-            self.label_cost = (2 * desc_label_cost + handling_label_cost) * self.num_standees
+        self.label_cost = (2 * desc_label_cost + handling_label_cost) * self.num_standees
+        if scenario in (1, 2):
             self.instruction_sheet_cost = (
                 db.get_standee_data(standee_key, "instruction_sheet_total_cost") * self.num_standees
             )
