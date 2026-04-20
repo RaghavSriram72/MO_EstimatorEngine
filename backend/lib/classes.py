@@ -88,7 +88,6 @@ class Project:
         print_forms: list[Form],
         num_standees: int,
         standee_type: Complexity,
-        print_form_material: str,
         blank_comp_count: int = 0,
         color_comp_count: int = 0,
         full_out_source: bool = False,
@@ -105,7 +104,6 @@ class Project:
         self.print_forms = print_forms
         self.num_standees = num_standees
         self.inhouse = inhouse
-        self.print_form_material = print_form_material
 
         self.print_forms_per_standee = len(print_forms)
         self.print_form_total = self.print_forms_per_standee * self.num_standees
