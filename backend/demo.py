@@ -50,7 +50,6 @@ def demo():
     print(f"  Label cost:               ${project.label_cost or 0:.2f}")
     print(f"  Instruction sheet cost:   ${project.instruction_sheet_cost or 0:.2f}")
     print(f"  Freight assembly cost:    ${project.freight_assembly_cost or 0:.2f}")
-    print(f"  Freight mt. assembly cost:${project.freight_mount_assembly_cost or 0:.2f}")
     print(f"  Blank comp cost:          ${project.blank_comp_cost or 0:.2f}")
     print(f"  color comp cost:         ${project.color_comp_cost or 0:.2f}")
     print(f"  Engineering design cost:  ${project.engineering_design_cost or 0:.2f}")
