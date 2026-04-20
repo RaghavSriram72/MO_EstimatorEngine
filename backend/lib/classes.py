@@ -90,9 +90,6 @@ class Project:
         standee_type: Complexity,
         blank_comp_count: int = 0,
         color_comp_count: int = 0,
-        full_out_source: bool = False,
-        partial_out_source: bool = False,
-        inhouse: bool = True
     ):
         self.STANDEE_MAP = {
             Complexity.SIMPLE: "Simple Standee",
@@ -103,7 +100,6 @@ class Project:
         self.name = name
         self.print_forms = print_forms
         self.num_standees = num_standees
-        self.inhouse = inhouse
 
         self.print_forms_per_standee = len(print_forms)
         self.print_form_total = self.print_forms_per_standee * self.num_standees
@@ -199,7 +195,7 @@ class Project:
         self.instruction_sheet_cost = (
             db.get_standee_data(standee_key, "instruction_sheet_total_cost") * self.num_standees
         )
-        if not self.inhouse:
+        if scenario not in (1, 2):
             self.freight_assembly_cost = db.get_freight_cost(1) * self.num_standees
             self.freight_mount_assembly_cost = db.get_freight_cost(2) * self.num_standees
         self.blank_comp_cost = db.get_comp_cost("blank_comp") * self.blank_comp_count
