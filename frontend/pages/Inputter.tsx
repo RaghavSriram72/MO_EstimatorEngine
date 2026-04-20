@@ -2,25 +2,64 @@
 import ElementsManager from "@/components/ElementsManager";
 import { useState } from "react";
 
-type Scenario = "In House" | "Partial" | "Outsource";
+type Scenario = "Internal" | "Hybrid" | "External";
+type Assembly = "packed_out" | "assembled";
+type Finishing = "internal" | "external_die_cut";
 
 type Element = {
     id: number;
     height: number | "";
     width: number | "";
     complexity: string;
+    linear_inches: number | "";
 };
 
-export default function Inputter() {
-    const [currentScenario, setCurrentScenario] = useState<Scenario>("In House");
-    const [compCount, setCompCount] = useState<number | "">("");
-    const [elements, setElements] = useState<Element[]>([]);
+function getScenarioNumber(scenario: Scenario, assembly: Assembly, finishing: Finishing): number {
+    if (scenario === "Internal") return assembly === "packed_out" ? 1 : 2;
+    if (scenario === "Hybrid")   return finishing === "internal" ? 3 : 4;
+    return 5;
+}
 
-    const scenarios: Scenario[] = ["In House", "Partial", "Outsource"];
+export default function Inputter() {
+    const [currentScenario, setCurrentScenario] = useState<Scenario>("Internal");
+    const [assembly, setAssembly]   = useState<Assembly>("packed_out");
+    const [finishing, setFinishing] = useState<Finishing>("internal");
+    const [compCount, setCompCount]       = useState<number | "">("");
+    const [standeeCount, setStandeeCount] = useState<number | "">("");
+    const [elements, setElements]   = useState<Element[]>([]);
+
+    const scenarios: Scenario[] = ["Internal", "Hybrid", "External"];
+
+    const scenarioNumber = getScenarioNumber(currentScenario, assembly, finishing);
 
     function handleClear() {
         setCompCount("");
+        setStandeeCount("");
         setElements([]);
+        setAssembly("packed_out");
+        setFinishing("internal");
+    }
+
+    function handleQuoteGeneration() {
+        const payload = {
+            scenario: scenarioNumber,
+            elements: elements.map(({ height, width, complexity, linear_inches }) => ({
+                height: height === "" ? 0 : height,
+                width: width === "" ? 0 : width,
+                complexity,
+                linear_inches: linear_inches === "" ? null : linear_inches,
+            })),
+            num_standees: standeeCount === "" ? 0 : standeeCount,
+        };
+
+        fetch("http://localhost:8000/generate_quote", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        })
+            .then((res) => res.json())
+            .then((data) => console.log("Quote generation response:", data))
+            .catch((error) => console.error("Error generating quote:", error));
     }
 
     return (
@@ -39,6 +78,14 @@ export default function Inputter() {
                         </li>
                     ))}
                 </ul>
+
+                {/* Scenario badge */}
+                <div className="mt-4 w-full">
+                    <div className="text-[10px] text-[#ABABAB] mb-1">RESOLVED SCENARIO</div>
+                    <div className="text-xs font-bold border-2 border-[#FFB604] bg-[#FFF3C2] text-[#9A6D00] rounded-md px-3 py-2">
+                        Scenario {scenarioNumber}
+                    </div>
+                </div>
             </div>
 
             {/* Main Form */}
@@ -58,10 +105,10 @@ export default function Inputter() {
                     ))}
                 </div>
 
-                {/* Form card — fills remaining height */}
+                {/* Form card */}
                 <div className="flex flex-col w-[50vw] flex-1 min-h-0 border-2 bg-white border-[#EDEAEA] rounded-xl text-[#ABABAB] overflow-hidden">
 
-                    {/* 01 - ELEMENTS — expands to fill space */}
+                    {/* 01 - ELEMENTS */}
                     <div className="flex flex-col flex-1 min-h-0 items-start w-full p-4 border-b-2 border-[#EDEAEA] overflow-hidden">
                         <div className="text-[10px] mb-3">
                             01 - ELEMENTS
@@ -72,22 +119,96 @@ export default function Inputter() {
                         </div>
                     </div>
 
-                    {/* 02 - COMP COUNT */}
+                    {/* 02 - COUNTS */}
                     <div className="flex flex-col justify-center items-start w-full p-5 border-b-2 border-[#EDEAEA] shrink-0">
-                        <div className="text-[10px] m-2">02 - COMPONENT COUNTS</div>
-                        <div>
-                            <div className="text-xs font-bold m-2">Comp Count</div>
-                            <input
-                                type="number"
-                                min={0}
-                                value={compCount}
-                                onChange={(e) =>
-                                    setCompCount(e.target.value === "" ? "" : Number(e.target.value))
-                                }
-                                placeholder="0"
-                                className="border-2 border-[#EDEAEA] rounded-md p-1 outline-none text-black text-xs w-[200px] bg-[#FFFBED]"
-                            />
+                        <div className="text-[10px] m-2">02 - COUNTS</div>
+                        <div className="flex flex-row gap-8">
+                            <div>
+                                <div className="text-xs font-bold m-2">Standee Count</div>
+                                <input
+                                    type="number"
+                                    min={0}
+                                    value={standeeCount}
+                                    onChange={(e) =>
+                                        setStandeeCount(e.target.value === "" ? "" : Number(e.target.value))
+                                    }
+                                    placeholder="0"
+                                    className="border-2 border-[#EDEAEA] rounded-md p-1 outline-none text-black text-xs w-[200px] bg-[#FFFBED]"
+                                />
+                            </div>
+                            <div>
+                                <div className="text-xs font-bold m-2">Comp Count</div>
+                                <input
+                                    type="number"
+                                    min={0}
+                                    value={compCount}
+                                    onChange={(e) =>
+                                        setCompCount(e.target.value === "" ? "" : Number(e.target.value))
+                                    }
+                                    placeholder="0"
+                                    className="border-2 border-[#EDEAEA] rounded-md p-1 outline-none text-black text-xs w-[200px] bg-[#FFFBED]"
+                                />
+                            </div>
                         </div>
+                    </div>
+
+                    {/* 03 - SCENARIO DETAILS */}
+                    <div className="flex flex-col justify-center items-start w-full p-5 border-b-2 border-[#EDEAEA] shrink-0">
+                        <div className="text-[10px] m-2">03 - SCENARIO DETAILS</div>
+
+                        {currentScenario === "Internal" && (
+                            <div className="w-full">
+                                <div className="text-xs font-bold m-2">Assembly / Packout</div>
+                                <div className="flex flex-row gap-3 w-full">
+                                    {([
+                                        { value: "packed_out", label: "Packed Out (Box)" },
+                                        { value: "assembled",  label: "Assembled" },
+                                    ] as { value: Assembly; label: string }[]).map(({ value, label }) => (
+                                        <button
+                                            key={value}
+                                            onClick={() => setAssembly(value)}
+                                            className={`text-xs flex-1 py-3 rounded-md border-2 cursor-pointer font-bold transition-all duration-250 ${
+                                                assembly === value
+                                                    ? "bg-black text-white border-black"
+                                                    : "bg-white text-[#363535] border-[#EDEAEA] hover:bg-[#DBDBDB] hover:border-[#a1a1a1]"
+                                            }`}
+                                        >
+                                            {label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {currentScenario === "Hybrid" && (
+                            <div className="w-full">
+                                <div className="text-xs font-bold m-2">Finishing</div>
+                                <div className="flex flex-row gap-3 w-full">
+                                    {([
+                                        { value: "internal",          label: "Internal" },
+                                        { value: "external_die_cut",  label: "External Die Cut" },
+                                    ] as { value: Finishing; label: string }[]).map(({ value, label }) => (
+                                        <button
+                                            key={value}
+                                            onClick={() => setFinishing(value)}
+                                            className={`text-xs flex-1 py-3 rounded-md border-2 cursor-pointer font-bold transition-all duration-250 ${
+                                                finishing === value
+                                                    ? "bg-black text-white border-black"
+                                                    : "bg-white text-[#363535] border-[#EDEAEA] hover:bg-[#DBDBDB] hover:border-[#a1a1a1]"
+                                            }`}
+                                        >
+                                            {label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {currentScenario === "External" && (
+                            <div className="text-xs italic text-[#CDCDCD] m-2">
+                                Fully external — no sub-options required.
+                            </div>
+                        )}
                     </div>
 
                     {/* Actions */}
@@ -98,7 +219,10 @@ export default function Inputter() {
                         >
                             CLEAR
                         </div>
-                        <div className="group flex flex-row justify-center gap-5 text-s font-bold bg-[#FFB604] text-black hover:text-white py-3 rounded-md flex-[2] cursor-pointer transition-all duration-250 ease-in-out overflow-hidden">
+                        <div
+                            onClick={handleQuoteGeneration}
+                            className="group flex flex-row justify-center gap-5 text-s font-bold bg-[#FFB604] text-black hover:text-white py-3 rounded-md flex-[2] cursor-pointer transition-all duration-250 ease-in-out overflow-hidden"
+                        >
                             CALCULATE <img src="/submitarrow.svg" alt="" className="transition-all duration-300 ease-in-out group-hover:translate-x-1 group-hover:invert" />
                         </div>
                     </div>

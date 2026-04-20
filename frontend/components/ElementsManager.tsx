@@ -6,6 +6,7 @@ type Element = {
     height: number | "";
     width: number | "";
     complexity: string;
+    linear_inches: number | "";
 };
 
 const complexityOptions = ["Simple", "Moderate", "Complex"];
@@ -26,13 +27,15 @@ export default function ElementsManager({ elements, setElements }: Props) {
     const [width, setWidth] = useState<number | "">("");
     const [complexity, setComplexity] = useState("");
     const [editingId, setEditingId] = useState<number | null>(null);
+    const [linearInches, setLinearInches] = useState<number | "">("");
 
     function handleAdd() {
         if (height === "" || width === "" || !complexity) return;
-        setElements([...elements, { id: Date.now(), height, width, complexity }]);
+        setElements([...elements, { id: Date.now(), height, width, complexity, linear_inches: linearInches === "" ? 0 : Number(linearInches) }]);
         setHeight("");
         setWidth("");
         setComplexity("");
+        setLinearInches("");
     }
 
     function handleDelete(id: number) {
@@ -86,6 +89,17 @@ export default function ElementsManager({ elements, setElements }: Props) {
                         ))}
                     </select>
                 </div>
+                <div className="flex-1">
+                    <div className="text-xs font-bold mb-1 text-[#ABABAB]">Linear In. <span className="font-normal">(opt.)</span></div>
+                    <input
+                        type="number"
+                        min={0}
+                        value={linearInches}
+                        onChange={(e) => setLinearInches(e.target.value === "" ? "" : Number(e.target.value))}
+                        placeholder="—"
+                        className={inputCls}
+                    />
+                </div>
                 <button
                     onClick={handleAdd}
                     disabled={height === "" || width === "" || !complexity}
@@ -101,18 +115,19 @@ export default function ElementsManager({ elements, setElements }: Props) {
                     <div className="text-[10px] text-[#CDCDCD] italic">No elements added yet.</div>
                 ) : (
                     <>
-                        <div className="grid grid-cols-[28px_1fr_1fr_1fr_60px_28px] text-[10px] text-[#ABABAB] font-bold px-2 uppercase shrink-0">
+                        <div className="grid grid-cols-[28px_1fr_1fr_1fr_1fr_60px_28px] text-[10px] text-[#ABABAB] font-bold px-2 uppercase shrink-0">
                             <span>#</span>
                             <span>Height</span>
                             <span>Width</span>
                             <span>Complexity</span>
+                            <span>Linear In.</span>
                             <span />
                             <span />
                         </div>
                         {elements.map((el, idx) => (
                             <div
                                 key={el.id}
-                                className="grid grid-cols-[28px_1fr_1fr_1fr_60px_28px] items-center gap-2 bg-[#FAFAFA] border-2 border-[#EDEAEA] rounded-md px-2 py-2 shrink-0"
+                                className="grid grid-cols-[28px_1fr_1fr_1fr_1fr_60px_28px] items-center gap-2 bg-[#FAFAFA] border-2 border-[#EDEAEA] rounded-md px-2 py-2 shrink-0"
                             >
                                 <span className="text-[10px] text-[#ABABAB] font-bold">{idx + 1}</span>
 
@@ -139,6 +154,13 @@ export default function ElementsManager({ elements, setElements }: Props) {
                                                 <option key={o} value={o}>{o}</option>
                                             ))}
                                         </select>
+                                        <input
+                                            type="number"
+                                            value={el.linear_inches}
+                                            onChange={(e) => handleChange(el.id, "linear_inches", e.target.value === "" ? "" : Number(e.target.value))}
+                                            placeholder="—"
+                                            className={inputCls}
+                                        />
                                     </>
                                 ) : (
                                     <>
@@ -147,6 +169,7 @@ export default function ElementsManager({ elements, setElements }: Props) {
                                         <span className={`text-[10px] font-bold border rounded-md px-2 py-0.5 w-fit ${complexityColor[el.complexity] ?? ""}`}>
                                             {el.complexity}
                                         </span>
+                                        <span className="text-xs text-black">{el.linear_inches !== "" ? `${el.linear_inches}"` : <span className="text-[#CDCDCD]">—</span>}</span>
                                     </>
                                 )}
 
