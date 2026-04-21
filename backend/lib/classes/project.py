@@ -1,4 +1,5 @@
-from lib.classes import FORM_LENGTH, MOADB, UNIT_MAP, Complexity, Form
+from lib.classes import MOADB, Complexity, Form
+from lib.globals import FORM_LENGTH, UNIT_MAP
 
 DIE_COST = "die_cost"
 BLANK_COMP = "blank_comp"
@@ -46,7 +47,7 @@ class Project:
         self.color_comp_count = None
 
         # DB-dependent fields: set during calculate_static_costs()
-        self.blank_form_ratio = None
+        self.blank_forms_per_standee = None
         self.blank_forms_per_standee = None
         self.blank_form_total = None
         self.total_forms = None
@@ -63,7 +64,9 @@ class Project:
         self.shipping_box_cost = None
         self.label_cost = None
         self.instruction_sheet_cost = None
-        self.freight_cost = None
+        self.external_assembly = None
+        self.external_mount_assembly = None
+        self.full_out_source = None
         self.blank_comp_cost = None
         self.color_comp_cost = None
         self.engineering_design_cost = None
@@ -74,7 +77,7 @@ class Project:
         *,
         num_standees: int = 0,
         print_forms_per_standee: int = 0,
-        blank_forms_per_standee: int = 0,
+        structural_forms_per_standee: int = 0,
         blank_comp_count: int = 0,
         color_comp_count: int = 0,
         imposition_hours: int = 0,
@@ -89,8 +92,10 @@ class Project:
         self.blank_comp_count = blank_comp_count or self.blank_comp_count
         self.color_comp_count = color_comp_count or self.color_comp_count
         self.print_forms_per_standee = print_forms_per_standee or self.print_forms_per_standee
-        self.blank_form_ratio = db.get_print_blank_ratio(self.print_forms_per_standee)
-        self.blank_forms_per_standee = blank_forms_per_standee or (self.blank_form_ratio * self.print_forms_per_standee)
+        self.structural_forms_per_standee = structural_forms_per_standee or db.get_structure_forms_per_standee(
+            self.print_forms_per_standee
+        )
+        self.blank_forms_per_standee = self.structural_forms_per_standee + self.print_forms_per_standee
         self.blank_form_total = self.blank_forms_per_standee * self.num_standees
         self.total_forms = self.blank_form_total + self.print_form_total
 
@@ -179,12 +184,14 @@ class Project:
                 db.get_standee_data(standee_key, "instruction_sheet_total_cost") * self.num_standees
             )
         match scenario:
-            case 2:
-                self.freight_cost = freight_cost or db.get_unit_cost(EXTERNAL_ASSEMBLY) * self.num_standees
             case 3:
-                self.freight_cost = freight_cost or db.get_unit_cost(EXTERNAL_MOUNT_ASSEMBLY) * self.num_standees
+                self.external_assembly = freight_cost or db.get_unit_cost(EXTERNAL_ASSEMBLY) * self.num_standees
             case 4:
-                self.freight_cost = freight_cost or db.get_unit_cost(FULL_OUT_SOURCE) * self.num_standees
+                self.external_mount_assembly = (
+                    freight_cost or db.get_unit_cost(EXTERNAL_MOUNT_ASSEMBLY)
+                ) * self.num_standees
+            case 5:
+                self.full_out_source = freight_cost or db.get_unit_cost(FULL_OUT_SOURCE) * self.num_standees
 
         # composition
         if self.blank_comp_count:
@@ -211,18 +218,17 @@ class Project:
                 scenario_cost = (
                     (self.print_form_cost or 0)
                     + (self.zund_cut_cost or 0)
-                    + (self.pallet_cost or 0) # ! not sure if needed
+                    + (self.pallet_cost or 0)  # ! not sure if needed
                     + (self.instruction_sheet_cost or 0)
                 )
             case 2:
                 scenario_cost = (
                     (self.print_form_cost or 0)
                     + (self.zund_cut_cost or 0)
-                    + (self.pallet_cost or 0) # ! not sure if needed
+                    + (self.pallet_cost or 0)  # ! not sure if needed
                     + (self.shipping_box_cost or 0)
                     + (self.label_cost or 0)
                     + (self.instruction_sheet_cost or 0)
-                    + (self.freight_cost or 0)
                 )
             case 3:
                 scenario_cost = (
@@ -232,7 +238,7 @@ class Project:
                     + (self.shipping_box_cost or 0)
                     + (self.label_cost or 0)
                     + (self.instruction_sheet_cost or 0)
-                    + (self.freight_cost or 0)
+                    + (self.external_assembly or 0)
                 )
             case 4:
                 scenario_cost = (
@@ -242,7 +248,7 @@ class Project:
                     + (self.shipping_box_cost or 0)
                     + (self.label_cost or 0)
                     + (self.instruction_sheet_cost or 0)
-                    + (self.freight_cost or 0)
+                    + (self.external_mount_assembly or 0)
                 )
             case 5:
                 scenario_cost = -1  # Placeholder for scenario 5, which may have a different cost structure

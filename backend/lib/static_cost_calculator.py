@@ -1,4 +1,5 @@
-from lib.classes import SCENARIO_MAP, Project
+from lib.classes import Project
+from lib.globals import SCENARIO_MAP
 
 
 def static_cost_calculator(project: Project, **kwargs) -> dict[int, float]:

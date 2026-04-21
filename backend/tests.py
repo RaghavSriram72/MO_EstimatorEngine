@@ -10,6 +10,7 @@ complexity_map = {
     Complexity.COMPLEX: "Complex",
 }
 
+
 class TestPrintFormCalculator(unittest.TestCase):
     def test_print_form_calculator_primate_standee(self):
         elements = [
@@ -21,7 +22,6 @@ class TestPrintFormCalculator(unittest.TestCase):
         print(f"Forms per standee: {len(bin_dict)}")
 
         self.assertEqual(len(bin_dict), 2)
-
 
     def test_print_form_calculator_sonic_standee(self):
         elements = [
@@ -71,29 +71,26 @@ class TestStaticCostCalculator(unittest.TestCase):
         project = Project(
             name="Primate standee (test)",
             print_forms=list(bin_dict.values()),
-            num_standees=18, # iQuote project qty; spreadsheet "STANDEE PRINT-NLANK FORMS DATA" says quantity of standeess is only 2 there
+            num_standees=18,  # iQuote project qty; spreadsheet "STANDEE PRINT-NLANK FORMS DATA" says quantity of standeess is only 2 there
             standee_type=Complexity.MODERATE,
-            blank_comp_count=2,
-            color_comp_count=2,
         )
-        total_cost = project.get_static_cost(scenario=1)
+        total_cost = project.get_static_cost(scenario=1, blank_comp_count=2, color_comp_count=2)
 
-        print(f"  Print form cost:          ${project.print_form_cost or 0:.2f}")
+        print(f"\n  Print form cost:          ${project.print_form_cost or 0:.2f}")
         print(f"  Corrugate cost:           ${project.corrugate_cost or 0:.2f}")
         print(f"  Imposition cost:          ${project.imposition_cost or 0:.2f}")
         print(f"  Zund cut cost:            ${project.zund_cut_cost or 0:.2f}")
         print(f"  Die cost:                 ${project.die_cost or 0:.2f}")
         print(f"  Pallet cost:              ${project.pallet_cost or 0:.2f}")
         print(f"  Hardware cost:            ${project.hardware_cost or 0:.2f}")
-        print(f"  Shipper box cost:         ${project.shipper_box_cost or 0:.2f}")
+        print(f"  Shipping box cost:         ${project.shipping_box_cost or 0:.2f}")
         print(f"  Label cost:               ${project.label_cost or 0:.2f}")
         print(f"  Instruction sheet cost:   ${project.instruction_sheet_cost or 0:.2f}")
-        print(f"  Freight assembly cost:    ${project.freight_assembly_cost or 0:.2f}")
         print(f"  Blank comp cost:          ${project.blank_comp_cost or 0:.2f}")
         print(f"  color comp cost:         ${project.color_comp_cost or 0:.2f}")
         print(f"  Engineering design cost:  ${project.engineering_design_cost or 0:.2f}")
         print(f"  {'─' * 38}")
-        print(f"  Total static cost:        ${total_cost:.2f}")
+        print(f"  Total static cost:        ${total_cost:.2f}\n")
         self.assertAlmostEqual(total_cost, 2256.97, delta=1.0)
 
     def test_static_cost_calculator_sonic_standee(self):
@@ -112,30 +109,27 @@ class TestStaticCostCalculator(unittest.TestCase):
         project = Project(
             name="Sonic standee (test)",
             print_forms=list(bin_dict.values()),
-            num_standees=2428, # iQuote project qty; spreadsheet "STANDEE PRINT-NLANK FORMS DATA" says quantity of standeess is only 2 there
+            num_standees=2428,  # iQuote project qty; spreadsheet "STANDEE PRINT-NLANK FORMS DATA" says quantity of standeess is only 2 there
             standee_type=Complexity.MODERATE,
-            blank_comp_count=6,
-            color_comp_count=14,
         )
-        total_cost = project.get_static_cost(scenario=4)
-        print(f"  Print form cost:          ${project.print_form_cost or 0:.2f}")
+        total_cost = project.get_static_cost(scenario=4, blank_comp_count=6, color_comp_count=14)
+        print(f"\n  Print form cost:          ${project.print_form_cost or 0:.2f}")
         print(f"  Corrugate cost:           ${project.corrugate_cost or 0:.2f}")
         print(f"  Imposition cost:          ${project.imposition_cost or 0:.2f}")
         print(f"  Zund cut cost:            ${project.zund_cut_cost or 0:.2f}")
         print(f"  Die cost:                 ${project.die_cost or 0:.2f}")
         print(f"  Pallet cost:              ${project.pallet_cost or 0:.2f}")
         print(f"  Hardware cost:            ${project.hardware_cost or 0:.2f}")
-        print(f"  Shipper box cost:         ${project.shipper_box_cost or 0:.2f}")
+        print(f"  Shipping box cost:        ${project.shipping_box_cost or 0:.2f}")
         print(f"  Label cost:               ${project.label_cost or 0:.2f}")
         print(f"  Instruction sheet cost:   ${project.instruction_sheet_cost or 0:.2f}")
-        print(f"  Freight assembly cost:    ${project.freight_assembly_cost or 0:.2f}")
+        print(f"  Freight cost:             ${project.external_mount_assembly or 0:.2f}")
         print(f"  Blank comp cost:          ${project.blank_comp_cost or 0:.2f}")
-        print(f"  color comp cost:         ${project.color_comp_cost or 0:.2f}")
+        print(f"  color comp cost:          ${project.color_comp_cost or 0:.2f}")
         print(f"  Engineering design cost:  ${project.engineering_design_cost or 0:.2f}")
         print(f"  {'─' * 38}")
-        print(f"  Total static cost:        ${total_cost:.2f}")
+        print(f"  Total static cost:        ${total_cost:.2f}\n")
         self.assertAlmostEqual(total_cost, 307270.99, delta=1.0)
-
 
     def test_static_cost_calculator_sinner_standee(self):
         elements = [
@@ -148,12 +142,10 @@ class TestStaticCostCalculator(unittest.TestCase):
         project = Project(
             name="Sinner standee (test)",
             print_forms=list(bin_dict.values()),
-            num_standees=118, # iQuote project qty; spreadsheet "STANDEE PRINT-NLANK FORMS DATA" says quantity of standeess is only 10 there
+            num_standees=118,  # iQuote project qty; spreadsheet "STANDEE PRINT-NLANK FORMS DATA" says quantity of standeess is only 10 there
             standee_type=Complexity.MODERATE,
-            blank_comp_count=4,
-            color_comp_count=4,
         )
-        total_cost = project.get_static_cost(scenario=1)
+        total_cost = project.get_static_cost(scenario=1, blank_comp_count=4, color_comp_count=4)
         print(f"  Print form cost:          ${project.print_form_cost or 0:.2f}")
         print(f"  Corrugate cost:           ${project.corrugate_cost or 0:.2f}")
         print(f"  Imposition cost:          ${project.imposition_cost or 0:.2f}")
@@ -161,13 +153,12 @@ class TestStaticCostCalculator(unittest.TestCase):
         print(f"  Die cost:                 ${project.die_cost or 0:.2f}")
         print(f"  Pallet cost:              ${project.pallet_cost or 0:.2f}")
         print(f"  Hardware cost:            ${project.hardware_cost or 0:.2f}")
-        print(f"  Shipper box cost:         ${project.shipper_box_cost or 0:.2f}")
+        print(f"  Shipping box cost:        ${project.shipping_box_cost or 0:.2f}")
         print(f"  Label cost:               ${project.label_cost or 0:.2f}")
         print(f"  Instruction sheet cost:   ${project.instruction_sheet_cost or 0:.2f}")
-        print(f"  Freight assembly cost:    ${project.freight_assembly_cost or 0:.2f}")
         print(f"  Blank comp cost:          ${project.blank_comp_cost or 0:.2f}")
         print(f"  color comp cost:         ${project.color_comp_cost or 0:.2f}")
         print(f"  Engineering design cost:  ${project.engineering_design_cost or 0:.2f}")
         print(f"  {'─' * 38}")
-        print(f"  Total static cost:        ${total_cost:.2f}")
+        print(f"  Total static cost:        ${total_cost:.2f}\n")
         self.assertAlmostEqual(total_cost, 8884.20, delta=1.0)

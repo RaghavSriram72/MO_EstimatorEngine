@@ -5,13 +5,9 @@ from pathlib import Path
 from rectpack import PackingMode, newPacker
 
 from lib.classes import Complexity, Element, Form
+from lib.globals import FORM_LENGTH, FORM_WIDTH, PADDING
 
 # Calculate size per form -> apply_materials_tool -> fills in material field for each Element
-
-FORM_WIDTH = 60.0
-FORM_LENGTH = 80.0
-PADDING = 0.25
-FORM_AREA = FORM_WIDTH * FORM_LENGTH
 
 COMPLEXITY_COLORS = {
     Complexity.SIMPLE: "#7fc97f",
