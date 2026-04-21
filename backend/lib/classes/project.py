@@ -1,4 +1,4 @@
-from lib.classes import MOADB, Complexity, Form, FORM_LENGTH, UNIT_MAP
+from lib.classes import FORM_LENGTH, MOADB, UNIT_MAP, Complexity, Form
 
 DIE_COST = "die_cost"
 BLANK_COMP = "blank_comp"
