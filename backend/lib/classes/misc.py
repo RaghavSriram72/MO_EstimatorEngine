@@ -2,7 +2,7 @@ from enum import Enum
 
 UNIT_MAP = {
     "linear_inch": 1.0,
-    "linear_foot": 12.0,
+    "linear_foot": 1 / 12,
     "thousand": 1 / 1000,
     "each": 1.0,
     "hour": 1.0,

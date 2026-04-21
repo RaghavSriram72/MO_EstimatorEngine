@@ -48,6 +48,14 @@ class MOADB:
             return result["cost"]
         else:
             raise ValueError(f"Cost not found for '{cost_name}'")
+    
+    def get_unit_cost_entry(self, cost_name: str) -> dict:
+        """Return the entire unit cost entry for a given cost name."""
+        result = self.by_unit_costs_collection.find_one({"name": cost_name})
+        if result:
+            return result
+        else:
+            raise ValueError(f"Cost entry not found for '{cost_name}'")
 
     def get_units_by_type(self, cost_type: str) -> list[dict[str, float]]:
         """Return the unit cost for a given cost name and type."""
