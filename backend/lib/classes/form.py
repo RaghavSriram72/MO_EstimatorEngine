@@ -62,3 +62,7 @@ class Form:
             multiplier = die_map[element.complexity]
             cost += element.get_linear_inches(multiplier if not element.linear_inches_provided else 1) * die_unit_cost
         return cost
+
+    def get_linear_inches(self) -> float:
+        """Calculate total linear inches for the form."""
+        return sum(element.get_linear_inches() for element in self.elements)

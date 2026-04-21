@@ -74,7 +74,7 @@ class TestStaticCostCalculator(unittest.TestCase):
             num_standees=18,  # iQuote project qty; spreadsheet "STANDEE PRINT-NLANK FORMS DATA" says quantity of standeess is only 2 there
             standee_type=Complexity.MODERATE,
         )
-        total_cost = project.get_static_cost(scenario=1, blank_comp_count=2, color_comp_count=2)
+        total_cost = project.get_static_cost(scenario=1)
 
         print(f"\n  Print form cost:          ${project.print_form_cost or 0:.2f}")
         print(f"  Corrugate cost:           ${project.corrugate_cost or 0:.2f}")
@@ -112,7 +112,7 @@ class TestStaticCostCalculator(unittest.TestCase):
             num_standees=2428,  # iQuote project qty; spreadsheet "STANDEE PRINT-NLANK FORMS DATA" says quantity of standeess is only 2 there
             standee_type=Complexity.MODERATE,
         )
-        total_cost = project.get_static_cost(scenario=4, blank_comp_count=6, color_comp_count=14)
+        total_cost = project.get_static_cost(scenario=4)
         print(f"\n  Print form cost:          ${project.print_form_cost or 0:.2f}")
         print(f"  Corrugate cost:           ${project.corrugate_cost or 0:.2f}")
         print(f"  Imposition cost:          ${project.imposition_cost or 0:.2f}")
@@ -145,7 +145,7 @@ class TestStaticCostCalculator(unittest.TestCase):
             num_standees=118,  # iQuote project qty; spreadsheet "STANDEE PRINT-NLANK FORMS DATA" says quantity of standeess is only 10 there
             standee_type=Complexity.MODERATE,
         )
-        total_cost = project.get_static_cost(scenario=1, blank_comp_count=4, color_comp_count=4)
+        total_cost = project.get_static_cost(scenario=1)
         print(f"  Print form cost:          ${project.print_form_cost or 0:.2f}")
         print(f"  Corrugate cost:           ${project.corrugate_cost or 0:.2f}")
         print(f"  Imposition cost:          ${project.imposition_cost or 0:.2f}")

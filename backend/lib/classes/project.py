@@ -47,9 +47,8 @@ class Project:
         self.color_comp_count = None
 
         # DB-dependent fields: set during calculate_static_costs()
+        self.structural_forms_per_standee = None
         self.blank_forms_per_standee = None
-        self.blank_forms_per_standee = None
-        self.blank_form_total = None
         self.total_forms = None
         self.print_form_cost = None
         self.corrugate_cost = None
@@ -84,8 +83,11 @@ class Project:
         zund_hours: int = 0,
         die_cost: float = 0,
         pallet_count: int = 0,
-        freight_cost: float = 0,
+        external_assembly: float = 0,
+        external_mount_assembly: float = 0,
+        full_out_source: float = 0,
     ) -> None:
+            
         """Calculate static costs for a project based on the print forms, number of standees, and standee type."""
         db = MOADB()
         self.num_standees = num_standees or self.num_standees
@@ -96,8 +98,7 @@ class Project:
             self.print_forms_per_standee
         )
         self.blank_forms_per_standee = self.structural_forms_per_standee + self.print_forms_per_standee
-        self.blank_form_total = self.blank_forms_per_standee * self.num_standees
-        self.total_forms = self.blank_form_total + self.print_form_total
+        blank_form_total = self.blank_forms_per_standee * self.num_standees
 
         standee_key = self.STANDEE_MAP[self.standee_type]
         # print form material cost calculation (includes hi-tack for 95# in scenario 4)
@@ -125,7 +126,8 @@ class Project:
             self.print_form_cost += hi_tack_cost
 
         # corrugate cost calculation
-        self.corrugate_cost = db.get_unit_cost(CORRUGATE) * self.total_forms
+        print(self.blank_forms_per_standee)
+        self.corrugate_cost = db.get_unit_cost(CORRUGATE) * blank_form_total
 
         # imposition cost calculation
         self.imposition_hours = imposition_hours or self.print_forms_per_standee
@@ -136,6 +138,9 @@ class Project:
         if scenario not in (4, 5):
             self.zund_hours = zund_hours
             if not self.zund_hours:
+                total_linear_inches = sum(form.get_linear_inches() for form in self.print_forms) * self.num_standees
+                print(total_linear_inches * self.num_standees, ((total_linear_inches/8000) * 72) * self.num_standees)
+                print(f"Calculating zund hours for scenario {scenario} with standee type {self.standee_type}")
                 print_zund_hours = (
                     db.get_standee_data(standee_key, "zund_print_form_minutes")
                     * self.print_forms_per_standee
@@ -146,6 +151,8 @@ class Project:
                     * self.blank_forms_per_standee
                     * self.num_standees
                 ) / 60
+
+                print(f"Print zund hours: {print_zund_hours}, Blank zund hours: {blank_zund_hours}")
                 self.zund_hours = print_zund_hours + blank_zund_hours
             self.zund_cut_cost = self.zund_hours * db.get_standee_data(standee_key, "zund_cost_per_hour")
 
@@ -172,11 +179,12 @@ class Project:
         self.hardware_cost = db.get_standee_data(standee_key, "hardware_cost") * self.num_standees
 
         # shipping and label cost calculation
-        if scenario != 1:
-            self.shipping_box_cost = db.get_unit_cost(SHIPPING_BOX) * self.num_standees
-            desc_label_cost = db.get_unit_cost(DESCRIPTION_LABEL)
-            handling_label_cost = db.get_unit_cost(SHIPPING_LABEL)
-            self.label_cost = (2 * desc_label_cost + handling_label_cost) * self.num_standees
+        # ! scenario based?
+        # if scenario != 2:
+        self.shipping_box_cost = db.get_unit_cost(SHIPPING_BOX) * self.num_standees
+        desc_label_cost = db.get_unit_cost(DESCRIPTION_LABEL)
+        handling_label_cost = db.get_unit_cost(SHIPPING_LABEL)
+        self.label_cost = (2 * desc_label_cost + handling_label_cost) * self.num_standees
 
         # freight cost calculation
         if scenario in (1, 2):
@@ -185,13 +193,11 @@ class Project:
             )
         match scenario:
             case 3:
-                self.external_assembly = freight_cost or db.get_unit_cost(EXTERNAL_ASSEMBLY) * self.num_standees
+                self.external_assembly = external_assembly or db.get_unit_cost(EXTERNAL_ASSEMBLY)
             case 4:
-                self.external_mount_assembly = (
-                    freight_cost or db.get_unit_cost(EXTERNAL_MOUNT_ASSEMBLY)
-                ) * self.num_standees
+                self.external_mount_assembly = external_mount_assembly or db.get_unit_cost(EXTERNAL_MOUNT_ASSEMBLY)
             case 5:
-                self.full_out_source = freight_cost or db.get_unit_cost(FULL_OUT_SOURCE) * self.num_standees
+                self.full_out_source = full_out_source or db.get_unit_cost(FULL_OUT_SOURCE)
 
         # composition
         if self.blank_comp_count:
