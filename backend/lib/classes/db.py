@@ -49,6 +49,14 @@ class MOADB:
         else:
             raise ValueError(f"Cost not found for '{cost_name}'")
 
+    def get_unit_cost_entry(self, cost_name: str) -> dict:
+        """Return the entire unit cost entry for a given cost name."""
+        result = self.by_unit_costs_collection.find_one({"name": cost_name})
+        if result:
+            return result
+        else:
+            raise ValueError(f"Cost entry not found for '{cost_name}'")
+
     def get_units_by_type(self, cost_type: str) -> list[dict[str, float]]:
         """Return the unit cost for a given cost name and type."""
         result = self.by_unit_costs_collection.find({"type": cost_type})
@@ -74,7 +82,7 @@ class MOADB:
         result = self.standee_collection.update_one({"standee_type": standee_category}, {"$set": {data_field: value}})
         return result.modified_count > 0  # Return True if the update was successful
 
-    def get_print_blank_ratio(self, print_forms: int) -> int:
+    def get_structure_forms_per_standee(self, print_forms: int) -> int:
         """Return the current print blank ratio."""
         result = self.print_blank_collection.find_one({"print_forms": print_forms})
         if result and "blank_forms" in result:
@@ -82,13 +90,13 @@ class MOADB:
         else:
             raise ValueError(f"Print blank ratio not found for {print_forms} print forms")
 
-    def set_print_blank_ratio(self, print_forms: int, blank_forms: int) -> None:
+    def set_blank_forms_per_standee(self, print_forms: int, blank_forms: int) -> None:
         """Set the current print blank ratio."""
         try:
             self.print_blank_collection.update_one({"print_forms": print_forms}, {"$set": {"blank_forms": blank_forms}})
         except Exception as e:
             raise ValueError(f"Failed to set print blank ratio: {str(e)}")
-        
+
     def close(self):
         """Close the MongoDB client connection."""
         self.client.close()

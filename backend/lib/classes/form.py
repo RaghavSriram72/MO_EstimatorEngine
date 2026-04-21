@@ -1,13 +1,5 @@
 from enum import Enum
 
-UNIT_MAP = {
-    "linear_inch": 1.0,
-    "linear_foot": 12.0,
-    "thousand": 1 / 1000,
-    "each": 1.0,
-    "hour": 1.0,
-}
-
 
 class Complexity(Enum):
     """Enum to represent complexity of an element for form calculation."""
@@ -70,3 +62,7 @@ class Form:
             multiplier = die_map[element.complexity]
             cost += element.get_linear_inches(multiplier if not element.linear_inches_provided else 1) * die_unit_cost
         return cost
+
+    def get_linear_inches(self) -> float:
+        """Calculate total linear inches for the form."""
+        return sum(element.get_linear_inches() for element in self.elements)
