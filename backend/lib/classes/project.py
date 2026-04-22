@@ -42,6 +42,7 @@ class Project:
     ):
         self.name = name
         self.standee_type = standee_type
+        self.standee_key = STANDEE_MAP[standee_type]
         self.print_forms = print_forms
         self.num_standees = num_standees
         self._calculate_universal_costs()
@@ -77,8 +78,7 @@ class Project:
         blank_comp_count: float = 0,
         color_comp_count: float = 0,
     ) -> float:
-
-        standee_key = STANDEE_MAP[self.standee_type]
+        
         self.num_standees = num_standees or self.num_standees
         with MidnightOilDB() as db:
             # corrugate cost calculation
@@ -90,14 +90,14 @@ class Project:
             self.corrugate_cost = db.get_unit_cost(CORRUGATE) * self.blank_forms_per_standee * self.num_standees
             # imposition cost
             self.imposition_hours = imposition_hours or self.print_forms_per_standee
-            imposition_rate = db.get_standee_data(standee_key, "imposition_cost_per_hour")
+            imposition_rate = db.get_standee_data(self.standee_key, "imposition_cost_per_hour")
             self.imposition_cost = imposition_rate * self.imposition_hours
 
             # hardware cost calculation
-            self.hardware_cost = db.get_standee_data(standee_key, "hardware_cost") * self.num_standees
+            self.hardware_cost = db.get_standee_data(self.standee_key, "hardware_cost") * self.num_standees
 
             # misc costs
-            self.engineering_design_cost = db.get_standee_data(standee_key, "engineering_design_cost_per_project")
+            self.engineering_design_cost = db.get_standee_data(self.standee_key, "engineering_design_cost_per_project")
             if blank_comp_count:
                 self.blank_comp_count = blank_comp_count
                 self.blank_comp_cost = db.get_unit_cost(BLANK_COMP) * self.blank_comp_count
@@ -126,7 +126,6 @@ class Scenario1(Project):
         zund_hours: float = 0,
         **kwargs,
     ) -> float:
-        standee_key = STANDEE_MAP[self.standee_type]
         super()._calculate_universal_costs(
             num_standees=num_standees,
             print_forms_per_standee=print_forms_per_standee,
@@ -141,7 +140,7 @@ class Scenario1(Project):
 
             # zund cost calculation
             self.zund_hours = zund_hours or _zund_hours(
-                db, standee_key, self.print_forms_per_standee, self.blank_forms_per_standee, self.num_standees
+                db, self.standee_key, self.print_forms_per_standee, self.blank_forms_per_standee, self.num_standees
             )
             self.zund_cut_cost = self.zund_hours * db.get_unit_cost(ZUND_CUT_COST)
 
@@ -149,7 +148,7 @@ class Scenario1(Project):
             self.shipping_box_cost, self.label_cost = _shipping_box_and_label_cost(db, self.num_standees)
 
             # instruction sheet cost calculation
-            self.instruction_sheet_cost = _instruction_sheet_cost(db, standee_key, self.num_standees)
+            self.instruction_sheet_cost = _instruction_sheet_cost(db, self.standee_key, self.num_standees)
 
         return self.total_cost
 
@@ -185,7 +184,6 @@ class Scenario2(Project):
         zund_hours: float = 0,
         **kwargs
     ) -> float:
-        standee_key = STANDEE_MAP[self.standee_type]
         super()._calculate_universal_costs(
             num_standees=num_standees,
             print_forms_per_standee=print_forms_per_standee,
@@ -200,7 +198,7 @@ class Scenario2(Project):
 
             # zund cost calculation
             self.zund_hours = zund_hours or _zund_hours(
-                db, standee_key, self.print_forms_per_standee, self.blank_forms_per_standee, self.num_standees
+                db, self.standee_key, self.print_forms_per_standee, self.blank_forms_per_standee, self.num_standees
             )
             self.zund_cut_cost = self.zund_hours * db.get_unit_cost(ZUND_CUT_COST)
 
@@ -242,7 +240,6 @@ class Scenario3(Project):
         freight_cost: float = 0,
         **kwargs
     ) -> float:
-        standee_key = STANDEE_MAP[self.standee_type]
         super()._calculate_universal_costs(
             num_standees=num_standees,
             print_forms_per_standee=print_forms_per_standee,
@@ -257,7 +254,7 @@ class Scenario3(Project):
 
             # zund cost calculation
             self.zund_hours = zund_hours or _zund_hours(
-                db, standee_key, self.print_forms_per_standee, self.blank_forms_per_standee, self.num_standees
+                db, self.standee_key, self.print_forms_per_standee, self.blank_forms_per_standee, self.num_standees
             )
             self.zund_cut_cost = self.zund_hours * db.get_unit_cost(ZUND_CUT_COST)
 
@@ -265,7 +262,7 @@ class Scenario3(Project):
             self.shipping_box_cost, self.label_cost = _shipping_box_and_label_cost(db, self.num_standees)
 
             # instruction sheet cost calculation
-            self.instruction_sheet_cost = _instruction_sheet_cost(db, standee_key, self.num_standees)
+            self.instruction_sheet_cost = _instruction_sheet_cost(db, self.standee_key, self.num_standees)
 
             # pallet cost calculation
             self.pallet_count = pallet_count or (self.num_standees // db.get_unit_cost(PALLET))
@@ -313,7 +310,6 @@ class Scenario4(Project):
         die_cost: float = 0,
         **kwargs
     ) -> float:
-        standee_key = STANDEE_MAP[self.standee_type]
         super()._calculate_universal_costs(
             num_standees=num_standees,
             print_forms_per_standee=print_forms_per_standee,
@@ -334,7 +330,7 @@ class Scenario4(Project):
             self.shipping_box_cost, self.label_cost = _shipping_box_and_label_cost(db, self.num_standees)
 
             # instruction sheet cost calculation
-            self.instruction_sheet_cost = _instruction_sheet_cost(db, standee_key, self.num_standees)
+            self.instruction_sheet_cost = _instruction_sheet_cost(db, self.standee_key, self.num_standees)
 
             # pallet cost calculation
             self.pallet_count = pallet_count or (self.num_standees // db.get_unit_cost(PALLET))
@@ -384,7 +380,6 @@ class Scenario5(Project):
         die_cost: float = 0,
         **kwargs
     ) -> float:
-        standee_key = STANDEE_MAP[self.standee_type]
         super()._calculate_universal_costs(
             num_standees=num_standees,
             print_forms_per_standee=print_forms_per_standee,
@@ -395,7 +390,7 @@ class Scenario5(Project):
         )
         with MidnightOilDB() as db:
             # instruction sheet cost calculation
-            self.instruction_sheet_cost = _instruction_sheet_cost(db, standee_key, self.num_standees)
+            self.instruction_sheet_cost = _instruction_sheet_cost(db, self.standee_key, self.num_standees)
 
             # freight cost calculation
             self.freight_cost = freight_cost or db.get_unit_cost(FULL_OUT_SOURCE)
