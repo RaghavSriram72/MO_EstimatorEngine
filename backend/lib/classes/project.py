@@ -403,6 +403,7 @@ class Scenario4(Project):
 
 class Scenario5(Project):
     """Scenario 5: External Print, External Finishing, Packed out (currently incomplete)."""
+
     def __init__(self, name: str, print_forms: list[Form], num_standees: int, standee_type: Complexity):
         super().__init__(name, print_forms, num_standees, standee_type)
 
@@ -447,12 +448,7 @@ class Scenario5(Project):
     @property
     def total_cost(self) -> float:
         """Calculate the total cost of the project, including both universal and scenario-specific costs."""
-        return (
-            self.total_universal_cost
-            + self.instruction_sheet_cost
-            + self.freight_cost
-            + self.die_cost
-        )
+        return self.total_universal_cost + self.instruction_sheet_cost + self.freight_cost + self.die_cost
 
 
 def _print_form_cost(db, print_material_name: str, print_forms_per_standee: int, num_standees: int) -> float:
