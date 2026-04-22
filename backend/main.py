@@ -6,9 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from lib.classes.misc import Element, Complexity
-from lib.classes.project import Project
-from lib.classes.db import MOADB
+from lib.classes import Complexity, Element, MOADB, Project
 from lib.print_form_calculator import print_form_calculator
 
 
@@ -97,14 +95,19 @@ async def generate_quote(payload: QuoteRequest):
         complexity_counts[element.complexity] += 1
     majority_complexity = max(complexity_counts, key=complexity_counts.get)
 
-    _, print_forms = print_form_calculator(elements, payload.num_standees)
+    _, bin_dict = print_form_calculator(elements, payload.num_standees)
+    print_forms = list(bin_dict.values())
 
-    project = Project(print_forms=print_forms, num_standees=payload.num_standees, complexity=majority_complexity)
+    project = Project(
+        name="API quote",
+        print_forms=print_forms,
+        num_standees=payload.num_standees,
+        standee_type=majority_complexity,
+    )
 
-    # TO DO return Estimate Object with all calculated costs and details
-    static_costs = project.get_static_costs(payload.scenario)
+    total_static_cost = project.get_static_cost(payload.scenario)
 
-    return {}
+    return {"total_static_cost": total_static_cost}
 
 
 @app.get("/standee-data")
