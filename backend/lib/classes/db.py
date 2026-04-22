@@ -1,7 +1,10 @@
 import hashlib
 import os
 import secrets
+from typing import Any
 
+from bson import ObjectId
+from bson.errors import InvalidId
 from dotenv import load_dotenv
 from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
@@ -19,6 +22,8 @@ class MOADB:
         self.standee_collection = self.db["standee_static_costs"]
         self.print_blank_collection = self.db["print_blank_ratio"]
         self.users_collection = self.db["users"]
+        self.projects_collection = self.db["projects"]
+        self.projects_collection.create_index([("owner", 1), ("_id", -1)])
 
     def check_username_exists(self, username: str) -> bool:
         """Check if a username already exists in the users collection."""
@@ -40,6 +45,34 @@ class MOADB:
     def get_user(self, username: str):
         """Retrieve a user document by username."""
         return self.users_collection.find_one({"username": username})
+
+    def insert_persisted_project(self, doc: dict[str, Any]) -> str:
+        """Insert a canonical v1 project document; returns the new document id as a string."""
+        result = self.projects_collection.insert_one(doc)
+        return str(result.inserted_id)
+
+    def list_projects_by_owner(self, owner: str) -> list[dict[str, Any]]:
+        """Return all project documents for an owner, newest ``_id`` first."""
+        cursor = self.projects_collection.find({"owner": owner}).sort("_id", -1)
+        out: list[dict[str, Any]] = []
+        for row in cursor:
+            doc = dict(row)
+            doc["_id"] = str(doc["_id"])
+            out.append(doc)
+        return out
+
+    def get_project_by_owner(self, project_id: str, owner: str) -> dict[str, Any] | None:
+        """Return one project document if it exists and belongs to ``owner``."""
+        try:
+            oid = ObjectId(project_id)
+        except (InvalidId, TypeError):
+            return None
+        row = self.projects_collection.find_one({"_id": oid, "owner": owner})
+        if row is None:
+            return None
+        doc = dict(row)
+        doc["_id"] = str(doc["_id"])
+        return doc
 
     def get_unit_cost(self, cost_name: str) -> float:
         """Return the unit cost for a given cost name."""

@@ -1,12 +1,17 @@
 import hashlib
 import hmac
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from lib.classes import Complexity, Element, MOADB, Project
+from lib.persisted_project import (
+    EXAMPLE_PROJECT_DOCUMENT,
+    PersistedProjectCreate,
+    persisted_create_to_mongo_document,
+)
 from lib.print_form_calculator import print_form_calculator
 
 
@@ -25,7 +30,6 @@ app.add_middleware(
 class AccountRequest(BaseModel):
     username: str
     password: str
-
 
 def _verify_password(password: str, stored_hash: str) -> bool:
     """Verify a password against a stored PBKDF2 hash string."""
@@ -118,6 +122,45 @@ async def get_standee_data(standee_type: int, data_type: str):
     standee_data = db.get_standee_data(type_mapping[standee_type], data_type.strip())
     print(f"Retrieved standee data for type {type_mapping[standee_type]} and field '{data_type}': {standee_data}")
     return {"data": standee_data}
+
+
+@app.post("/create-project")
+async def create_project(payload: PersistedProjectCreate):
+    db = MOADB()
+    if not db.check_username_exists(payload.owner):
+        return JSONResponse(status_code=404, content={"error": "Unknown owner"})
+    doc = persisted_create_to_mongo_document(payload)
+    project_id = db.insert_persisted_project(doc)
+    return JSONResponse(
+        status_code=201,
+        content={"project_id": project_id, "message": "Project created successfully"},
+    )
+
+
+@app.get("/projects")
+async def list_projects(owner: str = Query(..., description="Username of the account that owns the projects")):
+    db = MOADB()
+    if not db.check_username_exists(owner):
+        return JSONResponse(status_code=404, content={"error": "Unknown owner"})
+    return {"projects": db.list_projects_by_owner(owner)}
+
+
+@app.get("/projects/schema/example")
+async def persisted_project_example():
+    """Canonical v1 document shape (no scenario; scenarios use ``Scenario`` + ``Project`` in code)."""
+    return EXAMPLE_PROJECT_DOCUMENT
+
+
+@app.get("/projects/{project_id}")
+async def get_project(
+    project_id: str,
+    owner: str = Query(..., description="Must match the document's owner field"),
+):
+    db = MOADB()
+    row = db.get_project_by_owner(project_id, owner)
+    if row is None:
+        return JSONResponse(status_code=404, content={"error": "Project not found"})
+    return row
 
 
 @app.post("/create-account")
