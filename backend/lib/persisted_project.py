@@ -38,7 +38,7 @@ def complexity_to_str(c: Complexity) -> ComplexityStr:
 
 
 def elements_to_persisted(rows: list[Element]) -> list[PersistedElement]:
-    """Turn runtime ``Element`` instances into persisted rows."""
+    """Turns elements associated with a project into a persisted object"""
     return [
         PersistedElement(
             name=el.name or "",
