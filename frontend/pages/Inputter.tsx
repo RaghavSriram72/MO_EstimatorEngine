@@ -41,9 +41,10 @@ export default function Inputter() {
     }
 
     function handleQuoteGeneration() {
-        const payload = {
+        const payload: Record<string, unknown> = {
             scenario: scenarioNumber,
             elements: elements.map(({ height, width, complexity, linear_inches }) => ({
+                name: "",
                 height: height === "" ? 0 : height,
                 width: width === "" ? 0 : width,
                 complexity,
@@ -51,6 +52,10 @@ export default function Inputter() {
             })),
             num_standees: standeeCount === "" ? 0 : standeeCount,
         };
+        if (typeof window !== "undefined") {
+            const owner = localStorage.getItem("username");
+            if (owner) payload.owner = owner;
+        }
 
         fetch("http://localhost:8000/generate_quote", {
             method: "POST",
