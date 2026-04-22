@@ -1,4 +1,6 @@
-from lib.classes import MOADB, Complexity, Form
+from typing import override
+
+from lib.classes import Complexity, Form, MidnightOilDB
 from lib.globals import FORM_LENGTH, UNIT_MAP
 
 DIE_COST = "die_cost"
@@ -19,6 +21,13 @@ ROLL_HI_TACK = "roll_hi_tack"
 ROLL_BUSMARK = "roll_busmark"
 IMPOSITION_LABOR = "imposition_labor"
 INSTRUCTION_SHEET = "instruction_sheet"
+ZUND_CUT_COST = "zund_cut_cost"
+
+STANDEE_MAP = {
+    Complexity.SIMPLE: "Simple Standee",
+    Complexity.MODERATE: "Moderate Standee",
+    Complexity.COMPLEX: "Complex Standee",
+}
 
 
 class Project:
@@ -31,231 +40,424 @@ class Project:
         num_standees: int,
         standee_type: Complexity,
     ):
-        self.STANDEE_MAP = {
-            Complexity.SIMPLE: "Simple Standee",
-            Complexity.MODERATE: "Moderate Standee",
-            Complexity.COMPLEX: "Complex Standee",
-        }
-        self.standee_type = standee_type
         self.name = name
+        self.standee_type = standee_type
+        self.standee_key = STANDEE_MAP[standee_type]
         self.print_forms = print_forms
         self.num_standees = num_standees
+        self._calculate_universal_costs()
 
-        self.print_forms_per_standee = len(print_forms)
-        self.print_form_total = self.print_forms_per_standee * self.num_standees
-        self.blank_comp_count = None
-        self.color_comp_count = None
+    @property
+    def total_universal_cost(self) -> float:
+        """Calculate the total universal cost for the project."""
+        return (
+            self.corrugate_cost
+            + self.imposition_cost
+            + self.blank_comp_cost
+            + self.color_comp_cost
+            + self.engineering_design_cost
+            + self.hardware_cost
+        )
 
-        # DB-dependent fields: set during calculate_static_costs()
-        self.structural_forms_per_standee = None
-        self.blank_forms_per_standee = None
-        self.total_forms = None
-        self.print_form_cost = None
-        self.corrugate_cost = None
-        self.imposition_hours = None
-        self.imposition_cost = None
-        self.zund_hours = None
-        self.zund_cut_cost = None
-        self.die_cost = None
-        self.pallet_count = self.print_forms_per_standee
-        self.pallet_cost = None
-        self.hardware_cost = None
-        self.shipping_box_cost = None
-        self.label_cost = None
-        self.instruction_sheet_cost = None
-        self.external_assembly = None
-        self.external_mount_assembly = None
-        self.full_out_source = None
-        self.blank_comp_cost = None
-        self.color_comp_cost = None
-        self.engineering_design_cost = None
+    @property
+    def total_cost(self) -> float:
+        """Calculate the total cost of the project, including both universal and scenario-specific costs."""
+        raise NotImplementedError("Subclasses must implement total_cost property")
 
-    def calculate_static_costs(
+    def calculate_cost(self, **kwargs) -> float:
+        """Calculate the total cost of the project, including both universal and scenario-specific costs."""
+        raise NotImplementedError("Subclasses must implement calculate_cost method")
+
+    def _calculate_universal_costs(
         self,
-        scenario: int,
         *,
         num_standees: int = 0,
         print_forms_per_standee: int = 0,
-        structural_forms_per_standee: int = 0,
-        blank_comp_count: int = 0,
-        color_comp_count: int = 0,
-        imposition_hours: int = 0,
-        zund_hours: int = 0,
-        die_cost: float = 0,
-        pallet_count: int = 0,
-        external_assembly: float = 0,
-        external_mount_assembly: float = 0,
-        full_out_source: float = 0,
-    ) -> None:
-            
-        """Calculate static costs for a project based on the print forms, number of standees, and standee type."""
-        db = MOADB()
+        structure_forms_per_standee: int = 0,
+        imposition_hours: float = 0,
+        blank_comp_count: float = 0,
+        color_comp_count: float = 0,
+    ) -> float:
+        
         self.num_standees = num_standees or self.num_standees
-        self.blank_comp_count = blank_comp_count or self.blank_comp_count
-        self.color_comp_count = color_comp_count or self.color_comp_count
-        self.print_forms_per_standee = print_forms_per_standee or self.print_forms_per_standee
-        self.structural_forms_per_standee = structural_forms_per_standee or db.get_structure_forms_per_standee(
-            self.print_forms_per_standee
-        )
-        self.blank_forms_per_standee = self.structural_forms_per_standee + self.print_forms_per_standee
-        blank_form_total = self.blank_forms_per_standee * self.num_standees
-
-        standee_key = self.STANDEE_MAP[self.standee_type]
-        # print form material cost calculation (includes hi-tack for 95# in scenario 4)
-        print_form_material = None
-        match scenario:
-            case 1 | 2 | 3:
-                print_form_material = db.get_unit_cost_entry(ROLL_BUSMARK)
-            case 4:
-                print_form_material = db.get_unit_cost_entry(ROLL_95)
-
-        # ! going to raise for scenario 5 until we have more info on what materials it will use
-        if print_form_material is None:
-            raise ValueError(f"No print form material found for scenario {scenario}")
-
-        print_form_unit = print_form_material["unit"]
-        if print_form_unit == "each":
-            self.print_form_cost = print_form_material["cost"] * self.print_form_total
-        elif print_form_unit == "linear_foot":
-            print_form_material["cost"] *= UNIT_MAP[print_form_unit]
-            self.print_form_cost = print_form_material["cost"] * FORM_LENGTH * self.print_form_total
-        if scenario == 4:
-            hi_tack_material = db.get_unit_cost_entry(ROLL_HI_TACK)
-            hi_tack_unit = hi_tack_material["unit"]
-            hi_tack_cost = hi_tack_material["cost"] * UNIT_MAP[hi_tack_unit] * FORM_LENGTH * self.print_form_total
-            self.print_form_cost += hi_tack_cost
-
-        # corrugate cost calculation
-        print(self.blank_forms_per_standee)
-        self.corrugate_cost = db.get_unit_cost(CORRUGATE) * blank_form_total
-
-        # imposition cost calculation
-        self.imposition_hours = imposition_hours or self.print_forms_per_standee
-        imposition_rate = db.get_standee_data(standee_key, "imposition_cost_per_hour")
-        self.imposition_cost = imposition_rate * self.imposition_hours
-
-        # zund cut cost calculation
-        if scenario not in (4, 5):
-            self.zund_hours = zund_hours
-            if not self.zund_hours:
-                total_linear_inches = sum(form.get_linear_inches() for form in self.print_forms) * self.num_standees
-                print(total_linear_inches * self.num_standees, ((total_linear_inches/8000) * 72) * self.num_standees)
-                print(f"Calculating zund hours for scenario {scenario} with standee type {self.standee_type}")
-                print_zund_hours = (
-                    db.get_standee_data(standee_key, "zund_print_form_minutes")
-                    * self.print_forms_per_standee
-                    * self.num_standees
-                ) / 60
-                blank_zund_hours = (
-                    db.get_standee_data(standee_key, "zund_blank_form_minutes")
-                    * self.blank_forms_per_standee
-                    * self.num_standees
-                ) / 60
-
-                print(f"Print zund hours: {print_zund_hours}, Blank zund hours: {blank_zund_hours}")
-                self.zund_hours = print_zund_hours + blank_zund_hours
-            self.zund_cut_cost = self.zund_hours * db.get_standee_data(standee_key, "zund_cost_per_hour")
-
-        # die cost calculation
-        if scenario in (4, 5):
-            self.die_cost = die_cost
-            if not self.die_cost:
-                die_unit_cost = db.get_unit_cost("die_cost")
-                die_complexity_map = {
-                    complexity: db.get_standee_data(term, "cutting_die_inches_multiplier")
-                    for complexity, term in self.STANDEE_MAP.items()
-                }
-                for form in self.print_forms:
-                    self.die_cost += form.get_die_cost(die_complexity_map, die_unit_cost)
-
-        # pallet and pallet labor cost calculation
-        # ! def scenario based
-        self.pallet_count = pallet_count or self.print_forms_per_standee
-        self.pallet_cost = (
-            db.get_unit_cost(PALLET_LABOR) * self.pallet_count + db.get_unit_cost(PALLET) * self.pallet_count
-        )
-
-        # hardware cost calculation
-        self.hardware_cost = db.get_standee_data(standee_key, "hardware_cost") * self.num_standees
-
-        # shipping and label cost calculation
-        # ! scenario based?
-        # if scenario != 2:
-        self.shipping_box_cost = db.get_unit_cost(SHIPPING_BOX) * self.num_standees
-        desc_label_cost = db.get_unit_cost(DESCRIPTION_LABEL)
-        handling_label_cost = db.get_unit_cost(SHIPPING_LABEL)
-        self.label_cost = (2 * desc_label_cost + handling_label_cost) * self.num_standees
-
-        # freight cost calculation
-        if scenario in (1, 2):
-            self.instruction_sheet_cost = (
-                db.get_standee_data(standee_key, "instruction_sheet_total_cost") * self.num_standees
+        with MidnightOilDB() as db:
+            # corrugate cost calculation
+            self.print_forms_per_standee = print_forms_per_standee or len(self.print_forms)
+            self.structure_forms_per_standee = structure_forms_per_standee or db.get_structure_forms_per_standee(
+                self.print_forms_per_standee
             )
-        match scenario:
-            case 3:
-                self.external_assembly = external_assembly or db.get_unit_cost(EXTERNAL_ASSEMBLY)
-            case 4:
-                self.external_mount_assembly = external_mount_assembly or db.get_unit_cost(EXTERNAL_MOUNT_ASSEMBLY)
-            case 5:
-                self.full_out_source = full_out_source or db.get_unit_cost(FULL_OUT_SOURCE)
+            self.blank_forms_per_standee = self.print_forms_per_standee + self.structure_forms_per_standee
+            self.corrugate_cost = db.get_unit_cost(CORRUGATE) * self.blank_forms_per_standee * self.num_standees
+            # imposition cost
+            self.imposition_hours = imposition_hours or self.print_forms_per_standee
+            imposition_rate = db.get_standee_data(self.standee_key, "imposition_cost_per_hour")
+            self.imposition_cost = imposition_rate * self.imposition_hours
 
-        # composition
-        if self.blank_comp_count:
-            self.blank_comp_cost = db.get_unit_cost(BLANK_COMP) * self.blank_comp_count
-        if self.color_comp_count:
-            self.color_comp_cost = db.get_unit_cost(COLOR_COMP) * self.color_comp_count
-        self.engineering_design_cost = db.get_standee_data(standee_key, "engineering_design_cost_per_project")
-        db.close()
+            # hardware cost calculation
+            self.hardware_cost = db.get_standee_data(self.standee_key, "hardware_cost") * self.num_standees
 
-    def get_static_cost(self, scenario: int, **kwargs) -> float:
-        """Calculate and return the total static cost for the project, summing all individual cost components."""
-        self.calculate_static_costs(scenario, **kwargs)
-        universal_costs = (
-            (self.corrugate_cost or 0)
-            + (self.imposition_cost or 0)
-            + (self.blank_comp_cost or 0)
-            + (self.color_comp_cost or 0)
-            + (self.engineering_design_cost or 0)
-            + (self.hardware_cost or 0)
+            # misc costs
+            self.engineering_design_cost = db.get_standee_data(self.standee_key, "engineering_design_cost_per_project")
+            if blank_comp_count:
+                self.blank_comp_count = blank_comp_count
+                self.blank_comp_cost = db.get_unit_cost(BLANK_COMP) * self.blank_comp_count
+            if color_comp_count:
+                self.color_comp_count = color_comp_count
+                self.color_comp_cost = db.get_unit_cost(COLOR_COMP) * self.color_comp_count
+        return self.total_universal_cost
+
+
+class Scenario1(Project):
+    """Scenario 1: Internal Print, Internal Finishing, Packed out."""
+
+    def __init__(self, name: str, print_forms: list[Form], num_standees: int, standee_type: Complexity):
+        super().__init__(name, print_forms, num_standees, standee_type)
+
+    @override
+    def calculate_cost(
+        self,
+        *,
+        num_standees: int = 0,
+        print_forms_per_standee: int = 0,
+        structure_forms_per_standee: int = 0,
+        imposition_hours: float = 0,
+        blank_comp_count: float = 0,
+        color_comp_count: float = 0,
+        zund_hours: float = 0,
+        **kwargs,
+    ) -> float:
+        super()._calculate_universal_costs(
+            num_standees=num_standees,
+            print_forms_per_standee=print_forms_per_standee,
+            structure_forms_per_standee=structure_forms_per_standee,
+            imposition_hours=imposition_hours,
+            blank_comp_count=blank_comp_count,
+            color_comp_count=color_comp_count,
         )
-        scenario_cost = 0
-        match scenario:
-            case 1:
-                scenario_cost = (
-                    (self.print_form_cost or 0)
-                    + (self.zund_cut_cost or 0)
-                    + (self.pallet_cost or 0)  # ! not sure if needed
-                    + (self.instruction_sheet_cost or 0)
-                )
-            case 2:
-                scenario_cost = (
-                    (self.print_form_cost or 0)
-                    + (self.zund_cut_cost or 0)
-                    + (self.pallet_cost or 0)  # ! not sure if needed
-                    + (self.shipping_box_cost or 0)
-                    + (self.label_cost or 0)
-                    + (self.instruction_sheet_cost or 0)
-                )
-            case 3:
-                scenario_cost = (
-                    (self.print_form_cost or 0)
-                    + (self.zund_cut_cost or 0)
-                    + (self.pallet_cost or 0)
-                    + (self.shipping_box_cost or 0)
-                    + (self.label_cost or 0)
-                    + (self.instruction_sheet_cost or 0)
-                    + (self.external_assembly or 0)
-                )
-            case 4:
-                scenario_cost = (
-                    (self.print_form_cost or 0)
-                    + (self.die_cost or 0)
-                    + (self.pallet_cost or 0)
-                    + (self.shipping_box_cost or 0)
-                    + (self.label_cost or 0)
-                    + (self.instruction_sheet_cost or 0)
-                    + (self.external_mount_assembly or 0)
-                )
-            case 5:
-                scenario_cost = -1  # Placeholder for scenario 5, which may have a different cost structure
-        return scenario_cost + universal_costs
+        with MidnightOilDB() as db:
+            # print form cost calculation
+            self.print_form_cost = _print_form_cost(db, ROLL_BUSMARK, self.print_forms_per_standee, self.num_standees)
+
+            # zund cost calculation
+            self.zund_hours = zund_hours or _zund_hours(
+                db, self.standee_key, self.print_forms_per_standee, self.blank_forms_per_standee, self.num_standees
+            )
+            self.zund_cut_cost = self.zund_hours * db.get_unit_cost(ZUND_CUT_COST)
+
+            # shipping box and label cost calculation
+            self.shipping_box_cost, self.label_cost = _shipping_box_and_label_cost(db, self.num_standees)
+
+            # instruction sheet cost calculation
+            self.instruction_sheet_cost = _instruction_sheet_cost(db, self.standee_key, self.num_standees)
+
+        return self.total_cost
+
+    @property
+    def total_cost(self) -> float:
+        """Calculate the total cost of the project, including both universal and scenario-specific costs."""
+        return (
+            self.total_universal_cost
+            + self.print_form_cost
+            + self.zund_cut_cost
+            + self.shipping_box_cost
+            + self.label_cost
+            + self.instruction_sheet_cost
+        )
+
+
+class Scenario2(Project):
+    """Scenario 2: Internal Print, Internal Finishing, Assembled."""
+
+    def __init__(self, name: str, print_forms: list[Form], num_standees: int, standee_type: Complexity):
+        super().__init__(name, print_forms, num_standees, standee_type)
+
+    @override
+    def calculate_cost(
+        self,
+        *,
+        num_standees: int = 0,
+        print_forms_per_standee: int = 0,
+        structure_forms_per_standee: int = 0,
+        imposition_hours: float = 0,
+        blank_comp_count: float = 0,
+        color_comp_count: float = 0,
+        zund_hours: float = 0,
+        **kwargs
+    ) -> float:
+        super()._calculate_universal_costs(
+            num_standees=num_standees,
+            print_forms_per_standee=print_forms_per_standee,
+            structure_forms_per_standee=structure_forms_per_standee,
+            imposition_hours=imposition_hours,
+            blank_comp_count=blank_comp_count,
+            color_comp_count=color_comp_count,
+        )
+        with MidnightOilDB() as db:
+            # print form cost calculation
+            self.print_form_cost = _print_form_cost(db, ROLL_BUSMARK, self.print_forms_per_standee, self.num_standees)
+
+            # zund cost calculation
+            self.zund_hours = zund_hours or _zund_hours(
+                db, self.standee_key, self.print_forms_per_standee, self.blank_forms_per_standee, self.num_standees
+            )
+            self.zund_cut_cost = self.zund_hours * db.get_unit_cost(ZUND_CUT_COST)
+
+            # shipping box and label cost calculation
+            self.shipping_box_cost, self.label_cost = _shipping_box_and_label_cost(db, self.num_standees)
+
+        return self.total_cost
+
+    @property
+    def total_cost(self) -> float:
+        """Calculate the total cost of the project, including both universal and scenario-specific costs."""
+        return (
+            self.total_universal_cost
+            + self.print_form_cost
+            + self.zund_cut_cost
+            + self.shipping_box_cost
+            + self.label_cost
+        )
+
+
+class Scenario3(Project):
+    """Scenario 3: Internal Print, Internal Finishing, External Assembly."""
+
+    def __init__(self, name: str, print_forms: list[Form], num_standees: int, standee_type: Complexity):
+        super().__init__(name, print_forms, num_standees, standee_type)
+
+    @override
+    def calculate_cost(
+        self,
+        *,
+        num_standees: int = 0,
+        print_forms_per_standee: int = 0,
+        structure_forms_per_standee: int = 0,
+        imposition_hours: float = 0,
+        blank_comp_count: float = 0,
+        color_comp_count: float = 0,
+        zund_hours: float = 0,
+        pallet_count: int = 0,
+        freight_cost: float = 0,
+        **kwargs
+    ) -> float:
+        super()._calculate_universal_costs(
+            num_standees=num_standees,
+            print_forms_per_standee=print_forms_per_standee,
+            structure_forms_per_standee=structure_forms_per_standee,
+            imposition_hours=imposition_hours,
+            blank_comp_count=blank_comp_count,
+            color_comp_count=color_comp_count,
+        )
+        with MidnightOilDB() as db:
+            # print form cost calculation
+            self.print_form_cost = _print_form_cost(db, ROLL_BUSMARK, self.print_forms_per_standee, self.num_standees)
+
+            # zund cost calculation
+            self.zund_hours = zund_hours or _zund_hours(
+                db, self.standee_key, self.print_forms_per_standee, self.blank_forms_per_standee, self.num_standees
+            )
+            self.zund_cut_cost = self.zund_hours * db.get_unit_cost(ZUND_CUT_COST)
+
+            # shipping box and label cost calculation
+            self.shipping_box_cost, self.label_cost = _shipping_box_and_label_cost(db, self.num_standees)
+
+            # instruction sheet cost calculation
+            self.instruction_sheet_cost = _instruction_sheet_cost(db, self.standee_key, self.num_standees)
+
+            # pallet cost calculation
+            self.pallet_count = pallet_count or (self.num_standees // db.get_unit_cost(PALLET))
+            self.pallet_cost = (
+                db.get_unit_cost(PALLET_LABOR) * self.pallet_count + db.get_unit_cost(PALLET) * self.pallet_count
+            )
+            # freight cost calculation
+            self.freight_cost = freight_cost or db.get_unit_cost(EXTERNAL_ASSEMBLY)
+        return self.total_cost
+
+    @property
+    def total_cost(self) -> float:
+        """Calculate the total cost of the project, including both universal and scenario-specific costs."""
+        return (
+            self.total_universal_cost
+            + self.print_form_cost
+            + self.zund_cut_cost
+            + self.shipping_box_cost
+            + self.label_cost
+            + self.instruction_sheet_cost
+            + self.pallet_cost
+            + self.freight_cost
+        )
+
+
+class Scenario4(Project):
+    """Scenario 4: Internal Print, External Mount & Die Cut, External Assembly."""
+
+    def __init__(self, name: str, print_forms: list[Form], num_standees: int, standee_type: Complexity):
+        super().__init__(name, print_forms, num_standees, standee_type)
+
+    @override
+    def calculate_cost(
+        self,
+        *,
+        num_standees: int = 0,
+        print_forms_per_standee: int = 0,
+        structure_forms_per_standee: int = 0,
+        print_material_name: str = "",
+        imposition_hours: float = 0,
+        blank_comp_count: float = 0,
+        color_comp_count: float = 0,
+        pallet_count: int = 0,
+        freight_cost: float = 0,
+        die_cost: float = 0,
+        **kwargs
+    ) -> float:
+        super()._calculate_universal_costs(
+            num_standees=num_standees,
+            print_forms_per_standee=print_forms_per_standee,
+            structure_forms_per_standee=structure_forms_per_standee,
+            imposition_hours=imposition_hours,
+            blank_comp_count=blank_comp_count,
+            color_comp_count=color_comp_count,
+        )
+        with MidnightOilDB() as db:
+            # print form cost calculation
+            if print_material_name:
+                self.print_material = db.get_unit_cost_entry(print_material_name)
+            self.print_form_cost = _print_form_cost(
+                db, print_material_name or ROLL_95, self.print_forms_per_standee, self.num_standees
+            )
+
+            # shipping box and label cost calculation
+            self.shipping_box_cost, self.label_cost = _shipping_box_and_label_cost(db, self.num_standees)
+
+            # instruction sheet cost calculation
+            self.instruction_sheet_cost = _instruction_sheet_cost(db, self.standee_key, self.num_standees)
+
+            # pallet cost calculation
+            self.pallet_count = pallet_count or (self.num_standees // db.get_unit_cost(PALLET))
+            self.pallet_cost = (
+                db.get_unit_cost(PALLET_LABOR) * self.pallet_count + db.get_unit_cost(PALLET) * self.pallet_count
+            )
+            # freight cost calculation
+            self.freight_cost = freight_cost or db.get_unit_cost(EXTERNAL_MOUNT_ASSEMBLY)
+
+            # die cost calculation
+            self.die_cost = die_cost or _die_cost(db, self.print_forms)
+
+        return self.total_cost
+
+    @property
+    def total_cost(self) -> float:
+        """Calculate the total cost of the project, including both universal and scenario-specific costs."""
+        return (
+            self.total_universal_cost
+            + self.print_form_cost
+            + self.shipping_box_cost
+            + self.label_cost
+            + self.instruction_sheet_cost
+            + self.pallet_cost
+            + self.freight_cost
+            + self.die_cost
+        )
+
+
+class Scenario5(Project):
+    """Scenario 5: External Print, External Finishing, Packed out (currently incomplete)."""
+
+    def __init__(self, name: str, print_forms: list[Form], num_standees: int, standee_type: Complexity):
+        super().__init__(name, print_forms, num_standees, standee_type)
+
+    @override
+    def calculate_cost(
+        self,
+        *,
+        num_standees: int = 0,
+        print_forms_per_standee: int = 0,
+        structure_forms_per_standee: int = 0,
+        imposition_hours: float = 0,
+        blank_comp_count: float = 0,
+        color_comp_count: float = 0,
+        freight_cost: float = 0,
+        die_cost: float = 0,
+        **kwargs
+    ) -> float:
+        super()._calculate_universal_costs(
+            num_standees=num_standees,
+            print_forms_per_standee=print_forms_per_standee,
+            structure_forms_per_standee=structure_forms_per_standee,
+            imposition_hours=imposition_hours,
+            blank_comp_count=blank_comp_count,
+            color_comp_count=color_comp_count,
+        )
+        with MidnightOilDB() as db:
+            # instruction sheet cost calculation
+            self.instruction_sheet_cost = _instruction_sheet_cost(db, self.standee_key, self.num_standees)
+
+            # freight cost calculation
+            self.freight_cost = freight_cost or db.get_unit_cost(FULL_OUT_SOURCE)
+
+            # die cost calculation
+            self.die_cost = die_cost or _die_cost(db, self.print_forms)
+
+        return self.total_cost
+
+    @property
+    def total_cost(self) -> float:
+        """Calculate the total cost of the project, including both universal and scenario-specific costs."""
+        return self.total_universal_cost + self.instruction_sheet_cost + self.freight_cost + self.die_cost
+
+
+# Helpers
+def _print_form_cost(db, print_material_name: str, print_forms_per_standee: int, num_standees: int) -> float:
+    print_form_material = db.get_unit_cost_entry(print_material_name)
+    print_form_total = print_forms_per_standee * num_standees
+    print_form_unit = print_form_material["unit"]
+    print_form_cost = 0
+    if print_form_unit == "each":
+        print_form_cost = print_form_material["cost"] * print_form_total
+    elif print_form_unit == "linear_foot":
+        print_form_material["cost"] *= UNIT_MAP[print_form_unit]
+        print_form_cost = print_form_material["cost"] * FORM_LENGTH * print_form_total
+    else:
+        raise ValueError(f"Unsupported unit type '{print_form_unit}' for print material '{print_material_name}'")
+    # add hi-tack if not busmark
+    if print_material_name != ROLL_BUSMARK:
+        hi_tack_material = db.get_unit_cost_entry(ROLL_HI_TACK)
+        hi_tack_unit = hi_tack_material["unit"]
+        hi_tack_cost = hi_tack_material["cost"] * UNIT_MAP[hi_tack_unit] * FORM_LENGTH * print_form_total
+        print_form_cost += hi_tack_cost
+    return print_form_cost
+
+
+def _zund_hours(
+    db, standee_key: str, print_forms_per_standee: int, blank_forms_per_standee: int, num_standees: int
+) -> float:
+    print_zund_hours = (
+        db.get_standee_data(standee_key, "zund_print_form_minutes") * print_forms_per_standee * num_standees
+    ) / 60
+    blank_zund_hours = (
+        db.get_standee_data(standee_key, "zund_blank_form_minutes") * blank_forms_per_standee * num_standees
+    ) / 60
+
+    return print_zund_hours + blank_zund_hours
+
+
+def _shipping_box_and_label_cost(db, num_standees: int) -> tuple[float, float]:
+    shipping_box_cost = db.get_unit_cost(SHIPPING_BOX) * num_standees
+    desc_label_cost = db.get_unit_cost(DESCRIPTION_LABEL)
+    handling_label_cost = db.get_unit_cost(SHIPPING_LABEL)
+    label_cost = (2 * desc_label_cost + handling_label_cost) * num_standees
+    return shipping_box_cost, label_cost
+
+
+def _instruction_sheet_cost(db, standee_key: str, num_standees: int) -> float:
+    instruction_sheet_cost = db.get_standee_data(standee_key, "instruction_sheet_total_cost") * num_standees
+    return instruction_sheet_cost
+
+
+def _die_cost(db, print_forms: list[Form]) -> float:
+    die_unit_cost = db.get_unit_cost("die_cost")
+    die_complexity_map = {
+        complexity: db.get_standee_data(term, "cutting_die_inches_multiplier")
+        for complexity, term in STANDEE_MAP.items()
+    }
+    return sum(form.get_die_cost(die_complexity_map, die_unit_cost) for form in print_forms)

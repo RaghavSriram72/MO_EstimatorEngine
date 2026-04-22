@@ -7,18 +7,32 @@ from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
 
 
-class MOADB:
+class MidnightOilDB:
     """MongoDB helper for flute-price collection operations."""
 
     def __init__(self):
-        load_dotenv()  # Load environment variables from .env file
+        load_dotenv()
         self.uri = os.getenv("MONGO_URI")
-        self.client = client = MongoClient(self.uri, server_api=ServerApi("1"))
-        self.db = client["DB"]
+
+    def connect(self):
+        """Establish a connection to the MongoDB database."""
+        self.client = MongoClient(self.uri, server_api=ServerApi("1"))
+        self.db = self.client["DB"]
         self.by_unit_costs_collection = self.db["by_unit_costs"]
         self.standee_collection = self.db["standee_static_costs"]
         self.print_blank_collection = self.db["print_blank_ratio"]
         self.users_collection = self.db["users"]
+        return self
+
+    def close(self):
+        """Close the MongoDB connection."""
+        self.client.close()
+
+    def __enter__(self):
+        return self.connect()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
 
     def check_username_exists(self, username: str) -> bool:
         """Check if a username already exists in the users collection."""
@@ -96,10 +110,6 @@ class MOADB:
             self.print_blank_collection.update_one({"print_forms": print_forms}, {"$set": {"blank_forms": blank_forms}})
         except Exception as e:
             raise ValueError(f"Failed to set print blank ratio: {str(e)}")
-
-    def close(self):
-        """Close the MongoDB client connection."""
-        self.client.close()
 
 
 def _hash_password(password: str) -> str:

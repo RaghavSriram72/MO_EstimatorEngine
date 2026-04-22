@@ -1,4 +1,4 @@
-from lib.classes import Complexity, Element, Project
+from lib.classes import Complexity, Element, Scenario1
 from lib.print_form_calculator import print_form_calculator
 
 complexity_map = {
@@ -9,6 +9,7 @@ complexity_map = {
 
 
 def demo():
+    """Demonstrates how to use the print form calculator and project cost estimation."""
     elements = [
         Element(name="back", length=120, width=72, complexity=Complexity.SIMPLE),
         Element(name="elph", length=35, width=72, complexity=Complexity.COMPLEX),
@@ -31,30 +32,27 @@ def demo():
     _, bin_dict = print_form_calculator(elements, num_standees)
     print(f"Forms per standee: {len(bin_dict)}")
 
-    project = Project(
+    project = Scenario1(
         name="Demo Project",
         print_forms=list(bin_dict.values()),
         num_standees=num_standees,
         standee_type=standee_type,
     )
 
-    total_cost = project.get_static_cost()
-    print(f"  Print form cost:          ${project.print_form_cost or 0:.2f}")
+    total_cost = project.calculate_cost()
+    print(f"\n  Imposition cost:          ${project.imposition_cost or 0:.2f}")
     print(f"  Corrugate cost:           ${project.corrugate_cost or 0:.2f}")
-    print(f"  Imposition cost:          ${project.imposition_cost or 0:.2f}")
-    print(f"  Zund cut cost:            ${project.zund_cut_cost or 0:.2f}")
-    print(f"  Die cost:                 ${project.die_cost or 0:.2f}")
-    print(f"  Pallet cost:              ${project.pallet_cost or 0:.2f}")
     print(f"  Hardware cost:            ${project.hardware_cost or 0:.2f}")
-    print(f"  Shipping box cost:         ${project.shipping_box_cost or 0:.2f}")
+    print(f"  Engineering design cost:  ${project.engineering_design_cost or 0:.2f}")
+    print(f"  Color comp cost:          ${project.color_comp_cost or 0:.2f}")
+    print(f"  Blank comp cost:          ${project.blank_comp_cost or 0:.2f}")
+    print(f"  Print form cost:          ${project.print_form_cost or 0:.2f}")
+    print(f"  Zund cut cost:            ${project.zund_cut_cost or 0:.2f}")
+    print(f"  Shipping box cost:        ${project.shipping_box_cost or 0:.2f}")
     print(f"  Label cost:               ${project.label_cost or 0:.2f}")
     print(f"  Instruction sheet cost:   ${project.instruction_sheet_cost or 0:.2f}")
-    print(f"  Freight assembly cost:    ${project.freight_assembly_cost or 0:.2f}")
-    print(f"  Blank comp cost:          ${project.blank_comp_cost or 0:.2f}")
-    print(f"  color comp cost:         ${project.color_comp_cost or 0:.2f}")
-    print(f"  Engineering design cost:  ${project.engineering_design_cost or 0:.2f}")
     print(f"  {'─' * 38}")
-    print(f"  Total static cost:        ${total_cost:.2f}")
+    print(f"  Total static cost:        ${total_cost:.2f}\n")
 
 
 if __name__ == "__main__":
