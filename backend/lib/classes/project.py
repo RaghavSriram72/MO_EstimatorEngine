@@ -20,6 +20,12 @@ ROLL_BUSMARK = "roll_busmark"
 IMPOSITION_LABOR = "imposition_labor"
 INSTRUCTION_SHEET = "instruction_sheet"
 
+STANDEE_MAP = {
+    Complexity.SIMPLE: "Simple Standee",
+    Complexity.MODERATE: "Moderate Standee",
+    Complexity.COMPLEX: "Complex Standee",
+}
+
 
 class Project:
     """Class to represent a overall standee project."""
@@ -31,11 +37,6 @@ class Project:
         num_standees: int,
         standee_type: Complexity,
     ):
-        self.STANDEE_MAP = {
-            Complexity.SIMPLE: "Simple Standee",
-            Complexity.MODERATE: "Moderate Standee",
-            Complexity.COMPLEX: "Complex Standee",
-        }
         self.standee_type = standee_type
         self.name = name
         self.print_forms = print_forms
@@ -87,7 +88,6 @@ class Project:
         external_mount_assembly: float = 0,
         full_out_source: float = 0,
     ) -> None:
-            
         """Calculate static costs for a project based on the print forms, number of standees, and standee type."""
         db = MOADB()
         self.num_standees = num_standees or self.num_standees
@@ -259,3 +259,8 @@ class Project:
             case 5:
                 scenario_cost = -1  # Placeholder for scenario 5, which may have a different cost structure
         return scenario_cost + universal_costs
+
+class Scenario1(Project):
+    """Scenario 1: In-house production with basic materials and processes."""
+    def __init__(self, name: str, print_forms: list[Form], num_standees: int, standee_type: Complexity):
+        super().__init__(name, print_forms, num_standees, standee_type)

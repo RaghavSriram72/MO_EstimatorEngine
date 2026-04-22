@@ -1,6 +1,7 @@
 import unittest
 
 
+from lib.classes.new_project import Scenario1
 from lib.classes import Complexity, Element, Project
 from lib.print_form_calculator import print_form_calculator
 
@@ -68,20 +69,18 @@ class TestStaticCostCalculator(unittest.TestCase):
             Element(name="monkey", length=80.1012, width=74.9667, complexity=Complexity.COMPLEX),
         ]
         _, bin_dict = print_form_calculator(elements, 18)
-        project = Project(
+        project = Scenario1(
             name="Primate standee (test)",
             print_forms=list(bin_dict.values()),
             num_standees=18,  # iQuote project qty; spreadsheet "STANDEE PRINT-NLANK FORMS DATA" says quantity of standeess is only 2 there
             standee_type=Complexity.MODERATE,
         )
-        total_cost = project.get_static_cost(scenario=1)
+        total_cost = project.calculate_cost()
 
         print(f"\n  Print form cost:          ${project.print_form_cost or 0:.2f}")
         print(f"  Corrugate cost:           ${project.corrugate_cost or 0:.2f}")
         print(f"  Imposition cost:          ${project.imposition_cost or 0:.2f}")
         print(f"  Zund cut cost:            ${project.zund_cut_cost or 0:.2f}")
-        print(f"  Die cost:                 ${project.die_cost or 0:.2f}")
-        print(f"  Pallet cost:              ${project.pallet_cost or 0:.2f}")
         print(f"  Hardware cost:            ${project.hardware_cost or 0:.2f}")
         print(f"  Shipping box cost:         ${project.shipping_box_cost or 0:.2f}")
         print(f"  Label cost:               ${project.label_cost or 0:.2f}")
