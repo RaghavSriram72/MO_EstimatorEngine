@@ -10,6 +10,8 @@ from lib.classes import Complexity, Element, MOADB, Project
 from lib.persisted_project import (
     EXAMPLE_PROJECT_DOCUMENT,
     PersistedProjectCreate,
+    complexity_to_str,
+    elements_to_persisted,
     persisted_create_to_mongo_document,
 )
 from lib.print_form_calculator import print_form_calculator
@@ -78,6 +80,9 @@ class QuoteRequest(BaseModel):
     elements: list[ElementType]
     num_standees: int
     scenario: int
+    # When ``owner`` is set, the project is saved to MongoDB for that user after the quote runs.
+    owner: str | None = None
+    project_name: str | None = None
 
 
 @app.post("/generate_quote")
@@ -111,7 +116,23 @@ async def generate_quote(payload: QuoteRequest):
 
     total_static_cost = project.get_static_cost(payload.scenario)
 
-    return {"total_static_cost": total_static_cost}
+    out: dict = {"total_static_cost": total_static_cost}
+
+    owner = (payload.owner or "").strip()
+    if owner and payload.num_standees >= 1 and payload.elements:
+        db = MOADB()
+        if db.check_username_exists(owner):
+            pname = (payload.project_name or "").strip() or "Untitled project"
+            persisted = PersistedProjectCreate(
+                owner=owner,
+                project_name=pname,
+                num_standees=payload.num_standees,
+                standee_type=complexity_to_str(majority_complexity),
+                elements=elements_to_persisted(elements),
+            )
+            out["project_id"] = db.insert_persisted_project(persisted_create_to_mongo_document(persisted))
+
+    return out
 
 
 @app.get("/standee-data")
@@ -143,12 +164,6 @@ async def list_projects(owner: str = Query(..., description="Username of the acc
     if not db.check_username_exists(owner):
         return JSONResponse(status_code=404, content={"error": "Unknown owner"})
     return {"projects": db.list_projects_by_owner(owner)}
-
-
-@app.get("/projects/schema/example")
-async def persisted_project_example():
-    """Canonical v1 document shape (no scenario; scenarios use ``Scenario`` + ``Project`` in code)."""
-    return EXAMPLE_PROJECT_DOCUMENT
 
 
 @app.get("/projects/{project_id}")
