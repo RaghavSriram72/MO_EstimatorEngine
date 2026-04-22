@@ -47,7 +47,7 @@ def demo():
     print(f"  Color comp cost:          ${project.color_comp_cost or 0:.2f}")
     print(f"  Blank comp cost:          ${project.blank_comp_cost or 0:.2f}")
     print(f"  Print form cost:          ${project.print_form_cost or 0:.2f}")
-    print(f"  Zund cut cost:            ${project.zund_cost or 0:.2f}")
+    print(f"  Zund cut cost:            ${project.zund_cut_cost or 0:.2f}")
     print(f"  Shipping box cost:        ${project.shipping_box_cost or 0:.2f}")
     print(f"  Label cost:               ${project.label_cost or 0:.2f}")
     print(f"  Instruction sheet cost:   ${project.instruction_sheet_cost or 0:.2f}")

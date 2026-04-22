@@ -21,6 +21,7 @@ ROLL_HI_TACK = "roll_hi_tack"
 ROLL_BUSMARK = "roll_busmark"
 IMPOSITION_LABOR = "imposition_labor"
 INSTRUCTION_SHEET = "instruction_sheet"
+ZUND_CUT_COST = "zund_cut_cost"
 
 STANDEE_MAP = {
     Complexity.SIMPLE: "Simple Standee",
@@ -125,7 +126,7 @@ class Scenario1(Project):
         self.zund_hours = 0
 
         self.print_form_cost = 0
-        self.zund_cost = 0
+        self.zund_cut_cost = 0
         self.shipping_box_cost = 0
         self.label_cost = 0
         self.instruction_sheet_cost = 0
@@ -159,7 +160,7 @@ class Scenario1(Project):
             self.zund_hours = zund_hours or _zund_hours(
                 db, standee_key, self.print_forms_per_standee, self.blank_forms_per_standee, self.num_standees
             )
-            self.zund_cost = self.zund_hours * db.get_standee_data(standee_key, "zund_cost_per_hour")
+            self.zund_cut_cost = self.zund_hours * db.get_unit_cost(ZUND_CUT_COST)
 
             # shipping box and label cost calculation
             self.shipping_box_cost, self.label_cost = _shipping_box_and_label_cost(db, self.num_standees)
@@ -175,7 +176,7 @@ class Scenario1(Project):
         return (
             self.total_universal_cost
             + self.print_form_cost
-            + self.zund_cost
+            + self.zund_cut_cost
             + self.shipping_box_cost
             + self.label_cost
             + self.instruction_sheet_cost
@@ -191,7 +192,7 @@ class Scenario2(Project):
         self.zund_hours = 0
 
         self.print_form_cost = 0
-        self.zund_cost = 0
+        self.zund_cut_cost = 0
         self.shipping_box_cost = 0
         self.label_cost = 0
         self.instruction_sheet_cost = 0
@@ -225,7 +226,7 @@ class Scenario2(Project):
             self.zund_hours = zund_hours or _zund_hours(
                 db, standee_key, self.print_forms_per_standee, self.blank_forms_per_standee, self.num_standees
             )
-            self.zund_cost = self.zund_hours * db.get_standee_data(standee_key, "zund_cost_per_hour")
+            self.zund_cut_cost = self.zund_hours * db.get_unit_cost(ZUND_CUT_COST)
 
             # shipping box and label cost calculation
             self.shipping_box_cost, self.label_cost = _shipping_box_and_label_cost(db, self.num_standees)
@@ -236,7 +237,11 @@ class Scenario2(Project):
     def total_cost(self) -> float:
         """Calculate the total cost of the project, including both universal and scenario-specific costs."""
         return (
-            self.total_universal_cost + self.print_form_cost + self.zund_cost + self.shipping_box_cost + self.label_cost
+            self.total_universal_cost
+            + self.print_form_cost
+            + self.zund_cut_cost
+            + self.shipping_box_cost
+            + self.label_cost
         )
 
 
@@ -250,7 +255,7 @@ class Scenario3(Project):
         self.pallet_count = 0
 
         self.print_form_cost = 0
-        self.zund_cost = 0
+        self.zund_cut_cost = 0
         self.shipping_box_cost = 0
         self.label_cost = 0
         self.instruction_sheet_cost = 0
@@ -288,7 +293,7 @@ class Scenario3(Project):
             self.zund_hours = zund_hours or _zund_hours(
                 db, standee_key, self.print_forms_per_standee, self.blank_forms_per_standee, self.num_standees
             )
-            self.zund_cost = self.zund_hours * db.get_standee_data(standee_key, "zund_cost_per_hour")
+            self.zund_cut_cost = self.zund_hours * db.get_unit_cost(ZUND_CUT_COST)
 
             # shipping box and label cost calculation
             self.shipping_box_cost, self.label_cost = _shipping_box_and_label_cost(db, self.num_standees)
@@ -311,7 +316,7 @@ class Scenario3(Project):
         return (
             self.total_universal_cost
             + self.print_form_cost
-            + self.zund_cost
+            + self.zund_cut_cost
             + self.shipping_box_cost
             + self.label_cost
             + self.instruction_sheet_cost
@@ -322,6 +327,7 @@ class Scenario3(Project):
 
 class Scenario4(Project):
     """Scenario 4: Internal Print, External Mount & Die Cut, External Assembly."""
+
     def __init__(self, name: str, print_forms: list[Form], num_standees: int, standee_type: Complexity):
         super().__init__(name, print_forms, num_standees, standee_type)
 
