@@ -1,5 +1,4 @@
-from lib.classes import Scenario1
-from lib.classes import Complexity, Element, Project
+from lib.classes import Complexity, Element, Scenario1
 from lib.print_form_calculator import print_form_calculator
 
 complexity_map = {
@@ -10,6 +9,7 @@ complexity_map = {
 
 
 def demo():
+    """Demonstrates how to use the print form calculator and project cost estimation."""
     elements = [
         Element(name="back", length=120, width=72, complexity=Complexity.SIMPLE),
         Element(name="elph", length=35, width=72, complexity=Complexity.COMPLEX),

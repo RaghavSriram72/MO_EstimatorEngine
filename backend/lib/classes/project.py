@@ -1,6 +1,6 @@
 from typing import override
 
-from lib.classes import MOADB, Complexity, Form
+from lib.classes import Complexity, Form, MidnightOilDB
 from lib.globals import FORM_LENGTH, UNIT_MAP
 
 DIE_COST = "die_cost"
@@ -40,25 +40,32 @@ class Project:
         num_standees: int,
         standee_type: Complexity,
     ):
-        self.standee_type = standee_type
         self.name = name
+        self.standee_type = standee_type
         self.print_forms = print_forms
         self.num_standees = num_standees
-
-        self.print_forms_per_standee = len(self.print_forms)
-        self.structure_forms_per_standee = 0  # ? need to check if this is universal
-        self.blank_forms_per_standee = 0  # ? need to check if this is universal
-        self.imposition_hours = 0
-        self.blank_comp_count = 0
-        self.color_comp_count = 0
-
-        self.imposition_cost = 0
-        self.corrugate_cost = 0  # ? need to check if this is universal
-        self.blank_comp_cost = 0
-        self.color_comp_cost = 0
-        self.engineering_design_cost = 0
-        self.hardware_cost = 0
         self._calculate_universal_costs()
+
+    @property
+    def total_universal_cost(self) -> float:
+        """Calculate the total universal cost for the project."""
+        return (
+            self.corrugate_cost
+            + self.imposition_cost
+            + self.blank_comp_cost
+            + self.color_comp_cost
+            + self.engineering_design_cost
+            + self.hardware_cost
+        )
+
+    @property
+    def total_cost(self) -> float:
+        """Calculate the total cost of the project, including both universal and scenario-specific costs."""
+        raise NotImplementedError("Subclasses must implement total_cost property")
+
+    def calculate_cost(self, **kwargs) -> float:
+        """Calculate the total cost of the project, including both universal and scenario-specific costs."""
+        raise NotImplementedError("Subclasses must implement calculate_cost method")
 
     def _calculate_universal_costs(
         self,
@@ -73,9 +80,9 @@ class Project:
 
         standee_key = STANDEE_MAP[self.standee_type]
         self.num_standees = num_standees or self.num_standees
-        with MOADB() as db:
+        with MidnightOilDB() as db:
             # corrugate cost calculation
-            self.print_forms_per_standee = print_forms_per_standee or self.print_forms_per_standee
+            self.print_forms_per_standee = print_forms_per_standee or len(self.print_forms)
             self.structure_forms_per_standee = structure_forms_per_standee or db.get_structure_forms_per_standee(
                 self.print_forms_per_standee
             )
@@ -99,37 +106,12 @@ class Project:
                 self.color_comp_cost = db.get_unit_cost(COLOR_COMP) * self.color_comp_count
         return self.total_universal_cost
 
-    @property
-    def total_universal_cost(self) -> float:
-        """Calculate the total universal cost for the project."""
-        return (
-            self.corrugate_cost
-            + self.imposition_cost
-            + self.blank_comp_cost
-            + self.color_comp_cost
-            + self.engineering_design_cost
-            + self.hardware_cost
-        )
-
-    def calculate_cost(self) -> float:
-        """Calculate the total cost of the project, including both universal and scenario-specific costs."""
-        raise NotImplementedError("Subclasses must implement calculate_cost method")
-
 
 class Scenario1(Project):
     """Scenario 1: Internal Print, Internal Finishing, Packed out."""
 
     def __init__(self, name: str, print_forms: list[Form], num_standees: int, standee_type: Complexity):
         super().__init__(name, print_forms, num_standees, standee_type)
-
-        self.print_material: dict = {}
-        self.zund_hours = 0
-
-        self.print_form_cost = 0
-        self.zund_cut_cost = 0
-        self.shipping_box_cost = 0
-        self.label_cost = 0
-        self.instruction_sheet_cost = 0
 
     @override
     def calculate_cost(
@@ -142,6 +124,7 @@ class Scenario1(Project):
         blank_comp_count: float = 0,
         color_comp_count: float = 0,
         zund_hours: float = 0,
+        **kwargs,
     ) -> float:
         standee_key = STANDEE_MAP[self.standee_type]
         super()._calculate_universal_costs(
@@ -152,7 +135,7 @@ class Scenario1(Project):
             blank_comp_count=blank_comp_count,
             color_comp_count=color_comp_count,
         )
-        with MOADB() as db:
+        with MidnightOilDB() as db:
             # print form cost calculation
             self.print_form_cost = _print_form_cost(db, ROLL_BUSMARK, self.print_forms_per_standee, self.num_standees)
 
@@ -189,14 +172,6 @@ class Scenario2(Project):
     def __init__(self, name: str, print_forms: list[Form], num_standees: int, standee_type: Complexity):
         super().__init__(name, print_forms, num_standees, standee_type)
 
-        self.zund_hours = 0
-
-        self.print_form_cost = 0
-        self.zund_cut_cost = 0
-        self.shipping_box_cost = 0
-        self.label_cost = 0
-        self.instruction_sheet_cost = 0
-
     @override
     def calculate_cost(
         self,
@@ -208,6 +183,7 @@ class Scenario2(Project):
         blank_comp_count: float = 0,
         color_comp_count: float = 0,
         zund_hours: float = 0,
+        **kwargs
     ) -> float:
         standee_key = STANDEE_MAP[self.standee_type]
         super()._calculate_universal_costs(
@@ -218,7 +194,7 @@ class Scenario2(Project):
             blank_comp_count=blank_comp_count,
             color_comp_count=color_comp_count,
         )
-        with MOADB() as db:
+        with MidnightOilDB() as db:
             # print form cost calculation
             self.print_form_cost = _print_form_cost(db, ROLL_BUSMARK, self.print_forms_per_standee, self.num_standees)
 
@@ -251,17 +227,6 @@ class Scenario3(Project):
     def __init__(self, name: str, print_forms: list[Form], num_standees: int, standee_type: Complexity):
         super().__init__(name, print_forms, num_standees, standee_type)
 
-        self.zund_hours = 0
-        self.pallet_count = 0
-
-        self.print_form_cost = 0
-        self.zund_cut_cost = 0
-        self.shipping_box_cost = 0
-        self.label_cost = 0
-        self.instruction_sheet_cost = 0
-        self.pallet_cost = 0
-        self.freight_cost = 0
-
     @override
     def calculate_cost(
         self,
@@ -275,6 +240,7 @@ class Scenario3(Project):
         zund_hours: float = 0,
         pallet_count: int = 0,
         freight_cost: float = 0,
+        **kwargs
     ) -> float:
         standee_key = STANDEE_MAP[self.standee_type]
         super()._calculate_universal_costs(
@@ -285,7 +251,7 @@ class Scenario3(Project):
             blank_comp_count=blank_comp_count,
             color_comp_count=color_comp_count,
         )
-        with MOADB() as db:
+        with MidnightOilDB() as db:
             # print form cost calculation
             self.print_form_cost = _print_form_cost(db, ROLL_BUSMARK, self.print_forms_per_standee, self.num_standees)
 
@@ -331,17 +297,6 @@ class Scenario4(Project):
     def __init__(self, name: str, print_forms: list[Form], num_standees: int, standee_type: Complexity):
         super().__init__(name, print_forms, num_standees, standee_type)
 
-        self.print_material: dict = {}
-        self.pallet_count = 0
-
-        self.print_form_cost = 0
-        self.shipping_box_cost = 0
-        self.label_cost = 0
-        self.instruction_sheet_cost = 0
-        self.pallet_cost = 0
-        self.freight_cost = 0
-        self.die_cost = 0
-
     @override
     def calculate_cost(
         self,
@@ -356,6 +311,7 @@ class Scenario4(Project):
         pallet_count: int = 0,
         freight_cost: float = 0,
         die_cost: float = 0,
+        **kwargs
     ) -> float:
         standee_key = STANDEE_MAP[self.standee_type]
         super()._calculate_universal_costs(
@@ -366,7 +322,7 @@ class Scenario4(Project):
             blank_comp_count=blank_comp_count,
             color_comp_count=color_comp_count,
         )
-        with MOADB() as db:
+        with MidnightOilDB() as db:
             # print form cost calculation
             if print_material_name:
                 self.print_material = db.get_unit_cost_entry(print_material_name)
@@ -414,10 +370,6 @@ class Scenario5(Project):
     def __init__(self, name: str, print_forms: list[Form], num_standees: int, standee_type: Complexity):
         super().__init__(name, print_forms, num_standees, standee_type)
 
-        self.instruction_sheet_cost = 0
-        self.freight_cost = 0
-        self.die_cost = 0
-
     @override
     def calculate_cost(
         self,
@@ -430,6 +382,7 @@ class Scenario5(Project):
         color_comp_count: float = 0,
         freight_cost: float = 0,
         die_cost: float = 0,
+        **kwargs
     ) -> float:
         standee_key = STANDEE_MAP[self.standee_type]
         super()._calculate_universal_costs(
@@ -440,7 +393,7 @@ class Scenario5(Project):
             blank_comp_count=blank_comp_count,
             color_comp_count=color_comp_count,
         )
-        with MOADB() as db:
+        with MidnightOilDB() as db:
             # instruction sheet cost calculation
             self.instruction_sheet_cost = _instruction_sheet_cost(db, standee_key, self.num_standees)
 
@@ -458,6 +411,7 @@ class Scenario5(Project):
         return self.total_universal_cost + self.instruction_sheet_cost + self.freight_cost + self.die_cost
 
 
+# Helpers
 def _print_form_cost(db, print_material_name: str, print_forms_per_standee: int, num_standees: int) -> float:
     print_form_material = db.get_unit_cost_entry(print_material_name)
     print_form_total = print_forms_per_standee * num_standees

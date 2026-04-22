@@ -7,7 +7,7 @@ from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
 
 
-class MOADB:
+class MidnightOilDB:
     """MongoDB helper for flute-price collection operations."""
 
     def __init__(self):

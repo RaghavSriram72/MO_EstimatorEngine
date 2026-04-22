@@ -1,10 +1,15 @@
-from lib.classes import Project
-from lib.globals import SCENARIO_MAP
+from lib.classes import Form, Project, Scenario1, Scenario2, Scenario3, Scenario4, Scenario5
 
 
-def static_cost_calculator(project: Project, **kwargs) -> dict[int, float]:
+def static_cost_calculator(
+    name: str,
+    print_forms: list[Form],
+    num_standees: int,
+    standee_type: str,
+    **kwargs,
+) -> list[Project]:
     """Calculate and return the total static cost for a project, summing all individual cost components."""
-    cost_per_scenario = {}
-    for scenario_id in SCENARIO_MAP:
-        cost_per_scenario[scenario_id] = project.get_static_cost(scenario_id, **kwargs)
-    return cost_per_scenario
+    return [
+        scenario(name, print_forms, num_standees, standee_type, **kwargs)
+        for scenario in [Scenario1, Scenario2, Scenario3, Scenario4, Scenario5]
+    ]
