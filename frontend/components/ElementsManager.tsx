@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import Dropdown from "@/components/Dropdown";
 
 type Element = {
     id: number;
@@ -48,7 +49,6 @@ export default function ElementsManager({ elements, setElements }: Props) {
     }
 
     const inputCls = "border-2 border-[#EDEAEA] rounded-md p-1 outline-none text-black text-xs bg-[#FFFBED] w-full";
-    const selectCls = "border-2 border-[#EDEAEA] rounded-md p-1 outline-none text-black text-xs bg-[#FFFBED] w-full cursor-pointer";
 
     return (
         <div className="flex flex-col gap-3 w-full h-full min-h-0">
@@ -78,16 +78,11 @@ export default function ElementsManager({ elements, setElements }: Props) {
                 </div>
                 <div className="flex-1">
                     <div className="text-xs font-bold mb-1 text-[#ABABAB]">Complexity</div>
-                    <select
-                        value={complexity}
-                        onChange={(e) => setComplexity(e.target.value)}
-                        className={selectCls}
-                    >
-                        <option value="">Select...</option>
-                        {complexityOptions.map((o) => (
-                            <option key={o} value={o}>{o}</option>
-                        ))}
-                    </select>
+                    <Dropdown
+                        options={complexityOptions}
+                        currOption={complexity || null}
+                        onSelect={(val: string) => setComplexity(val)}
+                    />
                 </div>
                 <div className="flex-1">
                     <div className="text-xs font-bold mb-1 text-[#ABABAB]">Linear In. <span className="font-normal">(opt.)</span></div>
@@ -112,7 +107,7 @@ export default function ElementsManager({ elements, setElements }: Props) {
             {/* Scrollable list */}
             <div className="flex flex-col flex-1 min-h-0 overflow-y-auto gap-2">
                 {elements.length === 0 ? (
-                    <div className="text-[10px] text-[#CDCDCD] italic">No elements added yet.</div>
+                    <div className="text-[12px] text-[#CDCDCD] italic">No elements added yet.</div>
                 ) : (
                     <>
                         <div className="grid grid-cols-[28px_1fr_1fr_1fr_1fr_60px_28px] text-[10px] text-[#ABABAB] font-bold px-2 uppercase shrink-0">
@@ -145,15 +140,11 @@ export default function ElementsManager({ elements, setElements }: Props) {
                                             onChange={(e) => handleChange(el.id, "width", e.target.value === "" ? "" : Number(e.target.value))}
                                             className={inputCls}
                                         />
-                                        <select
-                                            value={el.complexity}
-                                            onChange={(e) => handleChange(el.id, "complexity", e.target.value)}
-                                            className={selectCls}
-                                        >
-                                            {complexityOptions.map((o) => (
-                                                <option key={o} value={o}>{o}</option>
-                                            ))}
-                                        </select>
+                                        <Dropdown
+                                            options={complexityOptions}
+                                            currOption={el.complexity}
+                                            onSelect={(val: string) => handleChange(el.id, "complexity", val)}
+                                        />
                                         <input
                                             type="number"
                                             value={el.linear_inches}
