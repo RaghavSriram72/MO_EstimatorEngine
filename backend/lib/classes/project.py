@@ -241,7 +241,7 @@ class Scenario2(Project):
 
 
 class Scenario3(Project):
-    """Scenario 3: Internal Print, External Mount & Die Cut, External Assembly."""
+    """Scenario 3: Internal Print, Internal Finishing, External Assembly."""
 
     def __init__(self, name: str, print_forms: list[Form], num_standees: int, standee_type: Complexity):
         super().__init__(name, print_forms, num_standees, standee_type)
@@ -321,6 +321,7 @@ class Scenario3(Project):
 
 
 class Scenario4(Project):
+    """Scenario 4: Internal Print, External Mount & Die Cut, External Assembly."""
     def __init__(self, name: str, print_forms: list[Form], num_standees: int, standee_type: Complexity):
         super().__init__(name, print_forms, num_standees, standee_type)
 
