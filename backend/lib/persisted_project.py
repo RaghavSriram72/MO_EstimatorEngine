@@ -1,5 +1,4 @@
 """ JSON object for  MongoDB ``projects`` collection
-
 **Stored fields** (only these belong on the document):
  1. schema_version
  2. owener
@@ -7,7 +6,6 @@
  4. num_standees
  5. standee_type
  6. elements list
-
 **Notes**  
 - ``length`` / ``width``: inches; same as ``Element.length`` / ``Element.width``.  
 - ``schema_version``: currently ``1``; bump when the shape changes and migrate loaders.
@@ -30,6 +28,27 @@ _COMPLEXITY_PARSE: dict[ComplexityStr, Complexity] = {
     "Moderate": Complexity.MODERATE,
     "Complex": Complexity.COMPLEX,
 }
+
+
+def complexity_to_str(c: Complexity) -> ComplexityStr:
+    for label, value in _COMPLEXITY_PARSE.items():
+        if value == c:
+            return label
+    return "Simple"
+
+
+def elements_to_persisted(rows: list[Element]) -> list[PersistedElement]:
+    """Turn runtime ``Element`` instances into persisted rows."""
+    return [
+        PersistedElement(
+            name=el.name or "",
+            length=float(el.length),
+            width=float(el.width),
+            linear_inches=None if el.linear_inches is None else float(el.linear_inches),
+            complexity=complexity_to_str(el.complexity),
+        )
+        for el in rows
+    ]
 
 
 class PersistedElement(BaseModel):
