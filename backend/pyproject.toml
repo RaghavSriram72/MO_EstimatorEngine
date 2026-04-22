@@ -15,6 +15,7 @@ dependencies = [
     "pandas",
     "pymongo",
     "rectpack",
+    "uvicorn>=0.45.0",
 ]
 
 [dependency-groups]
