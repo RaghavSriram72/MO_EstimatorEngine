@@ -6,7 +6,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from lib.classes import Complexity, Element, MOADB, Project
+from lib.classes.db import MidnightOilDB as MOADB
+
+# from lib.globals import
+from lib.classes.form import Element, Form, Complexity
+from lib.classes.project import Project, Scenario1, Scenario2, Scenario3, Scenario4, Scenario5
 from lib.print_form_calculator import print_form_calculator
 
 
@@ -15,8 +19,8 @@ app = FastAPI()
 # Configure CORS for Next.js frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -73,7 +77,8 @@ class ElementType(BaseModel):
 class QuoteRequest(BaseModel):
     elements: list[ElementType]
     num_standees: int
-    scenario: int
+    scenario: int = 1
+    standee_type: int = 1
 
 
 @app.post("/generate_quote")
@@ -90,24 +95,41 @@ async def generate_quote(payload: QuoteRequest):
     ]
 
     # Determine standee complexity by taking majority of element complexities
-    complexity_counts = {Complexity.SIMPLE: 0, Complexity.MODERATE: 0, Complexity.COMPLEX: 0}
-    for element in elements:
-        complexity_counts[element.complexity] += 1
-    majority_complexity = max(complexity_counts, key=complexity_counts.get)
+    # complexity_counts = {Complexity.SIMPLE: 0, Complexity.MODERATE: 0, Complexity.COMPLEX: 0}
+    # for element in elements:
+    #     complexity_counts[element.complexity] += 1
+    # majority_complexity = max(complexity_counts, key=complexity_counts.get)
 
     _, bin_dict = print_form_calculator(elements, payload.num_standees)
     print_forms = list(bin_dict.values())
 
-    project = Project(
+    scenario_1 = Scenario1(
         name="API quote",
         print_forms=print_forms,
         num_standees=payload.num_standees,
-        standee_type=majority_complexity,
+        standee_type=Complexity(payload.standee_type),
     )
 
-    total_static_cost = project.get_static_cost(payload.scenario)
+    scenario_1.calculate_cost()
 
-    return {"total_static_cost": total_static_cost}
+    scenario_1_obj = {
+        "total_cost": scenario_1.total_cost,
+        "total_universal_cost": scenario_1.total_universal_cost,
+        "corrugate_cost": scenario_1.corrugate_cost,
+        "imposition_cost": scenario_1.imposition_cost,
+        "blank_comp_cost": scenario_1.blank_comp_cost,
+        "color_comp_cost": scenario_1.color_comp_cost,
+        "engineering_design_cost": scenario_1.engineering_design_cost,
+        "hardware_cost": scenario_1.hardware_cost,
+        "print_form_cost": scenario_1.print_form_cost,
+        "zund_cut_cost": scenario_1.zund_cut_cost,
+        "shipping_box_cost": scenario_1.shipping_box_cost,
+        "label_cost": scenario_1.label_cost,
+        "instruction_sheet_cost": scenario_1.instruction_sheet_cost,
+    }
+
+    return {"scenario_1": scenario_1_obj}
+    # "scenario_2": scenario_2}
 
 
 @app.get("/standee-data")

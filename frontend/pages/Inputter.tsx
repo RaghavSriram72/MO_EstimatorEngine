@@ -19,7 +19,24 @@ export default function Inputter() {
     const [standeeType, setStandeeType]   = useState<StandeeType>("Simple");
     const [elements, setElements]         = useState<Element[]>([]);
     const [resetKey, setResetKey]         = useState(0);
-    const [quoteData, setQuoteData]       = useState<{ total_static_cost: number } | null>(null);
+    const [isLoading, setIsLoading]       = useState(false);
+    const [quoteData, setQuoteData]       = useState<{
+        scenario_1: {
+            total_cost: number;
+            total_universal_cost: number;
+            corrugate_cost: number;
+            imposition_cost: number;
+            blank_comp_cost: number;
+            color_comp_cost: number;
+            engineering_design_cost: number;
+            hardware_cost: number;
+            print_form_cost: number;
+            zund_cut_cost: number;
+            shipping_box_cost: number;
+            label_cost: number;
+            instruction_sheet_cost: number;
+        };
+    } | null>(null);
 
     function handleClear() {
         setStandeeCount("");
@@ -29,8 +46,9 @@ export default function Inputter() {
     }
 
     function handleQuoteGeneration() {
+        const standeeTypeMap: Record<StandeeType, number> = { Simple: 1, Moderate: 2, Complex: 3 };
         const payload = {
-            standee_type: standeeType,
+            standee_type: standeeTypeMap[standeeType],
             elements: elements.map(({ height, width, complexity, linear_inches }) => ({
                 height: height === "" ? 0 : height,
                 width: width === "" ? 0 : width,
@@ -40,14 +58,31 @@ export default function Inputter() {
             num_standees: standeeCount === "" ? 0 : standeeCount,
         };
 
+        setIsLoading(true);
         fetch("http://localhost:8000/generate_quote", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
         })
             .then((res) => res.json())
-            .then((data) => setQuoteData(data))
-            .catch((error) => console.error("Error generating quote:", error));
+            .then((data) => { console.log(data); setQuoteData(data); })
+            .catch((error) => console.error("Error generating quote:", error))
+            .finally(() => setIsLoading(false));
+    }
+
+    if (isLoading) {
+        return (
+            <div className="flex flex-col items-center justify-center w-full flex-1">
+                <div className="text-[3em] font-instrument mb-8">
+                    <span className="italic text-[#FFB604]">Calculating</span> Quote
+                </div>
+                <div className="flex gap-2">
+                    <span className="w-3 h-3 rounded-full bg-[#FFB604] animate-bounce [animation-delay:-0.3s]" />
+                    <span className="w-3 h-3 rounded-full bg-[#FFB604] animate-bounce [animation-delay:-0.15s]" />
+                    <span className="w-3 h-3 rounded-full bg-[#FFB604] animate-bounce" />
+                </div>
+            </div>
+        );
     }
 
     if (quoteData) {

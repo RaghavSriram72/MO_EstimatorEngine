@@ -11,7 +11,23 @@ type CostLine = {
     unitCost: number;
 };
 
-type QuoteData = { total_static_cost: number };
+type ScenarioCosts = {
+    total_cost: number;
+    total_universal_cost: number;
+    corrugate_cost: number;
+    imposition_cost: number;
+    blank_comp_cost: number;
+    color_comp_cost: number;
+    engineering_design_cost: number;
+    hardware_cost: number;
+    print_form_cost: number;
+    zund_cut_cost: number;
+    shipping_box_cost: number;
+    label_cost: number;
+    instruction_sheet_cost: number;
+};
+
+type QuoteData = { scenario_1: ScenarioCosts };
 
 type Props = {
     quoteData: QuoteData;
@@ -54,7 +70,7 @@ const SCENARIO_LINE_DEFS: Record<string, LineDef> = {
 };
 
 const SCENARIO_KEYS: Record<ScenarioId, string[]> = {
-    1: ["print_form_cost", "zund_cut_cost", "pallet_cost", "instruction_sheet_cost"],
+    1: ["print_form_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost"],
     2: ["print_form_cost", "zund_cut_cost", "pallet_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost"],
     3: ["print_form_cost", "zund_cut_cost", "pallet_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "external_assembly"],
     4: ["print_form_cost", "die_cost",      "pallet_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "external_mount_assembly"],
@@ -149,16 +165,25 @@ function CostRow({
 
 // ─── main component ────────────────────────────────────────────────────────
 
-export default function QuoteBreakdown({ numStandees: initialStandees, onBack }: Props) {
+function seedLines(lines: CostLine[], source: Record<string, number>): CostLine[] {
+    return lines.map((line) => ({
+        ...line,
+        unitCost: source[line.key] ?? line.unitCost,
+    }));
+}
+
+export default function QuoteBreakdown({ quoteData, numStandees: initialStandees, onBack }: Props) {
     const [activeScenario, setActiveScenario] = useState<ScenarioId>(1);
     const [numStandees, setNumStandees]        = useState<number>(initialStandees);
 
+    const s1 = quoteData.scenario_1;
+
     const [universalLines, setUniversalLines] = useState<CostLine[]>(
-        buildLines(Object.keys(UNIVERSAL_LINE_DEFS), UNIVERSAL_LINE_DEFS)
+        seedLines(buildLines(Object.keys(UNIVERSAL_LINE_DEFS), UNIVERSAL_LINE_DEFS), s1)
     );
 
     const [scenarioLines, setScenarioLines] = useState<Record<ScenarioId, CostLine[]>>({
-        1: buildLines(SCENARIO_KEYS[1], SCENARIO_LINE_DEFS),
+        1: seedLines(buildLines(SCENARIO_KEYS[1], SCENARIO_LINE_DEFS), s1),
         2: buildLines(SCENARIO_KEYS[2], SCENARIO_LINE_DEFS),
         3: buildLines(SCENARIO_KEYS[3], SCENARIO_LINE_DEFS),
         4: buildLines(SCENARIO_KEYS[4], SCENARIO_LINE_DEFS),
@@ -272,8 +297,8 @@ export default function QuoteBreakdown({ numStandees: initialStandees, onBack }:
                             <CostRow key={line.key} line={line} onChange={updateUniversal} />
                         ))}
                         <div className="flex justify-between items-center pt-3 mt-1 border-t border-[#F4F4F4]">
-                            <span className="text-xs font-bold text-[#888]">Subtotal</span>
-                            <span className="text-xs font-bold text-[#444]">${universalTotal.toFixed(2)}</span>
+                            <span className="text-s font-bold text-[#888]">Subtotal</span>
+                            <span className="text-s font-bold text-[#444]">${universalTotal.toFixed(2)}</span>
                         </div>
                     </div>
 
@@ -286,14 +311,14 @@ export default function QuoteBreakdown({ numStandees: initialStandees, onBack }:
                             <CostRow key={line.key} line={line} onChange={updateScenario} />
                         ))}
                         <div className="flex justify-between items-center pt-3 mt-1 border-t border-[#F4F4F4]">
-                            <span className="text-xs font-bold text-[#888]">Subtotal</span>
-                            <span className="text-xs font-bold text-[#444]">${scenarioTotal.toFixed(2)}</span>
+                            <span className="text-s font-bold text-[#888]">Subtotal</span>
+                            <span className="text-s font-bold text-[#444]">${scenarioTotal.toFixed(2)}</span>
                         </div>
                     </div>
 
                     {/* Grand total */}
                     <div className="shrink-0 flex items-center justify-between bg-black text-white rounded-xl px-5 py-4">
-                        <span className="text-sm font-bold">Total Estimated Cost</span>
+                        <span className="text-lg font-bold">Total Estimated Cost</span>
                         <span className="text-2xl font-bold text-[#FFB604]">${grandTotal.toFixed(2)}</span>
                     </div>
 

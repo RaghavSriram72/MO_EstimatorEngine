@@ -78,7 +78,6 @@ class Project:
         blank_comp_count: float = 0,
         color_comp_count: float = 0,
     ) -> float:
-        
         self.num_standees = num_standees or self.num_standees
         with MidnightOilDB() as db:
             # corrugate cost calculation
@@ -90,7 +89,8 @@ class Project:
             self.corrugate_cost = db.get_unit_cost(CORRUGATE) * self.blank_forms_per_standee * self.num_standees
             # imposition cost
             self.imposition_hours = imposition_hours or self.print_forms_per_standee
-            imposition_rate = db.get_standee_data(self.standee_key, "imposition_cost_per_hour")
+            # imposition_rate = db.get_standee_data(self.standee_key, "imposition_cost_per_hour")
+            imposition_rate = db.get_unit_cost(IMPOSITION_LABOR)
             self.imposition_cost = imposition_rate * self.imposition_hours
 
             # hardware cost calculation
@@ -98,6 +98,8 @@ class Project:
 
             # misc costs
             self.engineering_design_cost = db.get_standee_data(self.standee_key, "engineering_design_cost_per_project")
+            self.blank_comp_cost = 0.0
+            self.color_comp_cost = 0.0
             if blank_comp_count:
                 self.blank_comp_count = blank_comp_count
                 self.blank_comp_cost = db.get_unit_cost(BLANK_COMP) * self.blank_comp_count
@@ -182,7 +184,7 @@ class Scenario2(Project):
         blank_comp_count: float = 0,
         color_comp_count: float = 0,
         zund_hours: float = 0,
-        **kwargs
+        **kwargs,
     ) -> float:
         super()._calculate_universal_costs(
             num_standees=num_standees,
@@ -238,7 +240,7 @@ class Scenario3(Project):
         zund_hours: float = 0,
         pallet_count: int = 0,
         freight_cost: float = 0,
-        **kwargs
+        **kwargs,
     ) -> float:
         super()._calculate_universal_costs(
             num_standees=num_standees,
@@ -308,7 +310,7 @@ class Scenario4(Project):
         pallet_count: int = 0,
         freight_cost: float = 0,
         die_cost: float = 0,
-        **kwargs
+        **kwargs,
     ) -> float:
         super()._calculate_universal_costs(
             num_standees=num_standees,
@@ -378,7 +380,7 @@ class Scenario5(Project):
         color_comp_count: float = 0,
         freight_cost: float = 0,
         die_cost: float = 0,
-        **kwargs
+        **kwargs,
     ) -> float:
         super()._calculate_universal_costs(
             num_standees=num_standees,
