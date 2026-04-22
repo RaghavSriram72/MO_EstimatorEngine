@@ -6,13 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "dotenv",
-    "langchain",
-    "langchain-openai",
-    "langchain_core",
     "fastapi",
-    "matplotlib",
-    "scikit-learn",
-    "pandas",
     "pymongo",
     "rectpack",
     "uvicorn>=0.45.0",
