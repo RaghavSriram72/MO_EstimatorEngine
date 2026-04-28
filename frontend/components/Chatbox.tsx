@@ -23,13 +23,13 @@ export default function Chatbox({ messages, setMessages }: ChatboxProps) {
     };
 
     return (
-        <div className="chatbox flex flex-col flex-1 items-center justify-start pb-0 border-t-2 border-[#EDEAEA] max-h-[200px]">
+        <div className="chatbox flex flex-col flex-1 items-center justify-start pb-0 border-t-2 border-[#E0E0E0] max-h-[200px] bg-white">
             <div className="input-area w-full h-full py-4 px-4">
-                <textarea 
+                <textarea
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    placeholder="Enter your requirements..." 
-                    className="chat w-full h-40 p-4 text-black rounded-lg outline-none focus:outline-none focus:ring-0 resize-none shadow-xl" 
+                    placeholder="Enter your requirements..."
+                    className="chat w-full h-40 p-4 text-[#000005] bg-[#F8F8F8] rounded-sm outline-none focus:outline-none focus:ring-0 resize-none shadow-sm text-sm font-semibold placeholder:text-[#B1B3B6] placeholder:font-normal"
                     onKeyDown={handleKeyDown}
                 />
             </div>

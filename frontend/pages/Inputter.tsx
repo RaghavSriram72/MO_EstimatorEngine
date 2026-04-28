@@ -72,14 +72,15 @@ export default function Inputter() {
 
     if (isLoading) {
         return (
-            <div className="flex flex-col items-center justify-center w-full flex-1">
-                <div className="text-[3em] font-instrument mb-8">
-                    <span className="italic text-[#FFB604]">Calculating</span> Quote
+            <div className="flex flex-col items-center justify-center w-full flex-1 bg-white">
+                <div className="text-xs font-bold text-[#FFC843] tracking-widest uppercase mb-2">// PROCESSING</div>
+                <div className="text-3xl font-black text-[#000005] uppercase tracking-tight mb-6">
+                    Calculating Quote
                 </div>
                 <div className="flex gap-2">
-                    <span className="w-3 h-3 rounded-full bg-[#FFB604] animate-bounce [animation-delay:-0.3s]" />
-                    <span className="w-3 h-3 rounded-full bg-[#FFB604] animate-bounce [animation-delay:-0.15s]" />
-                    <span className="w-3 h-3 rounded-full bg-[#FFB604] animate-bounce" />
+                    <span className="w-3 h-3 rounded-full bg-[#FFC843] animate-bounce [animation-delay:-0.3s]" />
+                    <span className="w-3 h-3 rounded-full bg-[#FFC843] animate-bounce [animation-delay:-0.15s]" />
+                    <span className="w-3 h-3 rounded-full bg-[#FFC843] animate-bounce" />
                 </div>
             </div>
         );
@@ -90,24 +91,27 @@ export default function Inputter() {
     }
 
     return (
-        <div className="flex flex-col items-center w-full flex-1 overflow-hidden px-10 py-6">
+        <div className="flex flex-col items-center w-full flex-1 overflow-hidden px-10 py-6 bg-[#F8F8F8]">
             {/* Title */}
             <div className="w-full max-w-2xl mb-4 shrink-0">
-                <div className="text-[3em] font-instrument">
-                    <span className="italic text-[#FFB604]">Quote</span> Estimate
+                <div className="text-xs font-bold text-[#FFC843] tracking-widest uppercase mb-1">// ESTIMATOR</div>
+                <div className="text-3xl font-black text-[#000005] uppercase tracking-tight">
+                    Quote Estimate
                 </div>
-                <p className="text-xs text-[#ABABAB]">Configure parameters to generate a cost estimate</p>
+                <p className="text-xs text-[#B1B3B6] mt-1 font-semibold">Configure parameters to generate a cost estimate</p>
             </div>
 
             {/* Form card */}
-            <div className="flex flex-col w-full max-w-2xl flex-1 min-h-0 border-2 bg-white border-[#EDEAEA] rounded-xl text-[#ABABAB] overflow-hidden">
+            <div className="flex flex-col w-full max-w-2xl flex-1 min-h-0 border-2 bg-white border-[#E0E0E0] rounded-sm text-[#B1B3B6] overflow-hidden">
 
                 {/* 01 - COUNTS */}
-                <div className="flex flex-col justify-center items-start w-full p-5 border-b-2 border-[#EDEAEA] shrink-0">
-                    <div className="text-[10px] mb-3">01 - COUNTS</div>
+                <div className="flex flex-col justify-center items-start w-full p-5 border-b-2 border-[#E0E0E0] shrink-0">
+                    <div className="text-[10px] font-black mb-3 uppercase tracking-widest text-[#000005]">
+                        <span className="text-[#FFC843]">// </span>01 — COUNTS
+                    </div>
                     <div className="flex flex-row gap-8 w-full">
                         <div>
-                            <div className="text-xs font-bold m-2">Standee Type</div>
+                            <div className="text-[10px] font-bold mb-2 uppercase tracking-wider text-[#B1B3B6]">Standee Type</div>
                             <Dropdown
                                 key={resetKey}
                                 options={["Simple", "Moderate", "Complex"]}
@@ -116,7 +120,7 @@ export default function Inputter() {
                             />
                         </div>
                         <div>
-                            <div className="text-xs font-bold m-2">Standee Count</div>
+                            <div className="text-[10px] font-bold mb-2 uppercase tracking-wider text-[#B1B3B6]">Standee Count</div>
                             <input
                                 type="number"
                                 min={0}
@@ -125,17 +129,17 @@ export default function Inputter() {
                                     setStandeeCount(e.target.value === "" ? "" : Number(e.target.value))
                                 }
                                 placeholder="0"
-                                className="border-2 border-[#EDEAEA] rounded-md p-1 outline-none text-black text-xs w-[200px] bg-[#FFFBED]"
+                                className="border-2 border-[#E0E0E0] rounded-sm p-1.5 outline-none text-[#000005] text-xs w-[200px] bg-[#F8F8F8] focus:border-[#FFC843] font-semibold transition-colors"
                             />
                         </div>
                     </div>
                 </div>
 
                 {/* 02 - ELEMENTS */}
-                <div className="flex flex-col flex-1 min-h-0 items-start w-full p-4 border-b-2 border-[#EDEAEA] overflow-hidden">
-                    <div className="text-[10px] mb-3">
-                        02 - ELEMENTS
-                        <span className="ml-2 text-[#FFB604]">({elements.length} added)</span>
+                <div className="flex flex-col flex-1 min-h-0 items-start w-full p-4 border-b-2 border-[#E0E0E0] overflow-hidden">
+                    <div className="text-[10px] font-black mb-3 uppercase tracking-widest text-[#000005]">
+                        <span className="text-[#FFC843]">// </span>02 — ELEMENTS
+                        <span className="ml-2 text-[#FFC843] font-bold">({elements.length} added)</span>
                     </div>
                     <div className="w-full flex flex-col flex-1 min-h-0 overflow-hidden">
                         <ElementsManager key={resetKey} elements={elements} setElements={setElements} />
@@ -146,13 +150,13 @@ export default function Inputter() {
                 <div className="flex w-full flex-row items-center px-4 py-3 gap-4 shrink-0">
                     <div
                         onClick={handleClear}
-                        className="text-s text-center font-bold text-[#ABABAB] border-2 border-[#EDEAEA] py-3 rounded-md flex-1 cursor-pointer hover:bg-[#EDEAEA] transition-all duration-250"
+                        className="text-xs text-center font-black text-[#B1B3B6] border-2 border-[#E0E0E0] py-3 rounded-sm flex-1 cursor-pointer hover:bg-[#F4F4F4] hover:text-[#000005] hover:border-[#B1B3B6] transition-all duration-200 uppercase tracking-widest"
                     >
                         CLEAR
                     </div>
                     <div
                         onClick={handleQuoteGeneration}
-                        className="group flex flex-row justify-center gap-5 text-s font-bold bg-[#FFB604] text-black hover:text-white py-3 rounded-md flex-[2] cursor-pointer transition-all duration-250 ease-in-out overflow-hidden"
+                        className="group flex flex-row justify-center gap-4 text-xs font-black bg-[#FFC843] text-[#000005] hover:bg-[#000005] hover:text-white py-3 rounded-sm flex-[2] cursor-pointer transition-all duration-200 ease-in-out uppercase tracking-widest"
                     >
                         CALCULATE <img src="/submitarrow.svg" alt="" className="transition-all duration-300 ease-in-out group-hover:translate-x-1 group-hover:invert" />
                     </div>

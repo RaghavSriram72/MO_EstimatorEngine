@@ -24,8 +24,6 @@ export default function SignIn({setUser}: any) {
         setTimeout(() => setShowAlert(false), ALERT_DURATION_MS);
     }
 
-
-
     function handleCreateAccount() {
         if (newPassword !== confirmPassword) {
             triggerAlert("Passwords do not match!", 1);
@@ -39,13 +37,8 @@ export default function SignIn({setUser}: any) {
 
         fetch("http://localhost:8000/create-account", {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                username: newUsername,
-                password: newPassword,
-            }),
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username: newUsername, password: newPassword }),
         })
         .then((response) => {
             if (response.ok) {
@@ -53,8 +46,8 @@ export default function SignIn({setUser}: any) {
                 setCurrentScreen(0);
             } else {
                 triggerAlert("Error creating account. Please try again.", 1);
-            } 
-        })  
+            }
+        })
     }
 
     function handleSignIn() {
@@ -64,75 +57,76 @@ export default function SignIn({setUser}: any) {
         }
         fetch("http://localhost:8000/sign-in", {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                username,
-                password,
-            }),
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username, password }),
         })
         .then((response) => {
             if (response.ok) {
                 triggerAlert("Sign-in successful!", 0);
                 localStorage.setItem("username", username);
-                setTimeout(() => setUser(true), ALERT_DURATION_MS+800);
-            }
-            else {
+                setTimeout(() => setUser(true), ALERT_DURATION_MS + 800);
+            } else {
                 triggerAlert("Invalid username or password", 1);
             }
         })
     }
+
+    const inputCls = "border-2 w-full border-[#E0E0E0] rounded-sm py-2 px-3 bg-[#F8F8F8] focus:outline-none focus:border-[#FFC843] text-[#000005] font-semibold text-sm transition-colors";
+    const labelCls = "block text-[#000005] font-bold mb-2 text-xs uppercase tracking-wider";
+
     return (
-        <div className="flex flex-col h-screen bg-[#FFFBED] text-black">
+        <div className="flex flex-col h-screen bg-white text-[#000005]">
             <Alert message={alertMessage} code={alertCode} visible={showAlert} />
-        
+
             <div>
-                <div className="header border-b-2 border-[#EDEAEA] flex flex-row justify-start items-center p-3">
+                <div className="header border-b-2 border-[#E0E0E0] flex flex-row justify-start items-center p-3 bg-white">
                     <img src="/MOA_logo.svg" alt="MOA logo" width={200} height={50} />
                 </div>
             </div>
 
-            <div className="flex flex-col items-center justify-center flex-1 px-4">
-                <div className="relative w-full max-w-md min-h-[500px]">
-                    <div className={`absolute inset-0 w-full bg-white border-2 border-[#EDEAEA] p-8 rounded-xl transition-all duration-300 ease-in-out ${currentScreen === 0 ? "opacity-100 translate-y-0 pointer-events-auto" : "opacity-0 -translate-y-6 pointer-events-none"}`}>
-                        <h2 className="text-[2.5em] font-instrument mb-1">Sign <span className="italic text-[#FFB604]">In</span></h2>
-                        <p className="text-xs text-[#ABABAB] mb-6">Access your estimator workspace</p>
+            <div className="flex flex-col items-center justify-center flex-1 px-4 bg-[#F8F8F8]">
+                <div className="relative w-full max-w-md min-h-[480px]">
 
-                        <form onSubmit={(event) =>{ event.preventDefault(); handleSignIn(); }}>
+                    {/* Sign In panel */}
+                    <div className={`absolute inset-0 w-full bg-white border-2 border-[#E0E0E0] p-8 rounded-sm transition-all duration-300 ease-in-out ${currentScreen === 0 ? "opacity-100 translate-y-0 pointer-events-auto" : "opacity-0 -translate-y-6 pointer-events-none"}`}>
+                        <div className="mb-6">
+                            <div className="text-xs font-bold text-[#FFC843] tracking-widest uppercase mb-1">// ACCESS</div>
+                            <h2 className="text-3xl font-black text-[#000005] uppercase tracking-tight">Sign In</h2>
+                            <p className="text-xs text-[#B1B3B6] mt-1 font-semibold">Access your estimator workspace</p>
+                        </div>
+
+                        <form onSubmit={(event) => { event.preventDefault(); handleSignIn(); }}>
                             <div className="mb-4">
-                                <label htmlFor="signin-username" className="block text-[#363535] font-medium mb-2 text-sm">Username</label>
+                                <label htmlFor="signin-username" className={labelCls}>Username</label>
                                 <input
                                     type="text"
                                     id="signin-username"
                                     value={username}
                                     onChange={(e) => setUsername(e.target.value)}
-                                    className="border-2 w-full border-[#EDEAEA] rounded-md py-2 px-3 bg-[#FFFBED] focus:outline-none focus:border-[#FFB604]"
+                                    className={inputCls}
                                 />
                             </div>
                             <div className="mb-4">
-                                <label htmlFor="signin-password" className="block text-[#363535] font-medium mb-2 text-sm">Password</label>
+                                <label htmlFor="signin-password" className={labelCls}>Password</label>
                                 <input
                                     type="password"
                                     id="signin-password"
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
-                                    className="border-2 w-full border-[#EDEAEA] rounded-md py-2 px-3 bg-[#FFFBED] focus:outline-none focus:border-[#FFB604]"
+                                    className={inputCls}
                                 />
                             </div>
                             <div className="flex flex-row justify-between items-center mt-6">
                                 <button
                                     type="submit"
-                                    className="bg-[#FFB604] hover:text-white text-black font-bold py-2 px-5 rounded-md transition-all duration-250 ease-in-out"
-                                
-                                    
+                                    className="bg-[#FFC843] hover:bg-[#000005] hover:text-white text-[#000005] font-black py-2 px-6 rounded-sm text-sm uppercase tracking-wider transition-all duration-200"
                                 >
                                     Sign In
                                 </button>
                                 <button
                                     type="button"
                                     onClick={() => setCurrentScreen(1)}
-                                    className="ml-4 text-[#ABABAB] hover:text-black cursor-pointer text-sm transition-all duration-250 ease-in-out"
+                                    className="ml-4 text-[#B1B3B6] hover:text-[#000005] cursor-pointer text-xs font-bold uppercase tracking-wider transition-all duration-200"
                                 >
                                     Create an account?
                                 </button>
@@ -140,61 +134,63 @@ export default function SignIn({setUser}: any) {
                         </form>
                     </div>
 
-                    <div className={`absolute inset-0 w-full bg-white border-2 border-[#EDEAEA] p-8 rounded-xl transition-all duration-300 ease-in-out ${currentScreen === 1 ? "opacity-100 translate-y-0 pointer-events-auto" : "opacity-0 translate-y-6 pointer-events-none"}`}>
-                        <h2 className="text-[2.5em] font-instrument mb-1">Create <span className="italic text-[#FFB604]">Account</span></h2>
-                        <p className="text-xs text-[#ABABAB] mb-6">Set up your estimator workspace account</p>
+                    {/* Create Account panel */}
+                    <div className={`absolute inset-0 w-full bg-white border-2 border-[#E0E0E0] p-8 rounded-sm transition-all duration-300 ease-in-out ${currentScreen === 1 ? "opacity-100 translate-y-0 pointer-events-auto" : "opacity-0 translate-y-6 pointer-events-none"}`}>
+                        <div className="mb-6">
+                            <div className="text-xs font-bold text-[#FFC843] tracking-widest uppercase mb-1">// NEW USER</div>
+                            <h2 className="text-3xl font-black text-[#000005] uppercase tracking-tight">Create Account</h2>
+                            <p className="text-xs text-[#B1B3B6] mt-1 font-semibold">Set up your estimator workspace account</p>
+                        </div>
 
-                        <form onSubmit={(event) => {
-                            event.preventDefault();
-                            handleCreateAccount();
-                        }}>
+                        <form onSubmit={(event) => { event.preventDefault(); handleCreateAccount(); }}>
                             <div className="mb-4">
-                                <label htmlFor="signup-username" className="block text-[#363535] font-medium mb-2 text-sm">Username</label>
+                                <label htmlFor="signup-username" className={labelCls}>Username</label>
                                 <input
                                     type="text"
                                     id="signup-username"
                                     value={newUsername}
                                     onChange={(e) => setNewUsername(e.target.value)}
-                                    className="border-2 w-full border-[#EDEAEA] rounded-md py-2 px-3 bg-[#FFFBED] focus:outline-none focus:border-[#FFB604]"
+                                    className={inputCls}
                                 />
                             </div>
                             <div className="mb-4">
-                                <label htmlFor="signup-password" className="block text-[#363535] font-medium mb-2 text-sm">Password</label>
+                                <label htmlFor="signup-password" className={labelCls}>Password</label>
                                 <input
                                     type="password"
                                     id="signup-password"
                                     value={newPassword}
                                     onChange={(e) => setNewPassword(e.target.value)}
-                                    className="border-2 w-full border-[#EDEAEA] rounded-md py-2 px-3 bg-[#FFFBED] focus:outline-none focus:border-[#FFB604]"
+                                    className={inputCls}
                                 />
                             </div>
                             <div className="mb-4">
-                                <label htmlFor="signup-confirm-password" className="block text-[#363535] font-medium mb-2 text-sm">Confirm Password</label>
+                                <label htmlFor="signup-confirm-password" className={labelCls}>Confirm Password</label>
                                 <input
                                     type="password"
                                     id="signup-confirm-password"
                                     value={confirmPassword}
                                     onChange={(e) => setConfirmPassword(e.target.value)}
-                                    className="border-2 w-full border-[#EDEAEA] rounded-md py-2 px-3 bg-[#FFFBED] focus:outline-none focus:border-[#FFB604]"
+                                    className={inputCls}
                                 />
                             </div>
                             <div className="flex flex-row justify-between items-center mt-6">
                                 <button
                                     type="submit"
-                                    className="bg-[#FFB604] hover:text-white text-black font-bold py-2 px-5 rounded-md transition-all duration-250 ease-in-out"
+                                    className="bg-[#FFC843] hover:bg-[#000005] hover:text-white text-[#000005] font-black py-2 px-6 rounded-sm text-sm uppercase tracking-wider transition-all duration-200"
                                 >
                                     Create Account
                                 </button>
                                 <button
                                     type="button"
                                     onClick={() => setCurrentScreen(0)}
-                                    className="ml-4 text-[#ABABAB] hover:text-black cursor-pointer text-sm transition-all duration-250 ease-in-out"
+                                    className="ml-4 text-[#B1B3B6] hover:text-[#000005] cursor-pointer text-xs font-bold uppercase tracking-wider transition-all duration-200"
                                 >
                                     Back to sign in
                                 </button>
                             </div>
                         </form>
                     </div>
+
                 </div>
             </div>
         </div>

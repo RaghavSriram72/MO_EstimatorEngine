@@ -27,7 +27,7 @@ export default function Home() {
   }, [])
 
   return (
-    <div className="flex flex-col h-screen w-full bg-[#FFFBED] font-ibm-plex-mono">
+    <div className="flex flex-col h-screen w-full bg-white" style={{ fontFamily: "'Proxima Nova', sans-serif" }}>
       {userSignedIn && (<Header currentScreen={currentScreen} setCurrentScreen={setCurrentScreen}/>)}
 
       {userSignedIn && currentScreen === "MIDNIGHT AI" ? (

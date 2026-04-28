@@ -13,6 +13,7 @@ class MidnightOilDB:
     def __init__(self):
         load_dotenv()
         self.uri = os.getenv("MONGO_URI")
+        self.connect()
 
     def connect(self):
         """Establish a connection to the MongoDB database."""

@@ -1,25 +1,44 @@
 @import "tailwindcss";
 
-@theme inline {
-  --font-ibm-plex-mono: 'IBM Plex Mono', monospace;
-  --font-instrument: 'Instrument Serif', serif;
+@font-face {
+  font-family: 'Proxima Nova';
+  src: url('/fonts/ProximaNova-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
 }
+
+@font-face {
+  font-family: 'Proxima Nova';
+  src: url('/fonts/ProximaNova-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@theme inline {
+  --font-proxima: 'Proxima Nova', sans-serif;
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --mo-black:  #000005;
+  --mo-yellow: #FFC843;
+  --mo-white:  #FFFFFF;
+  --mo-grey:   #B1B3B6;
+
+  --background: var(--mo-white);
+  --foreground:  var(--mo-black);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #ffffff;
-    --foreground: #171717;
+    --background: var(--mo-white);
+    --foreground:  var(--mo-black);
   }
 }
 
@@ -30,51 +49,54 @@ html {
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: 'Proxima Nova', Arial, sans-serif;
 }
 
 
+/* ── Chat input ── */
 .chat {
   outline: none;
-  border: 2px solid rgb(197, 197, 197);
+  border: 2px solid #D0D0D0;
   transition: all 0.25s ease-in-out;
 }
-
 
 .chat:focus {
-  border: 2px solid rgb(255, 222, 35);
+  border: 2px solid var(--mo-yellow);
 }
 
+
+/* ── Navigation utilities ── */
 @utility nav-active {
-  background-color: #000000;
-  border-radius: 6px;
-  padding: 6px 12px;
+  background-color: var(--mo-black);
+  border-radius: 4px;
+  padding: 6px 14px;
   cursor: pointer;
   transition: all 0.25s ease-in-out;
-  color: #ffffff;
+  color: var(--mo-white);
+  font-weight: 700;
+  letter-spacing: 0.075em;
+  font-size: 0.875rem;
 }
-
 
 @utility nav-inactive {
-  background-color: #EDEAEA;
-  border-radius: 6px;
-  padding: 6px 12px;
-  color: #000000;
+  background-color: #F0F0F0;
+  border-radius: 4px;
+  padding: 6px 14px;
+  color: var(--mo-grey);
   cursor: pointer;
   transition: all 0.25s ease-in-out;
+  font-weight: 700;
+  letter-spacing: 0.075em;
+  font-size: 0.875rem;
 
   &:hover {
-    background-color: #d4d4d4;
+    background-color: #f4f4f4;
+    color: var(--mo-black);
   }
 }
 
 
-/* @utility chat-intro-active {
-  opacity: 1;
-  transform: translateY(0px);
-  transition: all 0.3s ease-in-out;
-} */
-
+/* ── Chat intro animation ── */
 @utility chat-intro-active {
   opacity: 0;
   transform: translateY(-300px);
@@ -87,34 +109,39 @@ body {
   transition: all 0.25s ease-in-out;
 }
 
+
+/* ── Scenario tab utilities ── */
 @utility tab-active {
-  border: 2px solid #000000;
-  background-color: #000000;
-  border-radius: 6px;
-  padding: 6px 12px;
+  border: 2px solid var(--mo-black);
+  background-color: var(--mo-black);
+  border-radius: 4px;
+  padding: 8px 12px;
   cursor: pointer;
-  color: #ffffff !important;
+  color: var(--mo-white) !important;
   width: 100%;
   transition: all 0.25s ease-in-out;
+  font-weight: 700;
 }
 
 @utility tab-inactive {
-  border: 2px solid #EDEAEA;
-  border-radius: 6px;
-  padding: 6px 12px;
+  border: 2px solid #E0E0E0;
+  border-radius: 4px;
+  padding: 8px 12px;
   cursor: pointer;
-  color: #363535 !important;
+  color: var(--mo-grey) !important;
   transition: all 0.25s ease-in-out;
   width: 100%;
+  font-weight: 600;
 
   &:hover {
-    background-color: #DBDBDB;
-    border: 2px solid #a1a1a1;
+    background-color: #F4F4F4;
+    border-color: var(--mo-grey);
+    color: var(--mo-black) !important;
   }
 }
 
 
-
+/* ── Data collector animations ── */
 @utility data-collector-title-inactive {
   opacity: 0;
   transform: translateY(-50px);
@@ -128,7 +155,7 @@ body {
 }
 
 
-
+/* ── User dropdown visibility ── */
 @utility sign-out-visible {
   opacity: 1;
   transform: translateY(0px);
@@ -143,6 +170,8 @@ body {
   transition: all 0.25s ease-in-out;
 }
 
+
+/* ── Alert animations ── */
 @utility show-alert {
   opacity: 1;
   transform: translateY(0px);
@@ -155,28 +184,25 @@ body {
   transition: all 0.4s ease-in-out;
 }
 
-/* WebKit (Chrome, Edge, Safari) */
+
+/* ── Scrollbar ── */
 *::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
 }
 *::-webkit-scrollbar-track {
-  background: #FFFBED;
+  background: #F4F4F4;
 }
 *::-webkit-scrollbar-thumb {
-  background: #FFB604;
+  background: var(--mo-yellow);
   border-radius: 9999px;
-  border: 2px solid #FFFBED;
+  border: 2px solid #F4F4F4;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: #e0e0e0;
+  background: #e0a800;
 }
 
-
-/* Firefox */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #FFB604 #FFFBED;
+  scrollbar-color: var(--mo-yellow) #F4F4F4;
 }
-
-
