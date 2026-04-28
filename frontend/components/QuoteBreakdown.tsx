@@ -29,7 +29,6 @@ const SCENARIO_META: Record<ScenarioId, { short: string; sub: string }> = {
 type LineDef = { label: string; unit: string };
 
 const UNIVERSAL_LINE_DEFS: Record<string, LineDef> = {
-    corrugate_cost:          { label: "Corrugate",            unit: "forms"    },
     imposition_cost:         { label: "Imposition Labor",     unit: "hrs"      },
     blank_comp_cost:         { label: "Blank Comp",           unit: "units"    },
     color_comp_cost:         { label: "Color Comp",           unit: "units"    },
@@ -38,23 +37,25 @@ const UNIVERSAL_LINE_DEFS: Record<string, LineDef> = {
 };
 
 const SCENARIO_LINE_DEFS: Record<string, LineDef> = {
-    print_form_cost:         { label: "Print Form Material",                            unit: "forms"    },
-    zund_cut_cost:           { label: "Zund Cut Labor",                                 unit: "hrs"      },
-    die_cost:                { label: "Die Cost",                                       unit: "dies"     },
-    pallet_cost:             { label: "Pallet & Labor",                                 unit: "pallets"  },
-    shipping_box_cost:       { label: "Shipping Box",                                   unit: "standees" },
-    label_cost:              { label: "Labels",                                         unit: "standees" },
-    instruction_sheet_cost:  { label: "Instruction Sheet",                              unit: "standees" },
-    external_assembly:       { label: "External Assembly & Kitting",                    unit: "flat"     },
-    external_mount_assembly: { label: "External Mount, Die Cut & Assembly",             unit: "flat"     },
-    full_out_source:         { label: "Full Outsource (Print, Mount, Die Cut, Assem.)", unit: "flat"     },
+    corrugate_cost:         { label: "Corrugate",                                      unit: "forms"    },
+    print_form_cost:        { label: "Print Form Material",                            unit: "forms"    },
+    rho_print_cost:         { label: "Rho Print",                                      unit: "flat"     },
+    laminator_cost:         { label: "Laminator",                                      unit: "flat"     },
+    zund_cut_cost:          { label: "Zund Cut Labor",                                 unit: "hrs"      },
+    die_cost:               { label: "Die Cost",                                       unit: "dies"     },
+    pallet_cost:            { label: "Pallet & Labor",                                 unit: "pallets"  },
+    shipping_box_cost:      { label: "Shipping Box",                                   unit: "standees" },
+    label_cost:             { label: "Labels",                                         unit: "standees" },
+    instruction_sheet_cost: { label: "Instruction Sheet",                              unit: "standees" },
+    freight_cost:           { label: "External Vendor Cost",                           unit: "flat"     },
+    full_out_source:        { label: "Full Outsource (Print, Mount, Die Cut, Assem.)", unit: "flat"     },
 };
 
 const SCENARIO_KEYS: Record<ScenarioId, string[]> = {
-    1: ["print_form_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost"],
-    2: ["print_form_cost", "zund_cut_cost", "pallet_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost"],
-    3: ["print_form_cost", "zund_cut_cost", "pallet_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "external_assembly"],
-    4: ["print_form_cost", "die_cost",      "pallet_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "external_mount_assembly"],
+    1: ["corrugate_cost", "print_form_cost", "rho_print_cost", "laminator_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost"],
+    2: ["corrugate_cost", "print_form_cost", "rho_print_cost", "laminator_cost", "zund_cut_cost", "shipping_box_cost", "label_cost"],
+    3: ["corrugate_cost", "print_form_cost", "rho_print_cost", "laminator_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "pallet_cost", "freight_cost"],
+    4: ["print_form_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "pallet_cost", "freight_cost", "die_cost"],
     5: ["full_out_source"],
 };
 
@@ -254,7 +255,7 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
                 </div>
 
                 {/* Parameters card */}
-                <div className="shrink-0 flex items-center gap-6 bg-white border-2 border-[#E0E0E0] rounded-sm px-5 py-4">
+                <div className="shrink-0 flex items-center gap-6 bg-white border-2 border-[#E0E0E0] rounded-sm px-5 py-4 flex-wrap">
                     <div className="flex flex-col gap-1">
                         <span className="text-[10px] font-black text-[#B1B3B6] uppercase tracking-widest">Number of Standees</span>
                         <input
@@ -265,6 +266,21 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
                             className="border-2 border-[#E0E0E0] rounded-sm px-3 py-1.5 text-sm font-black text-[#000005] outline-none bg-[#F8F8F8] focus:border-[#FFC843] w-[140px] text-right transition-colors"
                         />
                     </div>
+                    <div className="h-10 w-px bg-[#E0E0E0]" />
+                    {(
+                        [
+                            ["Print Forms / Standee",     "print_forms_per_standee"],
+                            ["Structure Forms / Standee", "structure_forms_per_standee"],
+                            ["Blank Forms / Standee",     "blank_forms_per_standee"],
+                        ] as [string, string][]
+                    ).map(([label, key]) => (
+                        <div key={key} className="flex flex-col gap-1">
+                            <span className="text-[10px] font-black text-[#B1B3B6] uppercase tracking-widest">{label}</span>
+                            <span className="text-sm font-black text-[#000005] text-right">
+                                {scenarioSources[activeScenario][key] ?? "—"}
+                            </span>
+                        </div>
+                    ))}
                     <div className="h-10 w-px bg-[#E0E0E0]" />
                     <div className="text-xs text-[#B1B3B6] font-semibold">
                         Adjust the standee count and individual line items below to refine the estimate.

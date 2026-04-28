@@ -26,7 +26,7 @@ export default function UserDisplay() {
         <div ref={containerRef} className="relative shrink-0">
             <div
                 onClick={() => setIsOpen((previous) => !previous)}
-                className="text-[#000005] font-bold text-xs cursor-pointer border-2 border-[#FFC843] px-4 py-1.5 rounded-sm whitespace-nowrap tracking-widest uppercase"
+                className="text-[#000005] font-bold text-sm cursor-pointer border-2 border-[#FFC843] px-4 py-1.5 rounded-sm whitespace-nowrap tracking-widest uppercase"
             >
                 USER: {username}
             </div>
