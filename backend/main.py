@@ -116,9 +116,14 @@ async def generate_quote(payload: QuoteRequest):
 
     total_static_cost = project.get_static_cost(payload.scenario)
 
+    #after the quote is generated, project object gets saved to MONGO_DB if owner is set
+
     out: dict = {"total_static_cost": total_static_cost}
 
-    owner = (payload.owner or "").strip()
+    if payload.owner:
+        owner = payload.owner.strip()
+    else:
+        owner = None
     if owner and payload.num_standees >= 1 and payload.elements:
         db = MOADB()
         if db.check_username_exists(owner):
