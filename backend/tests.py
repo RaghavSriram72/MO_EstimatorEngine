@@ -65,25 +65,28 @@ class TestStaticCostCalculator(unittest.TestCase):
     def test_static_cost_calculator_primate_standee(self):
         """Test static cost calculation for Primate standee project."""
         elements = [
-            Element(name="monkey", length=80.1012, width=74.9667, complexity=Complexity.COMPLEX),
+            Element(name="monkey", length=80.1012, width=74.9667, complexity=Complexity.SIMPLE),
         ]
-        _, bin_dict = print_form_calculator(elements, 18)
+        _, bin_dict = print_form_calculator(elements, 1)
         project = Scenario1(
             name="Primate standee (test)",
             print_forms=list(bin_dict.values()),
             # iQuote project qty; spreadsheet "STANDEE PRINT-NLANK FORMS DATA" says quantity of standeess is only 2
-            num_standees=18,
-            standee_type=Complexity.MODERATE,
+            num_standees=1,
+            standee_type=Complexity.SIMPLE,
         )
         total_cost = project.calculate_cost()
 
-        print(f"\n  Imposition cost:          ${project.imposition_cost or 0:.2f}")
+        print(f"\nPrimate standee static cost breakdown ({project.num_standees} standees):")
+        print(f"  Imposition cost:          ${project.imposition_cost or 0:.2f}")
         print(f"  Corrugate cost:           ${project.corrugate_cost or 0:.2f}")
         print(f"  Hardware cost:            ${project.hardware_cost or 0:.2f}")
         print(f"  Engineering design cost:  ${project.engineering_design_cost or 0:.2f}")
         print(f"  Color comp cost:          ${project.color_comp_cost or 0:.2f}")
         print(f"  Blank comp cost:          ${project.blank_comp_cost or 0:.2f}")
         print(f"  Print form cost:          ${project.print_form_cost or 0:.2f}")
+        print(f"  Rho print cost:           ${project.rho_print_cost or 0:.2f}")
+        print(f"  Laminator cost:           ${project.laminator_cost or 0:.2f}")
         print(f"  Zund cut cost:            ${project.zund_cut_cost or 0:.2f}")
         print(f"  Shipping box cost:        ${project.shipping_box_cost or 0:.2f}")
         print(f"  Label cost:               ${project.label_cost or 0:.2f}")
@@ -105,17 +108,17 @@ class TestStaticCostCalculator(unittest.TestCase):
             Element(name="Base", width=120, length=18, complexity=Complexity.SIMPLE),
             Element(name="Base Lug", width=31, length=9, complexity=Complexity.SIMPLE),
         ]
-        _, bin_dict = print_form_calculator(elements, 2428)
+        _, bin_dict = print_form_calculator(elements, 1)
         project = Scenario4(
             name="Sonic standee (test)",
             print_forms=list(bin_dict.values()),
             # iQuote project qty; spreadsheet "STANDEE PRINT-NLANK FORMS DATA" says quantity of standeess is only 2
-            num_standees=2428,
+            num_standees=1,
             standee_type=Complexity.MODERATE,
         )
         total_cost = project.calculate_cost()
-        print(f"\n  Imposition cost:          ${project.imposition_cost or 0:.2f}")
-        print(f"  Corrugate cost:           ${project.corrugate_cost or 0:.2f}")
+        print(f"\nSonic standee static cost breakdown ({project.num_standees} standees):")
+        print(f"  Imposition cost:          ${project.imposition_cost or 0:.2f}")
         print(f"  Hardware cost:            ${project.hardware_cost or 0:.2f}")
         print(f"  Engineering design cost:  ${project.engineering_design_cost or 0:.2f}")
         print(f"  Color comp cost:          ${project.color_comp_cost or 0:.2f}")
@@ -139,22 +142,25 @@ class TestStaticCostCalculator(unittest.TestCase):
             Element(name="MBJ W/GUN", length=72.97, width=24, complexity=Complexity.COMPLEX),
             Element(name="BASE", length=18.96, width=68.04, complexity=Complexity.SIMPLE),
         ]
-        _, bin_dict = print_form_calculator(elements, 118)
+        _, bin_dict = print_form_calculator(elements, 1)
         project = Scenario1(
             name="Sinner standee (test)",
             print_forms=list(bin_dict.values()),
             # iQuote project qty; spreadsheet "STANDEE PRINT-NLANK FORMS DATA" says quantity of standeess is only 10
-            num_standees=118,
+            num_standees=1,
             standee_type=Complexity.MODERATE,
         )
         total_cost = project.calculate_cost()
-        print(f"\n  Imposition cost:          ${project.imposition_cost or 0:.2f}")
+        print(f"\nSinner standee static cost breakdown ({project.num_standees} standees):")
+        print(f"  Imposition cost:          ${project.imposition_cost or 0:.2f}")
         print(f"  Corrugate cost:           ${project.corrugate_cost or 0:.2f}")
         print(f"  Hardware cost:            ${project.hardware_cost or 0:.2f}")
         print(f"  Engineering design cost:  ${project.engineering_design_cost or 0:.2f}")
         print(f"  Color comp cost:          ${project.color_comp_cost or 0:.2f}")
         print(f"  Blank comp cost:          ${project.blank_comp_cost or 0:.2f}")
         print(f"  Print form cost:          ${project.print_form_cost or 0:.2f}")
+        print(f"  Rho print cost:           ${project.rho_print_cost or 0:.2f}")
+        print(f"  Laminator cost:           ${project.laminator_cost or 0:.2f}")
         print(f"  Zund cut cost:            ${project.zund_cut_cost or 0:.2f}")
         print(f"  Shipping box cost:        ${project.shipping_box_cost or 0:.2f}")
         print(f"  Label cost:               ${project.label_cost or 0:.2f}")
