@@ -112,21 +112,7 @@ async def generate_quote(payload: QuoteRequest):
 
     scenario_1.calculate_cost()
 
-    scenario_1_obj = {
-        "total_cost": scenario_1.total_cost,
-        "total_universal_cost": scenario_1.total_universal_cost,
-        "corrugate_cost": scenario_1.corrugate_cost,
-        "imposition_cost": scenario_1.imposition_cost,
-        "blank_comp_cost": scenario_1.blank_comp_cost,
-        "color_comp_cost": scenario_1.color_comp_cost,
-        "engineering_design_cost": scenario_1.engineering_design_cost,
-        "hardware_cost": scenario_1.hardware_cost,
-        "print_form_cost": scenario_1.print_form_cost,
-        "zund_cut_cost": scenario_1.zund_cut_cost,
-        "shipping_box_cost": scenario_1.shipping_box_cost,
-        "label_cost": scenario_1.label_cost,
-        "instruction_sheet_cost": scenario_1.instruction_sheet_cost,
-    }
+    scenario_1_obj = scenario_1.to_dict()
 
     scenario_2 = Scenario2(
         name="API quote",
@@ -137,21 +123,7 @@ async def generate_quote(payload: QuoteRequest):
 
     scenario_2.calculate_cost()
 
-    scenario_2_obj = {
-        "total_cost": scenario_2.total_cost,
-        "total_universal_cost": scenario_2.total_universal_cost,
-        "corrugate_cost": scenario_2.corrugate_cost,
-        "imposition_cost": scenario_2.imposition_cost,
-        "blank_comp_cost": scenario_2.blank_comp_cost,
-        "color_comp_cost": scenario_2.color_comp_cost,
-        "engineering_design_cost": scenario_2.engineering_design_cost,
-        "hardware_cost": scenario_2.hardware_cost,
-        "print_form_cost": scenario_2.print_form_cost,
-        "zund_cut_cost": scenario_2.zund_cut_cost,
-        "shipping_box_cost": scenario_2.shipping_box_cost,
-        "label_cost": scenario_2.label_cost,
-        "instruction_sheet_cost": scenario_2.instruction_sheet_cost,
-    }
+    scenario_2_obj = scenario_2.to_dict()
 
     scenario_3 = Scenario3(
         name="API quote",
@@ -162,21 +134,7 @@ async def generate_quote(payload: QuoteRequest):
 
     scenario_3.calculate_cost()
 
-    scenario_3_obj = {
-        "total_cost": scenario_3.total_cost,
-        "total_universal_cost": scenario_3.total_universal_cost,
-        "corrugate_cost": scenario_3.corrugate_cost,
-        "imposition_cost": scenario_3.imposition_cost,
-        "blank_comp_cost": scenario_3.blank_comp_cost,
-        "color_comp_cost": scenario_3.color_comp_cost,
-        "engineering_design_cost": scenario_3.engineering_design_cost,
-        "hardware_cost": scenario_3.hardware_cost,
-        "print_form_cost": scenario_3.print_form_cost,
-        "zund_cut_cost": scenario_3.zund_cut_cost,
-        "shipping_box_cost": scenario_3.shipping_box_cost,
-        "label_cost": scenario_3.label_cost,
-        "instruction_sheet_cost": scenario_3.instruction_sheet_cost,
-    }
+    scenario_3_obj = scenario_3.to_dict()
 
     scenario_4 = Scenario4(
         name="API quote",
@@ -187,21 +145,7 @@ async def generate_quote(payload: QuoteRequest):
 
     scenario_4.calculate_cost()
 
-    scenario_4_obj = {
-        "total_cost": scenario_4.total_cost,
-        "total_universal_cost": scenario_4.total_universal_cost,
-        "corrugate_cost": scenario_4.corrugate_cost,
-        "imposition_cost": scenario_4.imposition_cost,
-        "blank_comp_cost": scenario_4.blank_comp_cost,
-        "color_comp_cost": scenario_4.color_comp_cost,
-        "engineering_design_cost": scenario_4.engineering_design_cost,
-        "hardware_cost": scenario_4.hardware_cost,
-        "print_form_cost": scenario_4.print_form_cost,
-        "zund_cut_cost": scenario_4.zund_cut_cost,
-        "shipping_box_cost": scenario_4.shipping_box_cost,
-        "label_cost": scenario_4.label_cost,
-        "instruction_sheet_cost": scenario_4.instruction_sheet_cost,
-    }
+    scenario_4_obj = scenario_4.to_dict()
 
     return {"scenario_1": scenario_1_obj, "scenario_2": scenario_2_obj, "scenario_3": scenario_3_obj, "scenario_4": scenario_4_obj}
     # "scenario_2": scenario_2}

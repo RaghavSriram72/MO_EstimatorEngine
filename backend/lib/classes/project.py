@@ -70,6 +70,29 @@ class Project:
         """Calculate the total cost of the project, including both universal and scenario-specific costs."""
         raise NotImplementedError("Subclasses must implement calculate_cost method")
 
+    def to_dict(self) -> dict:
+        """Return common project/scenario fields as a dictionary."""
+        return {
+            "name": self.name,
+            "standee_type": self.standee_type.value,
+            "standee_key": self.standee_key,
+            "num_standees": self.num_standees,
+            "print_forms": [form.id for form in self.print_forms],
+            "print_forms_per_standee": getattr(self, "print_forms_per_standee", 0),
+            "structure_forms_per_standee": getattr(self, "structure_forms_per_standee", 0),
+            "blank_forms_per_standee": getattr(self, "blank_forms_per_standee", 0),
+            "imposition_hours": getattr(self, "imposition_hours", 0),
+            "imposition_cost": getattr(self, "imposition_cost", 0),
+            "blank_comp_count": getattr(self, "blank_comp_count", 0),
+            "blank_comp_cost": getattr(self, "blank_comp_cost", 0),
+            "color_comp_count": getattr(self, "color_comp_count", 0),
+            "color_comp_cost": getattr(self, "color_comp_cost", 0),
+            "engineering_design_cost": getattr(self, "engineering_design_cost", 0),
+            "hardware_cost": getattr(self, "hardware_cost", 0),
+            "total_universal_cost": self.total_universal_cost,
+            "total_cost": self.total_cost,
+        }
+
     def _calculate_universal_costs(
         self,
         *,
@@ -174,6 +197,20 @@ class Scenario1(Project):
             + self.instruction_sheet_cost
         )
 
+    @override
+    def to_dict(self) -> dict:
+        return super().to_dict() | {
+            "corrugate_cost": getattr(self, "corrugate_cost", 0),
+            "print_form_cost": getattr(self, "print_form_cost", 0),
+            "rho_print_cost": getattr(self, "rho_print_cost", 0),
+            "laminator_cost": getattr(self, "laminator_cost", 0),
+            "zund_hours": getattr(self, "zund_hours", 0),
+            "zund_cut_cost": getattr(self, "zund_cut_cost", 0),
+            "shipping_box_cost": getattr(self, "shipping_box_cost", 0),
+            "label_cost": getattr(self, "label_cost", 0),
+            "instruction_sheet_cost": getattr(self, "instruction_sheet_cost", 0),
+        }
+
 
 class Scenario2(Project):
     """Scenario 2: Internal Print, Internal Finishing, Assembled."""
@@ -235,6 +272,19 @@ class Scenario2(Project):
             + self.shipping_box_cost
             + self.label_cost
         )
+
+    @override
+    def to_dict(self) -> dict:
+        return super().to_dict() | {
+            "corrugate_cost": getattr(self, "corrugate_cost", 0),
+            "print_form_cost": getattr(self, "print_form_cost", 0),
+            "rho_print_cost": getattr(self, "rho_print_cost", 0),
+            "laminator_cost": getattr(self, "laminator_cost", 0),
+            "zund_hours": getattr(self, "zund_hours", 0),
+            "zund_cut_cost": getattr(self, "zund_cut_cost", 0),
+            "shipping_box_cost": getattr(self, "shipping_box_cost", 0),
+            "label_cost": getattr(self, "label_cost", 0),
+        }
 
 
 class Scenario3(Project):
@@ -313,6 +363,23 @@ class Scenario3(Project):
             + self.freight_cost
         )
 
+    @override
+    def to_dict(self) -> dict:
+        return super().to_dict() | {
+            "corrugate_cost": getattr(self, "corrugate_cost", 0),
+            "print_form_cost": getattr(self, "print_form_cost", 0),
+            "rho_print_cost": getattr(self, "rho_print_cost", 0),
+            "laminator_cost": getattr(self, "laminator_cost", 0),
+            "zund_hours": getattr(self, "zund_hours", 0),
+            "zund_cut_cost": getattr(self, "zund_cut_cost", 0),
+            "shipping_box_cost": getattr(self, "shipping_box_cost", 0),
+            "label_cost": getattr(self, "label_cost", 0),
+            "instruction_sheet_cost": getattr(self, "instruction_sheet_cost", 0),
+            "pallet_count": getattr(self, "pallet_count", 0),
+            "pallet_cost": getattr(self, "pallet_cost", 0),
+            "freight_cost": getattr(self, "freight_cost", 0),
+        }
+
 
 class Scenario4(Project):
     """Scenario 4: Internal Print, External Mount & Die Cut, External Assembly."""
@@ -385,6 +452,20 @@ class Scenario4(Project):
             + self.die_cost
         )
 
+    @override
+    def to_dict(self) -> dict:
+        return super().to_dict() | {
+            "print_material": getattr(self, "print_material", None),
+            "print_form_cost": getattr(self, "print_form_cost", 0),
+            "shipping_box_cost": getattr(self, "shipping_box_cost", 0),
+            "label_cost": getattr(self, "label_cost", 0),
+            "instruction_sheet_cost": getattr(self, "instruction_sheet_cost", 0),
+            "pallet_count": getattr(self, "pallet_count", 0),
+            "pallet_cost": getattr(self, "pallet_cost", 0),
+            "freight_cost": getattr(self, "freight_cost", 0),
+            "die_cost": getattr(self, "die_cost", 0),
+        }
+
 
 class Scenario5(Project):
     """Scenario 5: External Print, External Finishing, Packed out (currently incomplete)."""
@@ -430,6 +511,14 @@ class Scenario5(Project):
     def total_cost(self) -> float:
         """Calculate the total cost of the project, including both universal and scenario-specific costs."""
         return self.total_universal_cost + self.instruction_sheet_cost + self.freight_cost + self.die_cost
+
+    @override
+    def to_dict(self) -> dict:
+        return super().to_dict() | {
+            "instruction_sheet_cost": getattr(self, "instruction_sheet_cost", 0),
+            "freight_cost": getattr(self, "freight_cost", 0),
+            "die_cost": getattr(self, "die_cost", 0),
+        }
 
 
 # Helpers
