@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { type QuoteData } from "@/pages/Inputter";
 
 type ScenarioId = 1 | 2 | 3 | 4 | 5;
 
@@ -10,24 +11,6 @@ type CostLine = {
     qty: number;
     unitCost: number;
 };
-
-type ScenarioCosts = {
-    total_cost: number;
-    total_universal_cost: number;
-    corrugate_cost: number;
-    imposition_cost: number;
-    blank_comp_cost: number;
-    color_comp_cost: number;
-    engineering_design_cost: number;
-    hardware_cost: number;
-    print_form_cost: number;
-    zund_cut_cost: number;
-    shipping_box_cost: number;
-    label_cost: number;
-    instruction_sheet_cost: number;
-};
-
-type QuoteData = { scenario_1: ScenarioCosts };
 
 type Props = {
     quoteData: QuoteData;
@@ -86,6 +69,13 @@ function buildLines(keys: string[], defs: Record<string, LineDef>): CostLine[] {
         unit:     defs[key]?.unit  ?? "units",
         qty:      1,
         unitCost: 0,
+    }));
+}
+
+function seedLines(lines: CostLine[], source: Record<string, number>): CostLine[] {
+    return lines.map((line) => ({
+        ...line,
+        unitCost: source[line.key] ?? line.unitCost,
     }));
 }
 
@@ -153,28 +143,28 @@ function CostRow({
     );
 }
 
-function seedLines(lines: CostLine[], source: Record<string, number>): CostLine[] {
-    return lines.map((line) => ({
-        ...line,
-        unitCost: source[line.key] ?? line.unitCost,
-    }));
-}
-
 export default function QuoteBreakdown({ quoteData, numStandees: initialStandees, onBack }: Props) {
     const [activeScenario, setActiveScenario] = useState<ScenarioId>(1);
     const [numStandees, setNumStandees]        = useState<number>(initialStandees);
 
-    const s1 = quoteData.scenario_1;
+    // Resolve each scenario's source data (fall back to empty object if not returned)
+    const scenarioSources: Record<ScenarioId, Record<string, number>> = {
+        1: quoteData["scenario_1"] ?? {},
+        2: quoteData["scenario_2"] ?? {},
+        3: quoteData["scenario_3"] ?? {},
+        4: quoteData["scenario_4"] ?? {},
+        5: {},
+    };
 
     const [universalLines, setUniversalLines] = useState<CostLine[]>(
-        seedLines(buildLines(Object.keys(UNIVERSAL_LINE_DEFS), UNIVERSAL_LINE_DEFS), s1)
+        seedLines(buildLines(Object.keys(UNIVERSAL_LINE_DEFS), UNIVERSAL_LINE_DEFS), scenarioSources[1])
     );
 
     const [scenarioLines, setScenarioLines] = useState<Record<ScenarioId, CostLine[]>>({
-        1: seedLines(buildLines(SCENARIO_KEYS[1], SCENARIO_LINE_DEFS), s1),
-        2: buildLines(SCENARIO_KEYS[2], SCENARIO_LINE_DEFS),
-        3: buildLines(SCENARIO_KEYS[3], SCENARIO_LINE_DEFS),
-        4: buildLines(SCENARIO_KEYS[4], SCENARIO_LINE_DEFS),
+        1: seedLines(buildLines(SCENARIO_KEYS[1], SCENARIO_LINE_DEFS), scenarioSources[1]),
+        2: seedLines(buildLines(SCENARIO_KEYS[2], SCENARIO_LINE_DEFS), scenarioSources[2]),
+        3: seedLines(buildLines(SCENARIO_KEYS[3], SCENARIO_LINE_DEFS), scenarioSources[3]),
+        4: seedLines(buildLines(SCENARIO_KEYS[4], SCENARIO_LINE_DEFS), scenarioSources[4]),
         5: buildLines(SCENARIO_KEYS[5], SCENARIO_LINE_DEFS),
     });
 
@@ -217,6 +207,11 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
     const scenarioTotal  = scenarioLines[activeScenario].reduce((s, l) => s + lineTotal(l), 0);
     const grandTotal     = universalTotal + scenarioTotal;
 
+    // Which scenario IDs were actually returned by the backend
+    const availableScenarios: ScenarioId[] = [1, 2, 3, 4, 5].filter((id) =>
+        id === 5 || quoteData[`scenario_${id}`] !== undefined
+    ) as ScenarioId[];
+
     return (
         <div className="grid grid-cols-[220px_1fr] w-full flex-1 overflow-hidden text-[#000005]">
 
@@ -224,14 +219,14 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
             <div className="flex flex-col bg-white border-r-2 border-[#E0E0E0] px-5 py-6 gap-2">
                 <div className="text-[10px] font-black text-[#FFC843] tracking-widest uppercase mb-1">// SCENARIOS</div>
                 <ul className="flex flex-col gap-3 w-full">
-                    {([1, 2, 3, 4, 5] as ScenarioId[]).map((id) => (
+                    {availableScenarios.map((id) => (
                         <li
                             key={id}
                             onClick={() => setActiveScenario(id)}
                             className={`${activeScenario === id ? "tab-active" : "tab-inactive"} flex flex-col gap-0.5 w-full cursor-pointer`}
                         >
                             <span className="text-xs font-black uppercase tracking-wide">Scenario {id} — {SCENARIO_META[id].short}</span>
-                            <span className={`text-[10px] font-semibold ${activeScenario === id ? "text-[#B1B3B6]" : "text-[#B1B3B6]"}`}>{SCENARIO_META[id].sub}</span>
+                            <span className="text-[10px] font-semibold text-[#B1B3B6]">{SCENARIO_META[id].sub}</span>
                         </li>
                     ))}
                 </ul>

@@ -14,29 +14,15 @@ type Element = {
     linear_inches: number | "";
 };
 
+export type QuoteData = Record<string, Record<string, number>>;
+
 export default function Inputter() {
     const [standeeCount, setStandeeCount] = useState<number | "">("");
     const [standeeType, setStandeeType]   = useState<StandeeType>("Simple");
     const [elements, setElements]         = useState<Element[]>([]);
     const [resetKey, setResetKey]         = useState(0);
     const [isLoading, setIsLoading]       = useState(false);
-    const [quoteData, setQuoteData]       = useState<{
-        scenario_1: {
-            total_cost: number;
-            total_universal_cost: number;
-            corrugate_cost: number;
-            imposition_cost: number;
-            blank_comp_cost: number;
-            color_comp_cost: number;
-            engineering_design_cost: number;
-            hardware_cost: number;
-            print_form_cost: number;
-            zund_cut_cost: number;
-            shipping_box_cost: number;
-            label_cost: number;
-            instruction_sheet_cost: number;
-        };
-    } | null>(null);
+    const [quoteData, setQuoteData]       = useState<QuoteData | null>(null);
 
     function handleClear() {
         setStandeeCount("");

@@ -13,7 +13,7 @@ export default function Dropdown({ options, currOption, onSelect, width = "w-[20
                 <div className={currOption ? "text-[#000005]" : "text-[#B1B3B6]"}>
                     {currOption || "Select Option"}
                 </div>
-                <img src="/dropdown.svg" className="ml-2 w-4 h-4 block opacity-50"></img>
+                <img src="/dropdown.svg" className="ml-2 w-4 h-4 block" style={{ filter: 'brightness(0)' }}></img>
             </div>
             {isOpen && (
                 <div className={`text-xs dropdown-menu absolute mt-1 ${width} max-h-50 overflow-y-auto bg-white border border-[#E0E0E0] rounded-sm shadow-lg z-10`}>
