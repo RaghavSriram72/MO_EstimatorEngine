@@ -1,7 +1,7 @@
 import hashlib
 import hmac
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -11,6 +11,13 @@ from lib.classes.db import MidnightOilDB as MOADB
 # from lib.globals import
 from lib.classes.form import Element, Form, Complexity
 from lib.classes.project import Project, Scenario1, Scenario2, Scenario3, Scenario4, Scenario5
+from lib.persisted_project import (
+    PersistedProjectCreate,
+    complexity_to_str,
+    elements_to_persisted,
+    persisted_create_to_mongo_document,
+)
+
 from lib.print_form_calculator import print_form_calculator
 
 
@@ -29,7 +36,6 @@ app.add_middleware(
 class AccountRequest(BaseModel):
     username: str
     password: str
-
 
 def _verify_password(password: str, stored_hash: str) -> bool:
     """Verify a password against a stored PBKDF2 hash string."""
@@ -79,6 +85,9 @@ class QuoteRequest(BaseModel):
     num_standees: int
     scenario: int = 1
     standee_type: int = 1
+    owner: str | None = None
+    project_name: str | None = None
+
 
 
 @app.post("/generate_quote")
@@ -111,7 +120,6 @@ async def generate_quote(payload: QuoteRequest):
     )
 
     scenario_1.calculate_cost()
-
     scenario_1_obj = scenario_1.to_dict()
 
     scenario_2 = Scenario2(
@@ -147,8 +155,31 @@ async def generate_quote(payload: QuoteRequest):
 
     scenario_4_obj = scenario_4.to_dict()
 
-    return {"scenario_1": scenario_1_obj, "scenario_2": scenario_2_obj, "scenario_3": scenario_3_obj, "scenario_4": scenario_4_obj}
-    # "scenario_2": scenario_2}
+    out: dict = {
+        "scenario_1": scenario_1_obj,
+        "scenario_2": scenario_2_obj,
+        "scenario_3": scenario_3_obj,
+        "scenario_4": scenario_4_obj,
+    }
+
+    # Persist the project if an authenticated owner is provided.
+    owner = payload.owner.strip() if payload.owner else None
+    if owner and payload.num_standees >= 1 and payload.elements:
+        db = MOADB()
+        if db.check_username_exists(owner):
+            pname = (payload.project_name or "").strip() or "Untitled project"
+            persisted = PersistedProjectCreate(
+                owner=owner,
+                project_name=pname,
+                num_standees=payload.num_standees,
+                standee_type=complexity_to_str(Complexity(payload.standee_type)),
+                elements=elements_to_persisted(elements),
+            )
+            out["project_id"] = db.insert_persisted_project(
+                persisted_create_to_mongo_document(persisted)
+            )
+
+    return out
 
 
 @app.get("/standee-data")
@@ -159,6 +190,39 @@ async def get_standee_data(standee_type: int, data_type: str):
     standee_data = db.get_standee_data(type_mapping[standee_type], data_type.strip())
     print(f"Retrieved standee data for type {type_mapping[standee_type]} and field '{data_type}': {standee_data}")
     return {"data": standee_data}
+
+
+@app.post("/create-project")
+async def create_project(payload: PersistedProjectCreate):
+    db = MOADB()
+    if not db.check_username_exists(payload.owner):
+        return JSONResponse(status_code=404, content={"error": "Unknown owner"})
+    doc = persisted_create_to_mongo_document(payload)
+    project_id = db.insert_persisted_project(doc)
+    return JSONResponse(
+        status_code=201,
+        content={"project_id": project_id, "message": "Project created successfully"},
+    )
+
+
+@app.get("/projects")
+async def list_projects(owner: str = Query(..., description="Username of the account that owns the projects")):
+    db = MOADB()
+    if not db.check_username_exists(owner):
+        return JSONResponse(status_code=404, content={"error": "Unknown owner"})
+    return {"projects": db.list_projects_by_owner(owner)}
+
+
+@app.get("/projects/{project_id}")
+async def get_project(
+    project_id: str,
+    owner: str = Query(..., description="Must match the document's owner field"),
+):
+    db = MOADB()
+    row = db.get_project_by_owner(project_id, owner)
+    if row is None:
+        return JSONResponse(status_code=404, content={"error": "Project not found"})
+    return row
 
 
 @app.post("/create-account")

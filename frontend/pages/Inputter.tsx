@@ -36,6 +36,7 @@ export default function Inputter() {
         const payload = {
             standee_type: standeeTypeMap[standeeType],
             elements: elements.map(({ height, width, complexity, linear_inches }) => ({
+                name: "",
                 height: height === "" ? 0 : height,
                 width: width === "" ? 0 : width,
                 complexity,
@@ -43,6 +44,10 @@ export default function Inputter() {
             })),
             num_standees: standeeCount === "" ? 0 : standeeCount,
         };
+        if (typeof window !== "undefined") {
+            const owner = localStorage.getItem("username");
+            if (owner) payload.owner = owner;
+        }
 
         setIsLoading(true);
         fetch("http://localhost:8000/generate_quote", {
