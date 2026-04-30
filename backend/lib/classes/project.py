@@ -341,7 +341,7 @@ class Scenario3(Project):
             self.instruction_sheet_cost = _instruction_sheet_cost(db, self.standee_key, self.num_standees)
 
             # pallet cost calculation
-            self.pallet_count = pallet_count or (self.num_standees // db.get_unit_cost(PALLET))
+            self.pallet_count = pallet_count or self.blank_forms_per_standee
             self.pallet_cost = (
                 db.get_unit_cost(PALLET_LABOR) * self.pallet_count + db.get_unit_cost(PALLET) * self.pallet_count
             )
@@ -429,7 +429,7 @@ class Scenario4(Project):
             self.instruction_sheet_cost = _instruction_sheet_cost(db, self.standee_key, self.num_standees)
 
             # pallet cost calculation
-            self.pallet_count = pallet_count or (self.num_standees // db.get_unit_cost(PALLET))
+            self.pallet_count = pallet_count or self.blank_forms_per_standee
             self.pallet_cost = (
                 db.get_unit_cost(PALLET_LABOR) * self.pallet_count + db.get_unit_cost(PALLET) * self.pallet_count
             )
