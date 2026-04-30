@@ -357,7 +357,7 @@ export default function DataCollector() {
                                             Cost ($)
                                             {unitEdits.cost !== selectedUnitRecord?.cost && <span className="text-[9px] text-[#FFB604] font-bold tracking-wider">CHANGED</span>}
                                         </div>
-                                        <input type="number" min={0} step={0.01} value={unitEdits.cost} onChange={(e) => handleUnitEdit("cost", e.target.value)} className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors" />
+                                        <input type="number" min={0} step={1} value={unitEdits.cost} onChange={(e) => handleUnitEdit("cost", e.target.value)} className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors" />
                                     </div>
                                     <div className="flex-1 min-w-[110px]">
                                         <div className="text-xs font-bold m-2 flex items-center gap-2">
@@ -390,7 +390,14 @@ export default function DataCollector() {
 
                         {/* Section 02 — editable value boxes */}
                         <div className="flex flex-col items-start w-full flex-1 p-5 overflow-y-auto">
-                            <div className="text-[10px] m-2">02 — VALUES</div>
+                            <div className="flex items-center gap-2 m-2">
+                                <span className="text-[10px]">02 — VALUES</span>
+                                {standeeEdits && (
+                                    <span className="text-[10px] font-bold text-[#FFB604] px-1.5 py-0.5 tracking-wide">
+                                        Click Any Value to Edit
+                                    </span>
+                                )}
+                            </div>
                             {isLoadingStandee ? (
                                 <div className="text-xs m-2">Loading...</div>
                             ) : standeeEdits && standeeRecord ? (
@@ -460,7 +467,7 @@ export default function DataCollector() {
                                             Cost ($)
                                             {wcEdits.cost !== selectedWcRecord?.cost && <span className="text-[9px] text-[#FFB604] font-bold tracking-wider">CHANGED</span>}
                                         </div>
-                                        <input type="number" min={0} step={0.01} value={wcEdits.cost} onChange={(e) => handleWcEdit("cost", e.target.value)} className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors" />
+                                        <input type="number" min={0} step={1} value={wcEdits.cost} onChange={(e) => handleWcEdit("cost", e.target.value)} className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors" />
                                     </div>
                                     <div className="flex-1 min-w-[110px]">
                                         <div className="text-xs font-bold m-2 flex items-center gap-2">

@@ -6,7 +6,7 @@ type Props = {
     step?: number;
 };
 
-export default function EditableValueBox({ label, value, originalValue, onChange, step = 0.01 }: Props) {
+export default function EditableValueBox({ label, value, originalValue, onChange, step = 1 }: Props) {
     const isDirty = value !== originalValue;
     return (
         <div
