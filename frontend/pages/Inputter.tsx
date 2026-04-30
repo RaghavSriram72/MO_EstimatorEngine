@@ -101,7 +101,7 @@ export default function Inputter() {
             </div>
 
             {/* Form card */}
-            <div className="flex flex-col w-full max-w-2xl flex-1 min-h-0 border-2 bg-white border-[#E0E0E0] rounded-sm text-[#B1B3B6] overflow-hidden">
+            <div className="flex flex-col w-full max-w-3xl flex-1 min-h-0 border-2 bg-white border-[#E0E0E0] rounded-md text-[#B1B3B6] overflow-hidden">
 
                 {/* 01 - COUNTS */}
                 <div className="flex flex-col justify-center items-start w-full p-5 border-b-2 border-[#E0E0E0] shrink-0">
