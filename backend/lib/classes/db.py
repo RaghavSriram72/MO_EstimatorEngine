@@ -1,6 +1,7 @@
 import hashlib
 import os
 import secrets
+from datetime import datetime, UTC
 from typing import Any
 
 from bson import ObjectId
@@ -25,6 +26,7 @@ class MidnightOilDB:
         self.by_unit_costs_collection = self.db["by_unit_costs"]
         self.standee_collection = self.db["standee_static_costs"]
         self.print_blank_collection = self.db["print_blank_ratio"]
+        self.work_center_collection = self.db["work_center_costs"]
         self.users_collection = self.db["users"]
         self.projects_collection = self.db["projects"]
         self.projects_collection.create_index([("owner", 1), ("_id", -1)])
@@ -106,17 +108,57 @@ class MidnightOilDB:
         else:
             raise ValueError(f"Cost entry not found for '{cost_name}'")
 
+    def get_all_unit_costs(self) -> list[dict]:
+        """Return all unit cost records, serialized for JSON."""
+        records = []
+        for r in self.by_unit_costs_collection.find({}, sort=[("type", 1), ("display_name", 1)]):
+            r["_id"] = str(r["_id"])
+            if "last_updated" in r and hasattr(r["last_updated"], "isoformat"):
+                r["last_updated"] = r["last_updated"].isoformat()
+            records.append(r)
+        return records
+
     def get_units_by_type(self, cost_type: str) -> list[dict[str, float]]:
         """Return the unit cost for a given cost name and type."""
         result = self.by_unit_costs_collection.find({"type": cost_type})
         return list(result)
 
     def set_unit_cost(self, cost_name: str, cost: float) -> None:
-        """Set the unit cost for a given cost name."""
+        """Set the unit cost for a given cost name, stamping last_updated."""
         try:
-            self.by_unit_costs_collection.update_one({"name": cost_name}, {"$set": {"cost": cost}})
+            self.by_unit_costs_collection.update_one(
+                {"name": cost_name},
+                {"$set": {"cost": cost, "last_updated": datetime.now(UTC)}},
+            )
         except Exception as e:
             raise ValueError(f"Failed to set cost for '{cost_name}': {str(e)}")
+
+    def update_unit_cost_entry(self, cost_name: str, updates: dict) -> None:
+        """Update arbitrary fields on a unit cost record, stamping last_updated."""
+        if not updates:
+            return
+        updates["last_updated"] = datetime.now(UTC)
+        try:
+            self.by_unit_costs_collection.update_one({"name": cost_name}, {"$set": updates})
+        except Exception as e:
+            raise ValueError(f"Failed to update entry for '{cost_name}': {str(e)}")
+
+    def get_standee_record(self, standee_category: str) -> dict:
+        """Return the full standee static cost document for a given category."""
+        result = self.standee_collection.find_one({"standee_type": standee_category})
+        if result:
+            result["_id"] = str(result["_id"])
+            return result
+        raise ValueError(f"Standee record not found for '{standee_category}'")
+
+    def update_standee_record(self, standee_category: str, updates: dict) -> None:
+        """Update arbitrary numeric fields on a standee static cost record."""
+        if not updates:
+            return
+        try:
+            self.standee_collection.update_one({"standee_type": standee_category}, {"$set": updates})
+        except Exception as e:
+            raise ValueError(f"Failed to update standee record for '{standee_category}': {str(e)}")
 
     def get_standee_data(self, standee_category: str, data_field: str) -> int | float:
         """Return the specified data field for a given standee category."""
@@ -130,6 +172,23 @@ class MidnightOilDB:
         """Update the specified data field for a given standee category."""
         result = self.standee_collection.update_one({"standee_type": standee_category}, {"$set": {data_field: value}})
         return result.modified_count > 0  # Return True if the update was successful
+
+    def get_all_work_center_costs(self) -> list[dict]:
+        """Return all work center cost records, serialized for JSON."""
+        records = []
+        for r in self.work_center_collection.find({}, sort=[("activity", 1)]):
+            r["_id"] = str(r["_id"])
+            records.append(r)
+        return records
+
+    def update_work_center_cost(self, activity: str, updates: dict) -> None:
+        """Update fields on a work center cost record identified by activity."""
+        if not updates:
+            return
+        try:
+            self.work_center_collection.update_one({"activity": activity}, {"$set": updates})
+        except Exception as e:
+            raise ValueError(f"Failed to update work center cost for '{activity}': {str(e)}")
 
     def get_structure_forms_per_standee(self, print_forms: int) -> int:
         """Return the current print blank ratio."""

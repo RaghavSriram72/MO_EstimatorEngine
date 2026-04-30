@@ -192,6 +192,87 @@ async def get_standee_data(standee_type: int, data_type: str):
     return {"data": standee_data}
 
 
+@app.get("/unit-costs")
+async def get_unit_costs():
+    db = MOADB()
+    return {"data": db.get_all_unit_costs()}
+
+
+class UpdateCostRequest(BaseModel):
+    """Payload for updating fields on a unit cost record. All fields optional — only changed ones need to be sent."""
+
+    cost: float | None = None
+    unit: str | None = None
+    display_name: str | None = None
+    type: str | None = None
+
+
+@app.get("/standee-static-costs")
+async def get_standee_static_costs(standee_type: str):
+    """Return the full static cost record for a given standee type."""
+    db = MOADB()
+    try:
+        return {"data": db.get_standee_record(standee_type)}
+    except ValueError as e:
+        return JSONResponse(status_code=404, content={"error": str(e)})
+
+
+class UpdateStandeeRequest(BaseModel):
+    """Payload for updating standee static cost fields. Only changed fields need to be sent."""
+
+    updates: dict[str, float]
+
+
+@app.patch("/standee-static-costs")
+async def update_standee_static_costs(standee_type: str, payload: UpdateStandeeRequest):
+    """Update numeric fields on a standee static cost record."""
+    db = MOADB()
+    try:
+        db.update_standee_record(standee_type, payload.updates)
+        return {"message": "Updated successfully"}
+    except ValueError as e:
+        return JSONResponse(status_code=404, content={"error": str(e)})
+
+
+@app.get("/work-center-costs")
+async def get_work_center_costs():
+    """Return all work center cost records."""
+    db = MOADB()
+    return {"data": db.get_all_work_center_costs()}
+
+
+class UpdateWorkCenterRequest(BaseModel):
+    """Payload for updating fields on a work center cost record. All fields optional."""
+
+    cost: float | None = None
+    uom: str | None = None
+    speed: str | None = None
+    unit: str | None = None
+
+
+@app.patch("/work-center-costs/{activity}")
+async def update_work_center_cost(activity: str, payload: UpdateWorkCenterRequest):
+    """Update editable fields on a work center cost record."""
+    db = MOADB()
+    updates = {k: v for k, v in payload.model_dump().items() if v is not None}
+    try:
+        db.update_work_center_cost(activity, updates)
+        return {"message": "Updated successfully"}
+    except ValueError as e:
+        return JSONResponse(status_code=404, content={"error": str(e)})
+
+
+@app.patch("/unit-costs/{name}")
+async def update_unit_cost(name: str, payload: UpdateCostRequest):
+    db = MOADB()
+    updates = {k: v for k, v in payload.model_dump().items() if v is not None}
+    try:
+        db.update_unit_cost_entry(name, updates)
+        return {"message": "Updated successfully"}
+    except ValueError as e:
+        return JSONResponse(status_code=404, content={"error": str(e)})
+
+
 @app.post("/create-project")
 async def create_project(payload: PersistedProjectCreate):
     db = MOADB()
