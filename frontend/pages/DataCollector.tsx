@@ -1,5 +1,6 @@
 "use client";
 import Dropdown from "@/components/Dropdown";
+import EditableValueBox from "@/components/EditableValueBox";
 import { useState, useEffect } from "react";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -387,44 +388,21 @@ export default function DataCollector() {
                             <Dropdown options={STANDEE_TYPES} currOption={standeeType} onSelect={setStandeeType} width="w-[420px]" />
                         </div>
 
-                        {/* Section 02 */}
-                        <div className="flex flex-col items-start w-full p-5 border-b-2 border-[#EDEAEA]">
-                            <div className="text-[10px] m-2">02 — CURRENT VALUES</div>
+                        {/* Section 02 — editable value boxes */}
+                        <div className="flex flex-col items-start w-full flex-1 p-5 overflow-y-auto">
+                            <div className="text-[10px] m-2">02 — VALUES</div>
                             {isLoadingStandee ? (
                                 <div className="text-xs m-2">Loading...</div>
-                            ) : standeeRecord ? (
+                            ) : standeeEdits && standeeRecord ? (
                                 <div className="w-full grid grid-cols-3 gap-2">
-                                    {standeeNumericFields(standeeRecord).map(([key, val]) => (
-                                        <div key={key} className="flex flex-col justify-center items-start px-3 py-2 border-2 border-[#EDEAEA] rounded-md">
-                                            <div className="text-[9px] uppercase tracking-wide">{formatFieldLabel(key)}</div>
-                                            <div className="text-[1.1em] font-instrument text-[#FFB604]">{typeof val === "number" ? val.toFixed(2) : val}</div>
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <div className="text-xs m-2">Select a standee type above to view current values.</div>
-                            )}
-                        </div>
-
-                        {/* Section 03 */}
-                        <div className="flex flex-col items-start w-full flex-1 p-5 overflow-y-auto">
-                            <div className="text-[10px] m-2">03 — UPDATE VALUES</div>
-                            {standeeEdits && standeeRecord ? (
-                                <div className="w-full grid grid-cols-3 gap-x-4 gap-y-1">
                                     {standeeNumericFields(standeeRecord).map(([key, origVal]) => (
-                                        <div key={key} className="flex-1 min-w-[130px]">
-                                            <div className="text-xs font-bold m-2 flex items-center gap-2">
-                                                {formatFieldLabel(key)}
-                                                {standeeEdits[key] !== origVal && <span className="text-[9px] text-[#FFB604] font-bold tracking-wider">CHANGED</span>}
-                                            </div>
-                                            <input
-                                                type="number"
-                                                step={0.01}
-                                                value={standeeEdits[key]}
-                                                onChange={(e) => handleStandeeEdit(key, e.target.value)}
-                                                className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
-                                            />
-                                        </div>
+                                        <EditableValueBox
+                                            key={key}
+                                            label={formatFieldLabel(key)}
+                                            value={standeeEdits[key]}
+                                            originalValue={origVal}
+                                            onChange={(val) => handleStandeeEdit(key, val)}
+                                        />
                                     ))}
                                 </div>
                             ) : (
