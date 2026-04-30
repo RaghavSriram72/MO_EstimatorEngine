@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { type QuoteData } from "@/pages/Inputter";
+import { type QuoteData, type RequestPayload } from "@/pages/Inputter";
 
 type ScenarioId = 1 | 2 | 3 | 4 | 5;
 
@@ -15,6 +15,7 @@ type CostLine = {
 type Props = {
     quoteData: QuoteData;
     numStandees: number;
+    requestPayload: RequestPayload;
     onBack: () => void;
 };
 
@@ -43,7 +44,8 @@ const SCENARIO_LINE_DEFS: Record<string, LineDef> = {
     laminator_cost:         { label: "Laminator",                                      unit: "flat"     },
     zund_cut_cost:          { label: "Zund Cut Labor",                                 unit: "hrs"      },
     die_cost:               { label: "Die Cost",                                       unit: "dies"     },
-    pallet_cost:            { label: "Pallet & Labor",                                 unit: "pallets"  },
+    pallet_material_cost:   { label: "Pallets",                                         unit: "pallets"  },
+    pallet_labor_cost:      { label: "Pallet Labor",                                    unit: "pallets"  },
     shipping_box_cost:      { label: "Shipping Box",                                   unit: "standees" },
     label_cost:             { label: "Labels",                                         unit: "standees" },
     instruction_sheet_cost: { label: "Instruction Sheet",                              unit: "standees" },
@@ -54,14 +56,31 @@ const SCENARIO_LINE_DEFS: Record<string, LineDef> = {
 const SCENARIO_KEYS: Record<ScenarioId, string[]> = {
     1: ["corrugate_cost", "print_form_cost", "rho_print_cost", "laminator_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost"],
     2: ["corrugate_cost", "print_form_cost", "rho_print_cost", "laminator_cost", "zund_cut_cost", "shipping_box_cost", "label_cost"],
-    3: ["corrugate_cost", "print_form_cost", "rho_print_cost", "laminator_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "pallet_cost", "freight_cost"],
-    4: ["print_form_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "pallet_cost", "freight_cost", "die_cost"],
+    3: ["corrugate_cost", "print_form_cost", "rho_print_cost", "laminator_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "pallet_material_cost", "pallet_labor_cost", "freight_cost"],
+    4: ["print_form_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "pallet_material_cost", "pallet_labor_cost", "freight_cost", "die_cost"],
     5: ["full_out_source"],
 };
 
 function lineTotal(l: CostLine) {
     return l.unit === "flat" ? l.unitCost : l.qty * l.unitCost;
 }
+
+// Maps each cost key to a function that derives its qty from the backend source object.
+// The backend returns total costs, so we need qty to back-compute the per-unit cost.
+const QTY_FROM_SOURCE: Partial<Record<string, (s: Record<string, number>) => number>> = {
+    imposition_cost:        (s) => s.imposition_hours    ?? 1,
+    blank_comp_cost:        (s) => s.blank_comp_count    ?? 1,
+    color_comp_cost:        (s) => s.color_comp_count    ?? 1,
+    hardware_cost:          (s) => s.num_standees         ?? 1,
+    corrugate_cost:         (s) => (s.blank_forms_per_standee ?? 1) * (s.num_standees ?? 1),
+    print_form_cost:        (s) => (s.print_forms_per_standee ?? 1) * (s.num_standees ?? 1),
+    zund_cut_cost:          (s) => s.zund_hours           ?? 1,
+    shipping_box_cost:      (s) => s.num_standees         ?? 1,
+    label_cost:             (s) => s.num_standees         ?? 1,
+    instruction_sheet_cost: (s) => s.num_standees         ?? 1,
+    pallet_material_cost:   (s) => s.pallet_count         ?? 1,
+    pallet_labor_cost:      (s) => s.pallet_count         ?? 1,
+};
 
 function buildLines(keys: string[], defs: Record<string, LineDef>): CostLine[] {
     return keys.map((key) => ({
@@ -74,10 +93,15 @@ function buildLines(keys: string[], defs: Record<string, LineDef>): CostLine[] {
 }
 
 function seedLines(lines: CostLine[], source: Record<string, number>): CostLine[] {
-    return lines.map((line) => ({
-        ...line,
-        unitCost: source[line.key] ?? line.unitCost,
-    }));
+    return lines.map((line) => {
+        const total  = source[line.key] ?? 0;
+        const isFlat = line.unit === "flat";
+        if (isFlat) return { ...line, unitCost: total };
+
+        const getQty = QTY_FROM_SOURCE[line.key];
+        const qty    = getQty ? Math.max(getQty(source), 1) : 1;
+        return { ...line, qty, unitCost: total / qty };
+    });
 }
 
 function CostRow({
@@ -144,12 +168,26 @@ function CostRow({
     );
 }
 
-export default function QuoteBreakdown({ quoteData, numStandees: initialStandees, onBack }: Props) {
+function buildAllLines(sources: Record<ScenarioId, Record<string, number>>) {
+    return {
+        universal: seedLines(buildLines(Object.keys(UNIVERSAL_LINE_DEFS), UNIVERSAL_LINE_DEFS), sources[1]),
+        scenario: {
+            1: seedLines(buildLines(SCENARIO_KEYS[1], SCENARIO_LINE_DEFS), sources[1]),
+            2: seedLines(buildLines(SCENARIO_KEYS[2], SCENARIO_LINE_DEFS), sources[2]),
+            3: seedLines(buildLines(SCENARIO_KEYS[3], SCENARIO_LINE_DEFS), sources[3]),
+            4: seedLines(buildLines(SCENARIO_KEYS[4], SCENARIO_LINE_DEFS), sources[4]),
+            5: buildLines(SCENARIO_KEYS[5], SCENARIO_LINE_DEFS),
+        } as Record<ScenarioId, CostLine[]>,
+    };
+}
+
+export default function QuoteBreakdown({ quoteData, numStandees: initialStandees, requestPayload, onBack }: Props) {
     const [activeScenario, setActiveScenario] = useState<ScenarioId>(1);
     const [numStandees, setNumStandees]        = useState<number>(initialStandees);
+    const [isRecalculating, setIsRecalculating] = useState(false);
 
     // Resolve each scenario's source data (fall back to empty object if not returned)
-    const scenarioSources: Record<ScenarioId, Record<string, number>> = {
+    const initialSources: Record<ScenarioId, Record<string, number>> = {
         1: quoteData["scenario_1"] ?? {},
         2: quoteData["scenario_2"] ?? {},
         3: quoteData["scenario_3"] ?? {},
@@ -157,17 +195,53 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
         5: {},
     };
 
-    const [universalLines, setUniversalLines] = useState<CostLine[]>(
-        seedLines(buildLines(Object.keys(UNIVERSAL_LINE_DEFS), UNIVERSAL_LINE_DEFS), scenarioSources[1])
+    const [printFormsPerStandee, setPrintFormsPerStandee] = useState<number>(
+        initialSources[1].print_forms_per_standee ?? 1
+    );
+    const [structureFormsPerStandee, setStructureFormsPerStandee] = useState<number>(
+        initialSources[1].structure_forms_per_standee ?? 0
     );
 
-    const [scenarioLines, setScenarioLines] = useState<Record<ScenarioId, CostLine[]>>({
-        1: seedLines(buildLines(SCENARIO_KEYS[1], SCENARIO_LINE_DEFS), scenarioSources[1]),
-        2: seedLines(buildLines(SCENARIO_KEYS[2], SCENARIO_LINE_DEFS), scenarioSources[2]),
-        3: seedLines(buildLines(SCENARIO_KEYS[3], SCENARIO_LINE_DEFS), scenarioSources[3]),
-        4: seedLines(buildLines(SCENARIO_KEYS[4], SCENARIO_LINE_DEFS), scenarioSources[4]),
-        5: buildLines(SCENARIO_KEYS[5], SCENARIO_LINE_DEFS),
-    });
+    const { universal: initUniversal, scenario: initScenario } = buildAllLines(initialSources);
+    const [universalLines, setUniversalLines] = useState<CostLine[]>(initUniversal);
+    const [scenarioLines, setScenarioLines]   = useState<Record<ScenarioId, CostLine[]>>(initScenario);
+
+    function recalculate() {
+        setIsRecalculating(true);
+        const body = {
+            ...requestPayload,
+            num_standees: numStandees,
+            print_forms_per_standee: printFormsPerStandee,
+            structure_forms_per_standee: structureFormsPerStandee,
+        };
+        fetch("http://localhost:8000/generate_quote", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        })
+            .then((res) => {
+                if (!res.ok) {
+                    res.json().then((err) => console.error("Recalculate 422 details:", err));
+                    return null;
+                }
+                return res.json();
+            })
+            .then((data) => {
+                if (!data) return;
+                const sources: Record<ScenarioId, Record<string, number>> = {
+                    1: data["scenario_1"] ?? {},
+                    2: data["scenario_2"] ?? {},
+                    3: data["scenario_3"] ?? {},
+                    4: data["scenario_4"] ?? {},
+                    5: {},
+                };
+                const { universal, scenario } = buildAllLines(sources);
+                setUniversalLines(universal);
+                setScenarioLines(scenario);
+            })
+            .catch((err) => console.error("Recalculate error:", err))
+            .finally(() => setIsRecalculating(false));
+    }
 
     function syncStandeesQty(qty: number, lines: CostLine[]): CostLine[] {
         return lines.map((l) => (l.unit === "standees" ? { ...l, qty } : l));
@@ -226,7 +300,7 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
                             onClick={() => setActiveScenario(id)}
                             className={`${activeScenario === id ? "tab-active" : "tab-inactive"} flex flex-col gap-0.5 w-full cursor-pointer`}
                         >
-                            <span className="text-xs font-black uppercase tracking-wide">Scenario {id} — {SCENARIO_META[id].short}</span>
+                            <span className="text-xs font-black uppercase tracking-wide">{SCENARIO_META[id].short}</span>
                             <span className="text-[10px] font-semibold text-[#B1B3B6]">{SCENARIO_META[id].sub}</span>
                         </li>
                     ))}
@@ -263,32 +337,53 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
                             min={0}
                             value={numStandees}
                             onChange={(e) => handleStandeesChange(parseInt(e.target.value) || 0)}
-                            className="border-2 border-[#E0E0E0] rounded-sm px-3 py-1.5 text-sm font-black text-[#000005] outline-none bg-[#F8F8F8] focus:border-[#FFC843] w-[140px] text-right transition-colors"
+                            disabled={isRecalculating}
+                            className="border-2 border-[#E0E0E0] rounded-sm px-3 py-1.5 text-sm font-black text-[#000005] outline-none bg-[#F8F8F8] focus:border-[#FFC843] w-[140px] text-right transition-colors disabled:opacity-50"
                         />
                     </div>
                     <div className="h-10 w-px bg-[#E0E0E0]" />
-                    {(
-                        [
-                            ["Print Forms / Standee",     "print_forms_per_standee"],
-                            ["Structure Forms / Standee", "structure_forms_per_standee"],
-                            ["Blank Forms / Standee",     "blank_forms_per_standee"],
-                        ] as [string, string][]
-                    ).map(([label, key]) => (
-                        <div key={key} className="flex flex-col gap-1">
-                            <span className="text-[10px] font-black text-[#B1B3B6] uppercase tracking-widest">{label}</span>
-                            <span className="text-sm font-black text-[#000005] text-right">
-                                {scenarioSources[activeScenario][key] ?? "—"}
-                            </span>
-                        </div>
-                    ))}
-                    <div className="h-10 w-px bg-[#E0E0E0]" />
-                    <div className="text-xs text-[#B1B3B6] font-semibold">
-                        Adjust the standee count and individual line items below to refine the estimate.
+                    <div className="flex flex-col gap-1">
+                        <span className="text-[10px] font-black text-[#B1B3B6] uppercase tracking-widest">Print Forms / Standee</span>
+                        <input
+                            type="number"
+                            min={1}
+                            step={1}
+                            value={printFormsPerStandee}
+                            onChange={(e) => setPrintFormsPerStandee(Math.max(1, parseInt(e.target.value) || 1))}
+                            disabled={isRecalculating}
+                            className="border-2 border-[#E0E0E0] rounded-sm px-3 py-1.5 text-sm font-black text-[#000005] outline-none bg-[#F8F8F8] focus:border-[#FFC843] w-[100px] text-right transition-colors disabled:opacity-50"
+                        />
                     </div>
+                    <div className="flex flex-col gap-1">
+                        <span className="text-[10px] font-black text-[#B1B3B6] uppercase tracking-widest">Structure Forms / Standee</span>
+                        <input
+                            type="number"
+                            min={0}
+                            step={1}
+                            value={structureFormsPerStandee}
+                            onChange={(e) => setStructureFormsPerStandee(Math.max(0, parseInt(e.target.value) || 0))}
+                            disabled={isRecalculating}
+                            className="border-2 border-[#E0E0E0] rounded-sm px-3 py-1.5 text-sm font-black text-[#000005] outline-none bg-[#F8F8F8] focus:border-[#FFC843] w-[100px] text-right transition-colors disabled:opacity-50"
+                        />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <span className="text-[10px] font-black text-[#B1B3B6] uppercase tracking-widest">Blank Forms / Standee</span>
+                        <span className="text-sm font-black text-[#000005] text-right py-1.5">
+                            {printFormsPerStandee + structureFormsPerStandee}
+                        </span>
+                    </div>
+                    <div className="h-10 w-px bg-[#E0E0E0]" />
+                    <button
+                        onClick={recalculate}
+                        disabled={isRecalculating}
+                        className="text-xs font-black uppercase tracking-widest px-4 py-2 rounded-sm bg-[#FFC843] text-[#000005] hover:bg-[#000005] hover:text-white transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                    >
+                        {isRecalculating ? "Recalculating…" : "↻ Regenerate"}
+                    </button>
                 </div>
 
                 {/* Scrollable cost sections */}
-                <div className="flex flex-col flex-1 min-h-0 overflow-y-auto gap-4">
+                <div className={`flex flex-col flex-1 min-h-0 overflow-y-auto gap-4 transition-opacity duration-200 ${isRecalculating ? "opacity-40 pointer-events-none" : ""}`}>
 
                     {/* Universal costs */}
                     <div className="border-2 border-[#E0E0E0] rounded-sm bg-white p-4">

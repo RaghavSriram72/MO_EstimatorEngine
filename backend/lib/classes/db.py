@@ -19,6 +19,7 @@ class MidnightOilDB:
     def __init__(self):
         load_dotenv()
         self.uri = os.getenv("MONGO_URI")
+        self.connect()
 
     def connect(self):
         """Establish a connection to the MongoDB database."""
@@ -42,7 +43,6 @@ class MidnightOilDB:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
-
 
     def check_username_exists(self, username: str) -> bool:
         """Check if a username already exists in the users collection."""
@@ -197,17 +197,14 @@ class MidnightOilDB:
             fosters_data["amounts"].append(record["amount"])
             fosters_data["costs"].append(record["cost"] * UNIT_MAP[record["unit"]])
         return fosters_data
-    
+
     def update_or_insert_foster_value(self, amount: float, cost: float, unit: str) -> None:
         """Update or insert a Fosters print value."""
         try:
-            self.fosters_collection.update_one(
-                {"amount": amount},
-                {"$set": {"cost": cost, "unit": unit}},
-                upsert=True
-            )
+            self.fosters_collection.update_one({"amount": amount}, {"$set": {"cost": cost, "unit": unit}}, upsert=True)
         except Exception as e:
             raise ValueError(f"Failed to update/insert Fosters value for amount {amount}: {str(e)}")
+
 
 def _hash_password(password: str) -> str:
     """Hash a password using PBKDF2-HMAC-SHA256 with random salt."""

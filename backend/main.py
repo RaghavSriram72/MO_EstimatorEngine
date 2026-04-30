@@ -87,6 +87,8 @@ class QuoteRequest(BaseModel):
     standee_type: int = 1
     owner: str | None = None
     project_name: str | None = None
+    print_forms_per_standee: int | None = None
+    structure_forms_per_standee: int | None = None
 
 
 
@@ -112,6 +114,11 @@ async def generate_quote(payload: QuoteRequest):
     _, bin_dict = print_form_calculator(elements, payload.num_standees)
     print_forms = list(bin_dict.values())
 
+    form_overrides = {
+        "print_forms_per_standee": payload.print_forms_per_standee or 0,
+        "structure_forms_per_standee": payload.structure_forms_per_standee or 0,
+    }
+
     scenario_1 = Scenario1(
         name="API quote",
         print_forms=print_forms,
@@ -119,7 +126,7 @@ async def generate_quote(payload: QuoteRequest):
         standee_type=Complexity(payload.standee_type),
     )
 
-    scenario_1.calculate_cost()
+    scenario_1.calculate_cost(**form_overrides)
     scenario_1_obj = scenario_1.to_dict()
 
     scenario_2 = Scenario2(
@@ -129,7 +136,7 @@ async def generate_quote(payload: QuoteRequest):
         standee_type=Complexity(payload.standee_type),
     )
 
-    scenario_2.calculate_cost()
+    scenario_2.calculate_cost(**form_overrides)
 
     scenario_2_obj = scenario_2.to_dict()
 
@@ -140,7 +147,7 @@ async def generate_quote(payload: QuoteRequest):
         standee_type=Complexity(payload.standee_type),
     )
 
-    scenario_3.calculate_cost()
+    scenario_3.calculate_cost(**form_overrides)
 
     scenario_3_obj = scenario_3.to_dict()
 
@@ -151,7 +158,7 @@ async def generate_quote(payload: QuoteRequest):
         standee_type=Complexity(payload.standee_type),
     )
 
-    scenario_4.calculate_cost()
+    scenario_4.calculate_cost(**form_overrides)
 
     scenario_4_obj = scenario_4.to_dict()
 

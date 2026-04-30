@@ -342,9 +342,9 @@ class Scenario3(Project):
 
             # pallet cost calculation
             self.pallet_count = pallet_count or self.blank_forms_per_standee
-            self.pallet_cost = (
-                db.get_unit_cost(PALLET_LABOR) * self.pallet_count + db.get_unit_cost(PALLET) * self.pallet_count
-            )
+            self.pallet_material_cost = db.get_unit_cost(PALLET) * self.pallet_count
+            self.pallet_labor_cost = db.get_unit_cost(PALLET_LABOR) * self.pallet_count
+            self.pallet_cost = self.pallet_material_cost + self.pallet_labor_cost
             # freight cost calculation
             self.freight_cost = freight_cost or db.get_unit_cost(EXTERNAL_ASSEMBLY)
         return self.total_cost
@@ -379,7 +379,8 @@ class Scenario3(Project):
             "label_cost": getattr(self, "label_cost", 0),
             "instruction_sheet_cost": getattr(self, "instruction_sheet_cost", 0),
             "pallet_count": getattr(self, "pallet_count", 0),
-            "pallet_cost": getattr(self, "pallet_cost", 0),
+            "pallet_material_cost": getattr(self, "pallet_material_cost", 0),
+            "pallet_labor_cost": getattr(self, "pallet_labor_cost", 0),
             "freight_cost": getattr(self, "freight_cost", 0),
         }
 
@@ -430,9 +431,9 @@ class Scenario4(Project):
 
             # pallet cost calculation
             self.pallet_count = pallet_count or self.blank_forms_per_standee
-            self.pallet_cost = (
-                db.get_unit_cost(PALLET_LABOR) * self.pallet_count + db.get_unit_cost(PALLET) * self.pallet_count
-            )
+            self.pallet_material_cost = db.get_unit_cost(PALLET) * self.pallet_count
+            self.pallet_labor_cost = db.get_unit_cost(PALLET_LABOR) * self.pallet_count
+            self.pallet_cost = self.pallet_material_cost + self.pallet_labor_cost
             # freight cost calculation
             self.freight_cost = freight_cost or db.get_unit_cost(EXTERNAL_MOUNT_ASSEMBLY)
 
@@ -464,7 +465,8 @@ class Scenario4(Project):
             "label_cost": getattr(self, "label_cost", 0),
             "instruction_sheet_cost": getattr(self, "instruction_sheet_cost", 0),
             "pallet_count": getattr(self, "pallet_count", 0),
-            "pallet_cost": getattr(self, "pallet_cost", 0),
+            "pallet_material_cost": getattr(self, "pallet_material_cost", 0),
+            "pallet_labor_cost": getattr(self, "pallet_labor_cost", 0),
             "freight_cost": getattr(self, "freight_cost", 0),
             "die_cost": getattr(self, "die_cost", 0),
         }

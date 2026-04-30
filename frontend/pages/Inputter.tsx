@@ -16,13 +16,20 @@ type Element = {
 
 export type QuoteData = Record<string, Record<string, number>>;
 
+export type RequestPayload = {
+    elements: { name: string; height: number; width: number; complexity: string; linear_inches: number | null }[];
+    num_standees: number;
+    standee_type: number;
+};
+
 export default function Inputter() {
-    const [standeeCount, setStandeeCount] = useState<number | "">("");
-    const [standeeType, setStandeeType]   = useState<StandeeType>("Simple");
-    const [elements, setElements]         = useState<Element[]>([]);
-    const [resetKey, setResetKey]         = useState(0);
-    const [isLoading, setIsLoading]       = useState(false);
-    const [quoteData, setQuoteData]       = useState<QuoteData | null>(null);
+    const [standeeCount, setStandeeCount]     = useState<number | "">("");
+    const [standeeType, setStandeeType]       = useState<StandeeType>("Simple");
+    const [elements, setElements]             = useState<Element[]>([]);
+    const [resetKey, setResetKey]             = useState(0);
+    const [isLoading, setIsLoading]           = useState(false);
+    const [quoteData, setQuoteData]           = useState<QuoteData | null>(null);
+    const [lastPayload, setLastPayload]       = useState<RequestPayload | null>(null);
 
     function handleClear() {
         setStandeeCount("");
@@ -33,7 +40,7 @@ export default function Inputter() {
 
     function handleQuoteGeneration() {
         const standeeTypeMap: Record<StandeeType, number> = { Simple: 1, Moderate: 2, Complex: 3 };
-        const payload = {
+        const corePayload: RequestPayload = {
             standee_type: standeeTypeMap[standeeType],
             elements: elements.map(({ height, width, complexity, linear_inches }) => ({
                 name: "",
@@ -44,6 +51,7 @@ export default function Inputter() {
             })),
             num_standees: standeeCount === "" ? 0 : standeeCount,
         };
+        const payload: Record<string, unknown> = { ...corePayload };
         if (typeof window !== "undefined") {
             const owner = localStorage.getItem("username");
             if (owner) payload.owner = owner;
@@ -56,7 +64,7 @@ export default function Inputter() {
             body: JSON.stringify(payload),
         })
             .then((res) => res.json())
-            .then((data) => { console.log(data); setQuoteData(data); })
+            .then((data) => { console.log(data); setLastPayload(corePayload); setQuoteData(data); })
             .catch((error) => console.error("Error generating quote:", error))
             .finally(() => setIsLoading(false));
     }
@@ -77,8 +85,8 @@ export default function Inputter() {
         );
     }
 
-    if (quoteData) {
-        return <QuoteBreakdown quoteData={quoteData} numStandees={standeeCount === "" ? 0 : standeeCount} onBack={() => setQuoteData(null)} />;
+    if (quoteData && lastPayload) {
+        return <QuoteBreakdown quoteData={quoteData} numStandees={standeeCount === "" ? 0 : standeeCount} requestPayload={lastPayload} onBack={() => setQuoteData(null)} />;
     }
 
     return (

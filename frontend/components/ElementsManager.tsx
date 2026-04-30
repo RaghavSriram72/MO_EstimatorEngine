@@ -55,7 +55,7 @@ export default function ElementsManager({ elements, setElements }: Props) {
             {/* Add row */}
             <div className="flex flex-row gap-3 items-end w-full shrink-0">
                 <div className="flex-1">
-                    <div className="text-[10px] font-bold mb-1 text-[#B1B3B6] uppercase tracking-wider">Height (in)</div>
+                    <div className="text-[10px] font-bold mb-1 text-[#B1B3B6] uppercase tracking-wider">Length (in)</div>
                     <input
                         type="number"
                         min={0}
