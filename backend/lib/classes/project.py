@@ -1,5 +1,7 @@
 from typing import override
 
+from scipy.optimize import curve_fit
+
 from lib.classes import Complexity, Form, MidnightOilDB
 from lib.globals import BUSMARK_PADDING, PRINT_FORM_LENGTH, UNIT_MAP
 
@@ -169,9 +171,10 @@ class Scenario1(Project):
             self.rho_print_cost = _rho_print_cost(db, print_linear_inches, RHO_512R)
             self.laminator_cost = _laminator_cost(db, print_linear_inches)
             # zund cost calculation
-            self.zund_hours = zund_hours or _zund_hours(
-                db, self.standee_key, self.print_forms_per_standee, self.structure_forms_per_standee, self.num_standees
-            )
+            # self.zund_hours = zund_hours or _zund_hours(
+            #     db, self.standee_key, self.print_forms_per_standee, self.structure_forms_per_standee, self.num_standees
+            # )
+            self.zund_hours = zund_hours or _zund_hours_from_linear_inches(db, self.print_forms)
             self.zund_cut_cost = self.zund_hours * db.get_unit_cost(ZUND_CUT_COST)
 
             # shipping box and label cost calculation
@@ -496,6 +499,12 @@ class Scenario5(Project):
             color_comp_count=color_comp_count,
         )
         with MidnightOilDB() as db:
+            # print form cost calculation
+            self.print_form_cost = _get_fosters_cost(db, self.num_standees, self.print_forms_per_standee)
+
+            # shipping box and label cost calculation
+            _, self.label_cost = _shipping_box_and_label_cost(db, self.num_standees)
+
             # instruction sheet cost calculation
             self.instruction_sheet_cost = _instruction_sheet_cost(db, self.standee_key, self.num_standees)
 
@@ -510,7 +519,14 @@ class Scenario5(Project):
     @property
     def total_cost(self) -> float:
         """Calculate the total cost of the project, including both universal and scenario-specific costs."""
-        return self.total_universal_cost + self.instruction_sheet_cost + self.freight_cost + self.die_cost
+        return (
+            self.total_universal_cost
+            + self.print_form_cost
+            + self.label_cost
+            + self.instruction_sheet_cost
+            + self.freight_cost
+            + self.die_cost
+        )
 
     @override
     def to_dict(self) -> dict:
@@ -596,6 +612,13 @@ def _zund_hours(
 
     return print_zund_hours + structure_zund_hours
 
+def _zund_hours_from_linear_inches(db, print_forms: list[Form]) -> float:
+    linear_inches = sum(form.get_linear_inches() for form in print_forms)
+    zund_entry = db.get_unit_cost_entry(ZUND_CUT_COST)
+    zund_throughput, zund_throughput_unit = zund_entry["throughput"], zund_entry["throughput_unit"]
+    zund_hours = linear_inches / (zund_throughput / UNIT_MAP[zund_throughput_unit])
+    return zund_hours
+
 
 def _shipping_box_and_label_cost(db, num_standees: int) -> tuple[float, float]:
     shipping_box_cost = db.get_unit_cost(SHIPPING_BOX) * num_standees
@@ -617,3 +640,14 @@ def _die_cost(db, print_forms: list[Form]) -> float:
         for complexity, term in STANDEE_MAP.items()
     }
     return sum(form.get_die_cost(die_complexity_map, die_unit_cost) for form in print_forms)
+
+
+def _get_fosters_cost(db, num_standees: int, print_forms_per_standee: int) -> float:
+    fosters_data = db.get_fosters_values()
+    amounts = fosters_data["amounts"]
+    costs = fosters_data["costs"]
+
+    params, _ = curve_fit(lambda x, a, b: a * x**b, amounts, costs)
+    scale, power = params
+
+    return scale * (num_standees * print_forms_per_standee) ** power

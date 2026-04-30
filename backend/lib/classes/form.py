@@ -17,7 +17,7 @@ class Element:
         name: str,
         length: float,
         width: float,
-        linear_inches: float | None = None,
+        linear_inches: float = 0,
         complexity: Complexity = Complexity.SIMPLE,
     ):
         self.name = name
@@ -25,7 +25,7 @@ class Element:
         self.width = width
         self.complexity = complexity
         self.linear_inches = linear_inches
-        self.linear_inches_provided = linear_inches is not None
+        self.linear_inches_provided = linear_inches != 0
 
     def get_linear_inches(self, modifier: float = 1.0) -> float:
         """Calculate linear inches for the element, using either the provided linear inches or the perimeter.
@@ -36,8 +36,8 @@ class Element:
         Returns:
             Linear inches for the element, modified by the provided modifier.
         """
-        if self.linear_inches:
-            return self.linear_inches * modifier
+        if self.linear_inches_provided:
+            return self.linear_inches
         return 2 * (self.length + self.width) * modifier
 
 

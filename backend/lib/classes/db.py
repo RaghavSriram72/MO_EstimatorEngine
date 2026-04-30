@@ -1,7 +1,7 @@
 import hashlib
 import os
 import secrets
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from typing import Any
 
 from bson import ObjectId
@@ -10,6 +10,8 @@ from dotenv import load_dotenv
 from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
 
+from lib.globals import UNIT_MAP
+
 
 class MidnightOilDB:
     """MongoDB helper for flute-price collection operations."""
@@ -17,7 +19,6 @@ class MidnightOilDB:
     def __init__(self):
         load_dotenv()
         self.uri = os.getenv("MONGO_URI")
-        self.connect()
 
     def connect(self):
         """Establish a connection to the MongoDB database."""
@@ -26,7 +27,7 @@ class MidnightOilDB:
         self.by_unit_costs_collection = self.db["by_unit_costs"]
         self.standee_collection = self.db["standee_static_costs"]
         self.print_blank_collection = self.db["print_blank_ratio"]
-        self.work_center_collection = self.db["work_center_costs"]
+        self.fosters_collection = self.db["fosters"]
         self.users_collection = self.db["users"]
         self.projects_collection = self.db["projects"]
         self.projects_collection.create_index([("owner", 1), ("_id", -1)])
@@ -173,23 +174,6 @@ class MidnightOilDB:
         result = self.standee_collection.update_one({"standee_type": standee_category}, {"$set": {data_field: value}})
         return result.modified_count > 0  # Return True if the update was successful
 
-    def get_all_work_center_costs(self) -> list[dict]:
-        """Return all work center cost records, serialized for JSON."""
-        records = []
-        for r in self.work_center_collection.find({}, sort=[("activity", 1)]):
-            r["_id"] = str(r["_id"])
-            records.append(r)
-        return records
-
-    def update_work_center_cost(self, activity: str, updates: dict) -> None:
-        """Update fields on a work center cost record identified by activity."""
-        if not updates:
-            return
-        try:
-            self.work_center_collection.update_one({"activity": activity}, {"$set": updates})
-        except Exception as e:
-            raise ValueError(f"Failed to update work center cost for '{activity}': {str(e)}")
-
     def get_structure_forms_per_standee(self, print_forms: int) -> int:
         """Return the current print blank ratio."""
         result = self.print_blank_collection.find_one({"print_forms": print_forms})
@@ -205,6 +189,25 @@ class MidnightOilDB:
         except Exception as e:
             raise ValueError(f"Failed to set print blank ratio: {str(e)}")
 
+    def get_fosters_values(self) -> dict[str, list[float]]:
+        """Return the current Fosters print values."""
+        # get all records from the fosters collection and return as a dict of lists
+        fosters_data = {"amounts": [], "costs": []}
+        for record in self.fosters_collection.find({}):
+            fosters_data["amounts"].append(record["amount"])
+            fosters_data["costs"].append(record["cost"] * UNIT_MAP[record["unit"]])
+        return fosters_data
+    
+    def update_or_insert_foster_value(self, amount: float, cost: float, unit: str) -> None:
+        """Update or insert a Fosters print value."""
+        try:
+            self.fosters_collection.update_one(
+                {"amount": amount},
+                {"$set": {"cost": cost, "unit": unit}},
+                upsert=True
+            )
+        except Exception as e:
+            raise ValueError(f"Failed to update/insert Fosters value for amount {amount}: {str(e)}")
 
 def _hash_password(password: str) -> str:
     """Hash a password using PBKDF2-HMAC-SHA256 with random salt."""
