@@ -28,7 +28,8 @@ class MidnightOilDB:
         self.by_unit_costs_collection = self.db["by_unit_costs"]
         self.standee_collection = self.db["standee_static_costs"]
         self.print_blank_collection = self.db["print_blank_ratio"]
-        self.fosters_collection = self.db["fosters"]
+        self.overs_collection = self.db["overs"]
+        self.suppliers_collection = self.db["suppliers"]
         self.users_collection = self.db["users"]
         self.projects_collection = self.db["projects"]
         self.projects_collection.create_index([("owner", 1), ("_id", -1)])
@@ -206,22 +207,50 @@ class MidnightOilDB:
         except Exception as e:
             raise ValueError(f"Failed to set print blank ratio: {str(e)}")
 
-    def get_fosters_values(self) -> dict[str, list[float]]:
-        """Return the current Fosters print values."""
-        # get all records from the fosters collection and return as a dict of lists
-        fosters_data = {"amounts": [], "costs": []}
-        for record in self.fosters_collection.find({}):
-            fosters_data["amounts"].append(record["amount"])
-            fosters_data["costs"].append(record["cost"] * UNIT_MAP[record["unit"]])
-        return fosters_data
+    def get_supplier_values(self, supplier: str, material: str) -> dict[str, list[float]]:
+        """Return the current suppliers print values."""
+        # get all records from the suppliers collection and return as a dict of lists
+        suppliers_data = {"amounts": [], "costs": []}
+        for record in self.suppliers_collection.find({"supplier": supplier, "material": material}):
+            suppliers_data["amounts"].append(record["amount"])
+            suppliers_data["costs"].append(record["cost"] * UNIT_MAP[record["unit"]])
+        return suppliers_data
 
-    def update_or_insert_foster_value(self, amount: float, cost: float, unit: str) -> None:
-        """Update or insert a Fosters print value."""
+    def update_supplier_value(self, supplier: str, amount: float, cost: float, unit: str, **kwargs) -> None:
+        """Update or insert a supplier print value."""
         try:
-            self.fosters_collection.update_one({"amount": amount}, {"$set": {"cost": cost, "unit": unit}}, upsert=True)
+            self.suppliers_collection.update_one(
+                {"supplier": supplier, "amount": amount},
+                {"$set": {"cost": cost, "unit": unit, **kwargs}},
+                upsert=True
+            )
         except Exception as e:
-            raise ValueError(f"Failed to update/insert Fosters value for amount {amount}: {str(e)}")
-
+            raise ValueError(f"Failed to update/insert supplier value for amount {amount}: {str(e)}")
+    
+    def get_overs(self, quantity: int) -> int:
+        """Return the over cost for a given quantity."""
+        result = self.overs_collection.find_one({
+            "lower_bound": {"$lte": quantity},
+            "$or": [
+                {"upper_bound": None},
+                {"upper_bound": {"$gt": quantity}}
+            ]
+        })
+        if result and "overs" in result:
+            return result["overs"]
+        else:
+            raise ValueError(f"Overs not found for quantity {quantity}")
+    
+    def update_overs(self, lower_bound: int, upper_bound: int | None, overs: int) -> None:
+        """Update or insert an overs record."""
+        try:
+            self.overs_collection.update_one(
+                {"lower_bound": lower_bound, "upper_bound": upper_bound},
+                {"$set": {"overs": overs}},
+                upsert=True
+            )
+        except Exception as e:
+            raise ValueError(f"Failed to update/insert overs for bounds ({lower_bound}, {upper_bound}): {str(e)}")
 
 def _hash_password(password: str) -> str:
     """Hash a password using PBKDF2-HMAC-SHA256 with random salt."""

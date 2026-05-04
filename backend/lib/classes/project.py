@@ -27,6 +27,10 @@ ZUND_CUTTER = "zund_cutter"
 RHO_512R = "durst_rho_512R"
 RHO_1312 = "durst_rho_1312"
 ROLLX = "roll-x"
+B_WHITE = "b_white_1_s"
+FOSTERS_PRINT_FORM = "fosters_print_form"
+FOSTERS = "fosters"
+PQ = "pq"
 
 STANDEE_MAP = {
     Complexity.SIMPLE: "Simple Standee",
@@ -82,6 +86,7 @@ class Project:
         num_standees: int = 0,
         print_forms_per_standee: int = 0,
         structure_forms_per_standee: int = 0,
+        num_overs: int = 0,
         imposition_hours: float = 0,
         blank_comp_count: float = 0,
         color_comp_count: float = 0,
@@ -103,7 +108,8 @@ class Project:
             # hardware cost calculation
             self.hardware_cost = db.get_standee_data(self.standee_key, "hardware_cost") * self.num_standees
 
-            # misc costs
+            # misc costs and project vars
+            self.overs = num_overs or db.get_overs(self.num_standees)
             self.engineering_design_cost = db.get_standee_data(self.standee_key, "engineering_design_cost_per_project")
             self.blank_comp_cost = 0.0
             self.color_comp_cost = 0.0
@@ -114,6 +120,102 @@ class Project:
                 self.color_comp_count = color_comp_count
                 self.color_comp_cost = db.get_unit_cost(COLOR_COMP) * self.color_comp_count
         return self.total_universal_cost
+
+    # Helpers
+    def _print_form_cost(self, db, print_material_name: str) -> float:
+        pfps = self.print_forms_per_standee
+        ns = self.num_standees
+        print_form_material = db.get_unit_cost_entry(print_material_name)
+        print_form_total = pfps * ns + db.get_overs(ns)
+        print_form_unit = print_form_material["unit"]  # linear_foot
+        print_form_cost = 0
+        linear_inches = 0
+        if print_form_unit != "linear_foot":
+            print_form_cost = print_form_material["cost"] * UNIT_MAP[print_form_unit] * print_form_total
+        elif print_form_unit == "linear_foot":
+            # use 85 for form length, plus 2 for waste
+            linear_inches = self._get_form_material_linear_inches()
+        else:
+            raise ValueError(f"Unsupported unit type '{print_form_unit}' for print material '{print_material_name}'")
+
+        if print_material_name == ROLL_BUSMARK:
+            linear_inches += BUSMARK_PADDING * pfps
+            print_form_cost = print_form_material["cost"] * UNIT_MAP[print_form_unit] * linear_inches
+
+        # ! do we need hi-tack if theyre doing mounting??
+        # add hi-tack if not busmark
+        if print_material_name != ROLL_BUSMARK:
+            hi_tack_material = db.get_unit_cost_entry(ROLL_HI_TACK)
+            hi_tack_unit = hi_tack_material["unit"]
+            hi_tack_cost = hi_tack_material["cost"] * UNIT_MAP[hi_tack_unit] * linear_inches
+            print_form_cost = print_form_material["cost"] * UNIT_MAP[print_form_unit] * linear_inches
+            print_form_cost += hi_tack_cost
+        return print_form_cost
+
+    def _get_form_material_linear_inches(self) -> int:
+        forms_per_standee = self.print_forms_per_standee + self.structure_forms_per_standee
+        print_form_total = forms_per_standee * self.num_standees + self.overs
+        return int(PRINT_FORM_LENGTH) * (print_form_total + (2 * forms_per_standee))
+
+    def _setup_time(self, unit_cost_entry: dict) -> float:
+        return unit_cost_entry["setup_time"] * self.print_forms_per_standee
+
+    def _machine_time(self, db, machine_name: str, linear_inches: float) -> float:
+        machine_entry = db.get_unit_cost_entry(machine_name)
+        throughput: int = machine_entry["throughput"]
+        throughput_unit: str = machine_entry["throughput_unit"]
+        machine_time: float = linear_inches / (throughput / UNIT_MAP[throughput_unit]) + self._setup_time(machine_entry)
+        return machine_time
+
+    def _machine_cost(self, db, machine_name: str, machine_hours: float) -> float:
+        machine_entry = db.get_unit_cost_entry(machine_name)
+        machine_cost = machine_entry["cost"] * UNIT_MAP[machine_entry["unit"]] * machine_hours
+        return machine_cost
+
+    def _zund_hours(self, db, standee_key: str) -> float:
+        print_zund_hours = (
+            db.get_standee_data(standee_key, "zund_print_form_minutes")
+            * self.print_forms_per_standee
+            * self.num_standees
+        ) / 60
+        structure_zund_hours = (
+            db.get_standee_data(standee_key, "zund_blank_form_minutes")
+            * self.structure_forms_per_standee
+            * self.num_standees
+        ) / 60
+
+        return print_zund_hours + structure_zund_hours
+
+    def _shipping_box_and_label_cost(self, db) -> tuple[float, float]:
+        shipping_box_cost = db.get_unit_cost(SHIPPING_BOX) * self.num_standees
+        desc_label_cost = db.get_unit_cost(DESCRIPTION_LABEL)
+        handling_label_cost = db.get_unit_cost(SHIPPING_LABEL)
+        label_cost = (2 * desc_label_cost + handling_label_cost) * self.num_standees
+        return shipping_box_cost, label_cost
+
+    def _instruction_sheet_cost(self, db) -> float:
+        instruction_sheet_cost = (
+            db.get_standee_data(self.standee_key, "instruction_sheet_total_cost") * self.num_standees
+        )
+        return instruction_sheet_cost
+
+    def _die_cost(self, db) -> float:
+        die_unit_cost = db.get_unit_cost("die_cost")
+        die_complexity_map = {
+            complexity: db.get_standee_data(term, "cutting_die_inches_multiplier")
+            for complexity, term in STANDEE_MAP.items()
+        }
+        return sum(form.get_die_cost(die_complexity_map, die_unit_cost) for form in self.print_forms)
+
+    def _get_supplier_cost(self, db, supplier: str, material: str, num_forms: int) -> float:
+        supplier_data = db.get_supplier_values(supplier, material)
+        amounts = supplier_data["amounts"]
+        costs = supplier_data["costs"]
+
+        params, _ = curve_fit(lambda x, a, b: a * x**b, amounts, costs)
+        scale, power = params
+
+        return scale * (num_forms) ** power
 
 
 class Scenario1(Project):
@@ -129,6 +231,7 @@ class Scenario1(Project):
         num_standees: int = 0,
         print_forms_per_standee: int = 0,
         structure_forms_per_standee: int = 0,
+        num_overs: int = 0,
         imposition_hours: float = 0,
         blank_comp_count: float = 0,
         color_comp_count: float = 0,
@@ -141,6 +244,7 @@ class Scenario1(Project):
             num_standees=num_standees,
             print_forms_per_standee=print_forms_per_standee,
             structure_forms_per_standee=structure_forms_per_standee,
+            num_overs=num_overs,
             imposition_hours=imposition_hours,
             blank_comp_count=blank_comp_count,
             color_comp_count=color_comp_count,
@@ -149,16 +253,12 @@ class Scenario1(Project):
             # print form cost calculation
             self.corrugate_cost = db.get_unit_cost(CORRUGATE) * self.blank_forms_per_standee * self.num_standees
 
-            self.print_form_cost = _print_form_cost(db, ROLL_BUSMARK, self.print_forms_per_standee, self.num_standees)
-            print_linear_inches = _get_form_material_linear_inches(self.num_standees, self.print_forms_per_standee)
-            self.print_hours = print_hours or _machine_time(
-                db, RHO_512R, print_linear_inches, self.print_forms_per_standee
-            )
-            self.print_cost = _machine_cost(db, RHO_512R, self.print_hours)
-            self.rollx_hours = rollx_hours or _machine_time(
-                db, ROLLX, print_linear_inches, self.print_forms_per_standee
-            )
-            self.rollx_cost = _machine_cost(db, ROLLX, self.rollx_hours)
+            self.print_form_cost = self._print_form_cost(db, ROLL_BUSMARK)
+            print_linear_inches = self._get_form_material_linear_inches()
+            self.print_hours = print_hours or self._machine_time(db, RHO_512R, print_linear_inches)
+            self.print_cost = self._machine_cost(db, RHO_512R, self.print_hours)
+            self.rollx_hours = rollx_hours or self._machine_time(db, ROLLX, print_linear_inches)
+            self.rollx_cost = self._machine_cost(db, ROLLX, self.rollx_hours)
             # zund cost calculation
             # self.zund_hours = zund_hours or _zund_hours(
             #     db, self.standee_key, self.print_forms_per_standee, self.structure_forms_per_standee, self.num_standee
@@ -167,16 +267,14 @@ class Scenario1(Project):
             zund_linear_inches = sum(form.get_linear_inches() for form in self.print_forms)
             zund_linear_inches *= 2 * self.num_standees
             print(f"Zund linear inches: {zund_linear_inches}")
-            self.zund_hours = zund_hours or _machine_time(
-                db, ZUND_CUTTER, zund_linear_inches, self.print_forms_per_standee
-            )
-            self.zund_cut_cost = _machine_cost(db, ZUND_CUTTER, self.zund_hours)
+            self.zund_hours = zund_hours or self._machine_time(db, ZUND_CUTTER, zund_linear_inches)
+            self.zund_cut_cost = self._machine_cost(db, ZUND_CUTTER, self.zund_hours)
 
             # shipping box and label cost calculation
-            self.shipping_box_cost, self.label_cost = _shipping_box_and_label_cost(db, self.num_standees)
+            self.shipping_box_cost, self.label_cost = self._shipping_box_and_label_cost(db)
 
             # instruction sheet cost calculation
-            self.instruction_sheet_cost = _instruction_sheet_cost(db, self.standee_key, self.num_standees)
+            self.instruction_sheet_cost = self._instruction_sheet_cost(db)
 
         return self.total_cost
 
@@ -209,6 +307,7 @@ class Scenario2(Project):
         num_standees: int = 0,
         print_forms_per_standee: int = 0,
         structure_forms_per_standee: int = 0,
+        num_overs: int = 0,
         imposition_hours: float = 0,
         blank_comp_count: float = 0,
         color_comp_count: float = 0,
@@ -221,6 +320,7 @@ class Scenario2(Project):
             num_standees=num_standees,
             print_forms_per_standee=print_forms_per_standee,
             structure_forms_per_standee=structure_forms_per_standee,
+            num_overs=num_overs,
             imposition_hours=imposition_hours,
             blank_comp_count=blank_comp_count,
             color_comp_count=color_comp_count,
@@ -229,26 +329,20 @@ class Scenario2(Project):
             self.corrugate_cost = db.get_unit_cost(CORRUGATE) * self.blank_forms_per_standee * self.num_standees
 
             # print form cost calculation
-            self.print_form_cost = _print_form_cost(db, ROLL_BUSMARK, self.print_forms_per_standee, self.num_standees)
-            print_linear_inches = _get_form_material_linear_inches(self.num_standees, self.print_forms_per_standee)
-            self.print_hours = print_hours or _machine_time(
-                db, RHO_512R, print_linear_inches, self.print_forms_per_standee
-            )
-            self.print_cost = _machine_cost(db, RHO_512R, self.print_hours)
-            self.rollx_hours = rollx_hours or _machine_time(
-                db, ROLLX, print_linear_inches, self.print_forms_per_standee
-            )
-            self.rollx_cost = _machine_cost(db, ROLLX, self.rollx_hours)
+            self.print_form_cost = self._print_form_cost(db, ROLL_BUSMARK)
+            print_linear_inches = self._get_form_material_linear_inches()
+            self.print_hours = print_hours or self._machine_time(db, RHO_512R, print_linear_inches)
+            self.print_cost = self._machine_cost(db, RHO_512R, self.print_hours)
+            self.rollx_hours = rollx_hours or self._machine_time(db, ROLLX, print_linear_inches)
+            self.rollx_cost = self._machine_cost(db, ROLLX, self.rollx_hours)
 
             # zund cost calculation
             zund_linear_inches = sum(form.get_linear_inches() for form in self.print_forms)
-            self.zund_hours = zund_hours or _machine_time(
-                db, ZUND_CUTTER, zund_linear_inches, self.print_forms_per_standee
-            )
-            self.zund_cut_cost = _machine_cost(db, ZUND_CUTTER, self.zund_hours)
+            self.zund_hours = zund_hours or self._machine_time(db, ZUND_CUTTER, zund_linear_inches)
+            self.zund_cut_cost = self._machine_cost(db, ZUND_CUTTER, self.zund_hours)
 
             # shipping box and label cost calculation
-            self.shipping_box_cost, self.label_cost = _shipping_box_and_label_cost(db, self.num_standees)
+            self.shipping_box_cost, self.label_cost = self._shipping_box_and_label_cost(db)
 
         return self.total_cost
 
@@ -280,6 +374,7 @@ class Scenario3(Project):
         num_standees: int = 0,
         print_forms_per_standee: int = 0,
         structure_forms_per_standee: int = 0,
+        num_overs: int = 0,
         imposition_hours: float = 0,
         blank_comp_count: float = 0,
         color_comp_count: float = 0,
@@ -294,6 +389,7 @@ class Scenario3(Project):
             num_standees=num_standees,
             print_forms_per_standee=print_forms_per_standee,
             structure_forms_per_standee=structure_forms_per_standee,
+            num_overs=num_overs,
             imposition_hours=imposition_hours,
             blank_comp_count=blank_comp_count,
             color_comp_count=color_comp_count,
@@ -302,29 +398,23 @@ class Scenario3(Project):
             self.corrugate_cost = db.get_unit_cost(CORRUGATE) * self.blank_forms_per_standee * self.num_standees
 
             # print form cost calculation
-            self.print_form_cost = _print_form_cost(db, ROLL_BUSMARK, self.print_forms_per_standee, self.num_standees)
-            print_linear_inches = _get_form_material_linear_inches(self.num_standees, self.print_forms_per_standee)
-            self.print_hours = print_hours or _machine_time(
-                db, RHO_512R, print_linear_inches, self.print_forms_per_standee
-            )
-            self.print_cost = _machine_cost(db, RHO_512R, self.print_hours)
-            self.rollx_hours = rollx_hours or _machine_time(
-                db, ROLLX, print_linear_inches, self.print_forms_per_standee
-            )
-            self.rollx_cost = _machine_cost(db, ROLLX, self.rollx_hours)
+            self.print_form_cost = self._print_form_cost(db, ROLL_BUSMARK)
+            print_linear_inches = self._get_form_material_linear_inches()
+            self.print_hours = print_hours or self._machine_time(db, RHO_512R, print_linear_inches)
+            self.print_cost = self._machine_cost(db, RHO_512R, self.print_hours)
+            self.rollx_hours = rollx_hours or self._machine_time(db, ROLLX, print_linear_inches)
+            self.rollx_cost = self._machine_cost(db, ROLLX, self.rollx_hours)
 
             # zund cost calculation
             zund_linear_inches = sum(form.get_linear_inches() for form in self.print_forms)
-            self.zund_hours = zund_hours or _machine_time(
-                db, ZUND_CUTTER, zund_linear_inches, self.print_forms_per_standee
-            )
-            self.zund_cut_cost = _machine_cost(db, ZUND_CUTTER, self.zund_hours)
+            self.zund_hours = zund_hours or self._machine_time(db, ZUND_CUTTER, zund_linear_inches)
+            self.zund_cut_cost = self._machine_cost(db, ZUND_CUTTER, self.zund_hours)
 
             # shipping box and label cost calculation
-            self.shipping_box_cost, self.label_cost = _shipping_box_and_label_cost(db, self.num_standees)
+            self.shipping_box_cost, self.label_cost = self._shipping_box_and_label_cost(db)
 
             # instruction sheet cost calculation
-            self.instruction_sheet_cost = _instruction_sheet_cost(db, self.standee_key, self.num_standees)
+            self.instruction_sheet_cost = self._instruction_sheet_cost(db)
 
             # pallet cost calculation
             self.pallet_count = pallet_count or self.blank_forms_per_standee
@@ -366,6 +456,9 @@ class Scenario4(Project):
         num_standees: int = 0,
         print_forms_per_standee: int = 0,
         structure_forms_per_standee: int = 0,
+        num_overs: int = 0,
+        corrugate_supplier: str = PQ,
+        corrugate_material: str = B_WHITE,
         imposition_hours: float = 0,
         blank_comp_count: float = 0,
         color_comp_count: float = 0,
@@ -379,21 +472,29 @@ class Scenario4(Project):
             num_standees=num_standees,
             print_forms_per_standee=print_forms_per_standee,
             structure_forms_per_standee=structure_forms_per_standee,
+            num_overs=num_overs,
             imposition_hours=imposition_hours,
             blank_comp_count=blank_comp_count,
             color_comp_count=color_comp_count,
         )
         with MidnightOilDB() as db:
+            # corrugate cost calculation
+            self.corrugate_supplier = corrugate_supplier
+            self.corrugate_material = corrugate_material
+            self.corrugate_cost = self._get_supplier_cost(
+                db, self.corrugate_supplier, self.corrugate_material, self.num_standees * self.blank_forms_per_standee
+            )
+
             # print form cost calculation
-            self.print_form_cost = _print_form_cost(db, SHEET_95, self.print_forms_per_standee, self.num_standees)
-            linear_inches = _get_form_material_linear_inches(self.num_standees, self.print_forms_per_standee)
-            self.print_hours = print_hours or _machine_time(db, RHO_1312, linear_inches, self.print_forms_per_standee)
-            self.print_cost = _machine_cost(db, RHO_1312, self.print_hours)
+            self.print_form_cost = self._print_form_cost(db, SHEET_95)
+            linear_inches = self._get_form_material_linear_inches()
+            self.print_hours = print_hours or self._machine_time(db, RHO_1312, linear_inches)
+            self.print_cost = self._machine_cost(db, RHO_1312, self.print_hours)
             # shipping box and label cost calculation
-            self.shipping_box_cost, self.label_cost = _shipping_box_and_label_cost(db, self.num_standees)
+            self.shipping_box_cost, self.label_cost = self._shipping_box_and_label_cost(db)
 
             # instruction sheet cost calculation
-            self.instruction_sheet_cost = _instruction_sheet_cost(db, self.standee_key, self.num_standees)
+            self.instruction_sheet_cost = self._instruction_sheet_cost(db)
 
             # pallet cost calculation
             self.pallet_count = pallet_count or self.blank_forms_per_standee
@@ -404,7 +505,7 @@ class Scenario4(Project):
             self.freight_cost = freight_cost or db.get_unit_cost(EXTERNAL_MOUNT_ASSEMBLY)
 
             # die cost calculation
-            self.die_cost = die_cost or _die_cost(db, self.print_forms)
+            self.die_cost = die_cost or self._die_cost(db)
 
         return self.total_cost
 
@@ -413,6 +514,7 @@ class Scenario4(Project):
         """Calculate the total cost of the project, including both universal and scenario-specific costs."""
         return (
             self.total_universal_cost
+            + self.corrugate_cost
             + self.print_form_cost
             + self.print_cost
             + self.shipping_box_cost
@@ -437,6 +539,9 @@ class Scenario5(Project):
         num_standees: int = 0,
         print_forms_per_standee: int = 0,
         structure_forms_per_standee: int = 0,
+        num_overs: int = 0,
+        corrugate_supplier: str = PQ,
+        corrugate_material: str = B_WHITE,
         imposition_hours: float = 0,
         blank_comp_count: float = 0,
         color_comp_count: float = 0,
@@ -448,25 +553,39 @@ class Scenario5(Project):
             num_standees=num_standees,
             print_forms_per_standee=print_forms_per_standee,
             structure_forms_per_standee=structure_forms_per_standee,
+            num_overs=num_overs,
             imposition_hours=imposition_hours,
             blank_comp_count=blank_comp_count,
             color_comp_count=color_comp_count,
         )
         with MidnightOilDB() as db:
+            # corrugate cost calculation
+            self.corrugate_supplier = corrugate_supplier
+            self.corrugate_material = corrugate_material
+            self.corrugate_cost = self._get_supplier_cost(
+                db, self.corrugate_supplier, self.corrugate_material, self.num_standees * self.blank_forms_per_standee
+            )
+
             # print form cost calculation
-            self.print_form_cost = _get_fosters_cost(db, self.num_standees, self.print_forms_per_standee)
+            self.overs = db.get_overs(self.num_standees)
+            self.print_form_cost = self._get_supplier_cost(
+                db,
+                FOSTERS,
+                FOSTERS_PRINT_FORM,
+                self.num_standees * self.print_forms_per_standee + self.overs,
+            )
 
             # shipping box and label cost calculation
-            _, self.label_cost = _shipping_box_and_label_cost(db, self.num_standees)
+            _, self.label_cost = self._shipping_box_and_label_cost(db)
 
             # instruction sheet cost calculation
-            self.instruction_sheet_cost = _instruction_sheet_cost(db, self.standee_key, self.num_standees)
+            self.instruction_sheet_cost = self._instruction_sheet_cost(db)
 
             # freight cost calculation
             self.freight_cost = freight_cost or db.get_unit_cost(FULL_OUT_SOURCE)
 
             # die cost calculation
-            self.die_cost = die_cost or _die_cost(db, self.print_forms)
+            self.die_cost = die_cost or self._die_cost(db)
 
         return self.total_cost
 
@@ -475,112 +594,10 @@ class Scenario5(Project):
         """Calculate the total cost of the project, including both universal and scenario-specific costs."""
         return (
             self.total_universal_cost
+            + self.corrugate_cost
             + self.print_form_cost
             + self.label_cost
             + self.instruction_sheet_cost
             + self.freight_cost
             + self.die_cost
         )
-
-
-# Helpers
-def _print_form_cost(db, print_material_name: str, print_forms_per_standee: int, num_standees: int) -> float:
-    print_form_material = db.get_unit_cost_entry(print_material_name)
-    print_form_total = print_forms_per_standee * num_standees
-    print_form_unit = print_form_material["unit"]  # linear_foot
-    print_form_cost = 0
-    linear_inches = 0
-    if print_form_unit == "each":
-        print_form_cost = print_form_material["cost"] * print_form_total
-    elif print_form_unit == "linear_foot":
-        # use 85 for form length, plus 2 for waste
-        linear_inches = _get_form_material_linear_inches(num_standees, print_forms_per_standee)
-    else:
-        raise ValueError(f"Unsupported unit type '{print_form_unit}' for print material '{print_material_name}'")
-
-    if print_material_name == ROLL_BUSMARK:
-        linear_inches += BUSMARK_PADDING * print_forms_per_standee
-        print_form_cost = print_form_material["cost"] * UNIT_MAP[print_form_unit] * linear_inches
-
-    # add hi-tack if not busmark
-    if print_material_name != ROLL_BUSMARK:
-        hi_tack_material = db.get_unit_cost_entry(ROLL_HI_TACK)
-        hi_tack_unit = hi_tack_material["unit"]
-        hi_tack_cost = hi_tack_material["cost"] * UNIT_MAP[hi_tack_unit] * linear_inches
-        print_form_cost = print_form_material["cost"] * UNIT_MAP[print_form_unit] * linear_inches
-        print_form_cost += hi_tack_cost
-    return print_form_cost
-
-
-def _get_form_material_linear_inches(
-    num_standees: int, print_forms_per_standee: int = 0, structure_forms_per_standee: int = 0
-) -> int:
-    forms_per_standee = print_forms_per_standee + structure_forms_per_standee
-    print_form_total = forms_per_standee * num_standees
-    return int(PRINT_FORM_LENGTH) * (print_form_total + (2 * forms_per_standee))
-
-
-def _setup_time(unit_cost_entry: dict, num_print_forms: int) -> float:
-    return unit_cost_entry["setup_time"] * num_print_forms
-
-
-def _machine_time(db, machine_name: str, linear_inches: float, print_forms_per_standee: int) -> float:
-    machine_entry = db.get_unit_cost_entry(machine_name)
-    throughput: int = machine_entry["throughput"]
-    throughput_unit: str = machine_entry["throughput_unit"]
-    machine_time: float = linear_inches / (throughput / UNIT_MAP[throughput_unit]) + _setup_time(
-        machine_entry, print_forms_per_standee
-    )
-    return machine_time
-
-
-def _machine_cost(db, machine_name: str, machine_hours: float) -> float:
-    machine_entry = db.get_unit_cost_entry(machine_name)
-    machine_cost = machine_entry["cost"] * UNIT_MAP[machine_entry["unit"]] * machine_hours
-    return machine_cost
-
-
-def _zund_hours(
-    db, standee_key: str, print_forms_per_standee: int, structure_forms_per_standee: int, num_standees: int
-) -> float:
-    print_zund_hours = (
-        db.get_standee_data(standee_key, "zund_print_form_minutes") * print_forms_per_standee * num_standees
-    ) / 60
-    structure_zund_hours = (
-        db.get_standee_data(standee_key, "zund_blank_form_minutes") * structure_forms_per_standee * num_standees
-    ) / 60
-
-    return print_zund_hours + structure_zund_hours
-
-
-def _shipping_box_and_label_cost(db, num_standees: int) -> tuple[float, float]:
-    shipping_box_cost = db.get_unit_cost(SHIPPING_BOX) * num_standees
-    desc_label_cost = db.get_unit_cost(DESCRIPTION_LABEL)
-    handling_label_cost = db.get_unit_cost(SHIPPING_LABEL)
-    label_cost = (2 * desc_label_cost + handling_label_cost) * num_standees
-    return shipping_box_cost, label_cost
-
-
-def _instruction_sheet_cost(db, standee_key: str, num_standees: int) -> float:
-    instruction_sheet_cost = db.get_standee_data(standee_key, "instruction_sheet_total_cost") * num_standees
-    return instruction_sheet_cost
-
-
-def _die_cost(db, print_forms: list[Form]) -> float:
-    die_unit_cost = db.get_unit_cost("die_cost")
-    die_complexity_map = {
-        complexity: db.get_standee_data(term, "cutting_die_inches_multiplier")
-        for complexity, term in STANDEE_MAP.items()
-    }
-    return sum(form.get_die_cost(die_complexity_map, die_unit_cost) for form in print_forms)
-
-
-def _get_fosters_cost(db, num_standees: int, print_forms_per_standee: int) -> float:
-    fosters_data = db.get_fosters_values()
-    amounts = fosters_data["amounts"]
-    costs = fosters_data["costs"]
-
-    params, _ = curve_fit(lambda x, a, b: a * x**b, amounts, costs)
-    scale, power = params
-
-    return scale * (num_standees * print_forms_per_standee) ** power
