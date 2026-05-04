@@ -21,7 +21,7 @@ export default function EditableValueBox({ label, value, originalValue, onChange
                 )}
             </div>
             <span className="flex flex-row gap-1 text-[#FFB604] align-center justify-center">
-                $
+                <span>{label.includes("Cost") ? "$" : ""}</span>
                 <input
                 type="number"
                 step={step}

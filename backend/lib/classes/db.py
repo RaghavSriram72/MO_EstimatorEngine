@@ -32,6 +32,7 @@ class MidnightOilDB:
         self.users_collection = self.db["users"]
         self.projects_collection = self.db["projects"]
         self.projects_collection.create_index([("owner", 1), ("_id", -1)])
+        self.work_center_costs_collection = self.db["work_center_costs"]
         return self
 
     def close(self):
@@ -160,6 +161,22 @@ class MidnightOilDB:
             self.standee_collection.update_one({"standee_type": standee_category}, {"$set": updates})
         except Exception as e:
             raise ValueError(f"Failed to update standee record for '{standee_category}': {str(e)}")
+
+    def get_all_work_center_costs(self) -> list[dict]:
+        """Return all work center cost records, serialized for JSON."""
+        records = []
+        for r in self.work_center_costs_collection.find({}, sort=[("activity", 1)]):
+            r["_id"] = str(r["_id"])
+            records.append(r)
+        return records
+
+    def update_work_center_cost(self, activity: str, updates: dict) -> None:
+        """Update editable fields on a work center cost record."""
+        if not updates:
+            return
+        result = self.work_center_costs_collection.update_one({"activity": activity}, {"$set": updates})
+        if result.matched_count == 0:
+            raise ValueError(f"Work center cost not found for activity '{activity}'")
 
     def get_standee_data(self, standee_category: str, data_field: str) -> int | float:
         """Return the specified data field for a given standee category."""
