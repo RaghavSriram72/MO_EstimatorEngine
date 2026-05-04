@@ -98,8 +98,9 @@ function seedLines(lines: CostLine[], source: Record<string, number>): CostLine[
         const isFlat = line.unit === "flat";
         if (isFlat) return { ...line, unitCost: total };
 
-        const getQty = QTY_FROM_SOURCE[line.key];
-        const qty    = getQty ? Math.max(getQty(source), 1) : 1;
+        const getQty  = QTY_FROM_SOURCE[line.key];
+        const rawQty  = getQty ? getQty(source) : 1;
+        const qty     = rawQty > 0 ? rawQty : 1;
         return { ...line, qty, unitCost: total / qty };
     });
 }
