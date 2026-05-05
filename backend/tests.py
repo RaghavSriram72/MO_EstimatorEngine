@@ -92,6 +92,20 @@ class TestStaticCostCalculator(unittest.TestCase):
         print(f"  Label cost:               ${project.label_cost or 0:.2f}")
         print(f"  {'─' * 38}")
         print(f"  Total static cost:        ${total_cost:.2f}\n")
+
+        substrate_cost = project.corrugate_cost + project.print_form_cost
+        transfomation_cost = project.imposition_cost + project.rollx_cost + project.zund_cut_cost + project.print_cost
+
+        print(f"  Substrate cost:           ${substrate_cost:.2f}")
+        print(f"  Transformation cost:      ${transfomation_cost:.2f}")
+
+        for field, value in project.to_dict().items():
+            if "cost" in field:
+                print(f"{field}: ${value:.2f}")
+            elif "hour" in field:
+                print(f"{field}: {value:.3f} hours")
+            else:
+                print(f"{field}: {value}")
         self.assertAlmostEqual(total_cost, 2256.97, delta=1.0)
 
     def test_static_cost_calculator_sonic_standee(self):

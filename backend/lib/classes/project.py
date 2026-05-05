@@ -81,6 +81,9 @@ class Project:
 
             # misc costs and project vars
             self.overs = num_overs or db.get_overs(self.num_standees)
+            self.print_form_total = (
+                self.overs * self.print_forms_per_standee + self.print_forms_per_standee
+            ) * self.num_standees
             self.engineering_design_cost = db.get_standee_data(self.standee_key, "engineering_design_cost_per_project")
             self.blank_comp_cost = 0.0
             self.color_comp_cost = 0.0
@@ -94,28 +97,23 @@ class Project:
 
     # Helpers
     def _print_form_cost(self, db, print_material_name: str) -> float:
-        pfps = self.print_forms_per_standee
-        ns = self.num_standees
         print_form_material = db.get_unit_cost_entry(print_material_name)
-        print_form_total = pfps * ns + db.get_overs(ns)
         print_form_unit = print_form_material["unit"]  # linear_foot
-        print_form_cost = 0
         linear_inches = 0
         if print_form_unit != "linear_foot":
-            print_form_cost = print_form_material["cost"] * UNIT_MAP[print_form_unit] * print_form_total
+            print_form_cost = print_form_material["cost"] * UNIT_MAP[print_form_unit] * self.print_form_total
         elif print_form_unit == "linear_foot":
-            # use 85 for form length, plus 2 for waste
-            linear_inches = self._get_form_material_linear_inches()
+            linear_inches = self._get_print_form_linear_inches()
         else:
             raise ValueError(f"Unsupported unit type '{print_form_unit}' for print material '{print_material_name}'")
 
-        if print_material_name == DB_LABELS["roll_busmark"]:
-            linear_inches += BUSMARK_PADDING * pfps
+        if "roll" in print_material_name:
+            linear_inches += BUSMARK_PADDING * self.num_standees
             print_form_cost = print_form_material["cost"] * UNIT_MAP[print_form_unit] * linear_inches
 
         # ! do we need hi-tack if theyre doing mounting??
         # add hi-tack if not busmark
-        if print_material_name != DB_LABELS["roll_busmark"]:
+        else:
             hi_tack_material = db.get_unit_cost_entry(DB_LABELS["roll_hi_tack"])
             hi_tack_unit = hi_tack_material["unit"]
             hi_tack_cost = hi_tack_material["cost"] * UNIT_MAP[hi_tack_unit] * linear_inches
@@ -123,19 +121,19 @@ class Project:
             print_form_cost += hi_tack_cost
         return print_form_cost
 
-    def _get_form_material_linear_inches(self) -> int:
-        forms_per_standee = self.print_forms_per_standee + self.structure_forms_per_standee
-        print_form_total = forms_per_standee * self.num_standees + self.overs
-        return int(PRINT_FORM_LENGTH) * (print_form_total + (2 * forms_per_standee))
+    def _get_print_form_linear_inches(self) -> int:
+        return int(PRINT_FORM_LENGTH) * self.print_form_total
 
-    def _setup_time(self, unit_cost_entry: dict) -> float:
-        return unit_cost_entry["setup_time"] * self.print_forms_per_standee
+    def _setup_time(self, unit_cost_entry: dict, forms: int) -> float:
+        return unit_cost_entry["setup_time"] * forms
 
     def _machine_time(self, db, machine_name: str, linear_inches: float) -> float:
         machine_entry = db.get_unit_cost_entry(machine_name)
         throughput: int = machine_entry["throughput"]
         throughput_unit: str = machine_entry["throughput_unit"]
-        machine_time: float = linear_inches / (throughput / UNIT_MAP[throughput_unit]) + self._setup_time(machine_entry)
+        machine_time: float = linear_inches / (throughput / UNIT_MAP[throughput_unit]) + self._setup_time(
+            machine_entry, self.print_forms_per_standee
+        )
         return machine_time
 
     def _machine_cost(self, db, machine_name: str, machine_hours: float) -> float:
@@ -143,25 +141,27 @@ class Project:
         machine_cost = machine_entry["cost"] * UNIT_MAP[machine_entry["unit"]] * machine_hours
         return machine_cost
 
-    def _zund_hours(self, db, standee_key: str) -> float:
-        print_zund_hours = (
-            db.get_standee_data(standee_key, "zund_print_form_minutes")
-            * self.print_forms_per_standee
-            * self.num_standees
-        ) / 60
+    def _zund_hours(self, db) -> float:
+        # combination of linear inches and provided minute estimates
+        zund_linear_inches = sum(form.get_linear_inches() for form in self.print_forms)
+        print_zund_hours = self._machine_time(db, DB_LABELS["zund_cutter"], zund_linear_inches)
         structure_zund_hours = (
-            db.get_standee_data(standee_key, "zund_blank_form_minutes")
+            db.get_standee_data(self.standee_key, "zund_blank_form_minutes")
             * self.structure_forms_per_standee
             * self.num_standees
         ) / 60
 
-        return print_zund_hours + structure_zund_hours
+        return (
+            print_zund_hours
+            + structure_zund_hours
+            + self._setup_time(db.get_unit_cost_entry(DB_LABELS["zund_cutter"]), self.blank_forms_per_standee)
+        )
 
     def _shipping_box_and_label_cost(self, db) -> tuple[float, float]:
         shipping_box_cost = db.get_unit_cost(DB_LABELS["shipping_box"]) * self.num_standees
         desc_label_cost = db.get_unit_cost(DB_LABELS["desc_label"])
-        handling_label_cost = db.get_unit_cost(DB_LABELS["shipping_label"])
-        label_cost = (2 * desc_label_cost + handling_label_cost) * self.num_standees
+        shipping_label_cost = db.get_unit_cost(DB_LABELS["shipping_label"])
+        label_cost = (2 * desc_label_cost + shipping_label_cost) * self.num_standees
         return shipping_box_cost, label_cost
 
     def _instruction_sheet_cost(self, db) -> float:
@@ -187,3 +187,10 @@ class Project:
         scale, power = params
 
         return scale * (num_forms) ** power
+
+    def _get_num_corrugate_forms(self) -> int:
+        return (
+            (self.print_forms_per_standee * self.overs)
+            + self.print_forms_per_standee
+            + self.structure_forms_per_standee
+        ) * self.num_standees
