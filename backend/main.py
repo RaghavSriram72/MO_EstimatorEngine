@@ -175,6 +175,10 @@ async def generate_quote(payload: QuoteRequest):
 
     # Persist the project if an authenticated owner is provided.
     owner = payload.owner.strip() if payload.owner else None
+    owner = None
+    if payload.owner:
+        owner = payload.owner.strip()
+
     if owner and payload.num_standees >= 1 and payload.elements:
         with MOADB() as db:
             if db.check_username_exists(owner):
@@ -187,6 +191,7 @@ async def generate_quote(payload: QuoteRequest):
                     elements=elements_to_persisted(elements),
                 )
                 out["project_id"] = db.insert_persisted_project(persisted_create_to_mongo_document(persisted))
+                full_doc = persisted_create_to_mongo_document(persisted)
 
     return out
 
