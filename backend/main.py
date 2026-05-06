@@ -384,7 +384,6 @@ async def list_projects(owner: str = Query(..., description="Username of the acc
     with MOADB() as db:
         if not db.check_username_exists(owner):
             return JSONResponse(status_code=404, content={"error": "Unknown owner"})
-    return {"projects": db.list_projects_by_owner(owner)}
         projects = db.list_projects_by_owner(owner)
     return {"projects": projects}
 
