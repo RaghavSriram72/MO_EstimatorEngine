@@ -14,9 +14,11 @@ from lib.classes.project import Project
 from lib.classes.scenarios import Scenario1, Scenario2, Scenario3, Scenario4, Scenario5
 from lib.persisted_project import (
     PersistedProjectCreate,
+    PersistedProjectUpdateBody,
     complexity_to_str,
     elements_to_persisted,
     persisted_create_to_mongo_document,
+    persisted_update_to_mongo_set,
 )
 
 from lib.print_form_calculator import print_form_calculator
