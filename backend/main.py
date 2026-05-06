@@ -166,11 +166,23 @@ async def generate_quote(payload: QuoteRequest):
 
     scenario_4_obj = scenario_4.to_dict()
 
+    scenario_5 = Scenario5(
+        name="API quote",
+        print_forms=print_forms,
+        num_standees=payload.num_standees,
+        standee_type=Complexity(payload.standee_type),
+    )
+
+    scenario_5.calculate_cost(**form_overrides)
+
+    scenario_5_obj = scenario_5.to_dict()
+
     out: dict = {
         "scenario_1": scenario_1_obj,
         "scenario_2": scenario_2_obj,
         "scenario_3": scenario_3_obj,
         "scenario_4": scenario_4_obj,
+        "scenario_5": scenario_5_obj,
     }
 
     # Persist the project if an authenticated owner is provided.

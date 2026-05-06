@@ -36,6 +36,7 @@ class Project:
             + self.color_comp_cost
             + self.engineering_design_cost
             + self.hardware_cost
+            + self.overs_cost
         )
 
     @property
@@ -81,18 +82,16 @@ class Project:
 
             # misc costs and project vars
             self.overs = num_overs or db.get_overs(self.num_standees)
+            self.overs_forms = self.overs * self.print_forms_per_standee * self.num_standees
+            self.overs_cost = db.get_unit_cost(DB_LABELS["corrugate"]) * self.overs_forms
             self.print_form_total = (
                 self.overs * self.print_forms_per_standee + self.print_forms_per_standee
             ) * self.num_standees
             self.engineering_design_cost = db.get_standee_data(self.standee_key, "engineering_design_cost_per_project")
-            self.blank_comp_cost = 0.0
-            self.color_comp_cost = 0.0
-            if blank_comp_count:
-                self.blank_comp_count = blank_comp_count
-                self.blank_comp_cost = db.get_unit_cost(DB_LABELS["blank_comp"]) * self.blank_comp_count
-            if color_comp_count:
-                self.color_comp_count = color_comp_count
-                self.color_comp_cost = db.get_unit_cost(DB_LABELS["color_comp"]) * self.color_comp_count
+            self.blank_comp_count = blank_comp_count or 1
+            self.blank_comp_cost = db.get_unit_cost(DB_LABELS["blank_comp"]) * self.blank_comp_count
+            self.color_comp_count = color_comp_count or 1
+            self.color_comp_cost = db.get_unit_cost(DB_LABELS["color_comp"]) * self.color_comp_count
         return self.total_universal_cost
 
     # Helpers
@@ -189,8 +188,4 @@ class Project:
         return scale * (num_forms) ** power
 
     def _get_num_corrugate_forms(self) -> int:
-        return (
-            (self.print_forms_per_standee * self.overs)
-            + self.print_forms_per_standee
-            + self.structure_forms_per_standee
-        ) * self.num_standees
+        return (self.print_forms_per_standee + self.structure_forms_per_standee) * self.num_standees

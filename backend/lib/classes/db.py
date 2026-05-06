@@ -284,7 +284,7 @@ class MidnightOilDB:
             "lower_bound": {"$lte": quantity},
             "$or": [
                 {"upper_bound": None},
-                {"upper_bound": {"$gt": quantity}}
+                {"upper_bound": {"$gte": quantity}}
             ]
         })
         if result and "overs" in result:

@@ -230,9 +230,9 @@ class Scenario3(Project):
 
             # pallet cost calculation
             self.pallet_count = pallet_count or self.print_forms_per_standee
-            pallet_material_cost = db.get_unit_cost(PALLET) * self.pallet_count
+            self.pallet_material_cost = db.get_unit_cost(PALLET) * self.pallet_count
             self.pallet_labor_cost = db.get_unit_cost(PALLET_LABOR) * self.pallet_count
-            self.pallet_cost = pallet_material_cost + self.pallet_labor_cost
+            self.pallet_cost = self.pallet_material_cost + self.pallet_labor_cost
             # freight cost calculation
             self.freight_cost = freight_cost or db.get_unit_cost(EXTERNAL_ASSEMBLY)
         return self.total_cost

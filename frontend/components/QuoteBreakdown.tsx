@@ -35,30 +35,30 @@ const UNIVERSAL_LINE_DEFS: Record<string, LineDef> = {
     color_comp_cost:         { label: "Color Comp",           unit: "units"    },
     engineering_design_cost: { label: "Engineering & Design", unit: "flat"     },
     hardware_cost:           { label: "Hardware",             unit: "standees" },
+    overs_cost:              { label: "Overs            ",    unit: "forms"    },
 };
 
 const SCENARIO_LINE_DEFS: Record<string, LineDef> = {
-    corrugate_cost:         { label: "Corrugate",                                      unit: "forms"    },
-    print_form_cost:        { label: "Print Form Material",                            unit: "forms"    },
-    rho_print_cost:         { label: "Rho Print",                                      unit: "flat"     },
-    laminator_cost:         { label: "Laminator",                                      unit: "flat"     },
-    zund_cut_cost:          { label: "Zund Cut Labor",                                 unit: "hrs"      },
-    die_cost:               { label: "Die Cost",                                       unit: "dies"     },
-    pallet_material_cost:   { label: "Pallets",                                         unit: "pallets"  },
-    pallet_labor_cost:      { label: "Pallet Labor",                                    unit: "pallets"  },
-    shipping_box_cost:      { label: "Shipping Box",                                   unit: "standees" },
-    label_cost:             { label: "Labels",                                         unit: "standees" },
-    instruction_sheet_cost: { label: "Instruction Sheet",                              unit: "standees" },
-    freight_cost:           { label: "External Vendor Cost",                           unit: "flat"     },
-    full_out_source:        { label: "Full Outsource (Print, Mount, Die Cut, Assem.)", unit: "flat"     },
+    corrugate_cost:         { label: "Corrugate",            unit: "forms"    },
+    print_form_cost:        { label: "Print Form Material",  unit: "forms"    },
+    print_cost:             { label: "Rho Print",            unit: "flat"     },
+    rollx_cost:             { label: "Roll-X",               unit: "flat"     },
+    zund_cut_cost:          { label: "Zund Cut Labor",       unit: "hrs"      },
+    die_cost:               { label: "Die Cost",             unit: "dies"     },
+    pallet_material_cost:   { label: "Pallets",              unit: "pallets"  },
+    pallet_labor_cost:      { label: "Pallet Labor",         unit: "pallets"  },
+    shipping_box_cost:      { label: "Shipping Box",         unit: "standees" },
+    label_cost:             { label: "Labels",               unit: "standees" },
+    instruction_sheet_cost: { label: "Instruction Sheet",    unit: "standees" },
+    freight_cost:           { label: "External Vendor Cost", unit: "flat"     },
 };
 
 const SCENARIO_KEYS: Record<ScenarioId, string[]> = {
-    1: ["corrugate_cost", "print_form_cost", "rho_print_cost", "laminator_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost"],
-    2: ["corrugate_cost", "print_form_cost", "rho_print_cost", "laminator_cost", "zund_cut_cost", "shipping_box_cost", "label_cost"],
-    3: ["corrugate_cost", "print_form_cost", "rho_print_cost", "laminator_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "pallet_material_cost", "pallet_labor_cost", "freight_cost"],
-    4: ["print_form_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "pallet_material_cost", "pallet_labor_cost", "freight_cost", "die_cost"],
-    5: ["full_out_source"],
+    1: ["corrugate_cost", "print_form_cost", "print_cost", "rollx_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost"],
+    2: ["corrugate_cost", "print_form_cost", "print_cost", "rollx_cost", "zund_cut_cost", "shipping_box_cost", "label_cost"],
+    3: ["corrugate_cost", "print_form_cost", "print_cost", "rollx_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "pallet_material_cost", "pallet_labor_cost", "freight_cost"],
+    4: ["corrugate_cost", "print_form_cost", "print_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "pallet_material_cost", "pallet_labor_cost", "freight_cost", "die_cost"],
+    5: ["corrugate_cost", "print_form_cost", "label_cost", "instruction_sheet_cost", "freight_cost", "die_cost"],
 };
 
 function lineTotal(l: CostLine) {
@@ -80,6 +80,7 @@ const QTY_FROM_SOURCE: Partial<Record<string, (s: Record<string, number>) => num
     instruction_sheet_cost: (s) => s.num_standees         ?? 1,
     pallet_material_cost:   (s) => s.pallet_count         ?? 1,
     pallet_labor_cost:      (s) => s.pallet_count         ?? 1,
+    overs_cost:             (s) => s.overs_forms          ?? 1,
 };
 
 function buildLines(keys: string[], defs: Record<string, LineDef>): CostLine[] {
@@ -177,7 +178,7 @@ function buildAllLines(sources: Record<ScenarioId, Record<string, number>>) {
             2: seedLines(buildLines(SCENARIO_KEYS[2], SCENARIO_LINE_DEFS), sources[2]),
             3: seedLines(buildLines(SCENARIO_KEYS[3], SCENARIO_LINE_DEFS), sources[3]),
             4: seedLines(buildLines(SCENARIO_KEYS[4], SCENARIO_LINE_DEFS), sources[4]),
-            5: buildLines(SCENARIO_KEYS[5], SCENARIO_LINE_DEFS),
+            5: seedLines(buildLines(SCENARIO_KEYS[5], SCENARIO_LINE_DEFS), sources[5]),
         } as Record<ScenarioId, CostLine[]>,
     };
 }
@@ -193,7 +194,7 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
         2: quoteData["scenario_2"] ?? {},
         3: quoteData["scenario_3"] ?? {},
         4: quoteData["scenario_4"] ?? {},
-        5: {},
+        5: quoteData["scenario_5"] ?? {},
     };
 
     const [printFormsPerStandee, setPrintFormsPerStandee] = useState<number>(
@@ -202,6 +203,7 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
     const [structureFormsPerStandee, setStructureFormsPerStandee] = useState<number>(
         initialSources[1].structure_forms_per_standee ?? 0
     );
+    const [overs, setOvers] = useState<number>(initialSources[1].overs ?? 0);
 
     const { universal: initUniversal, scenario: initScenario } = buildAllLines(initialSources);
     const [universalLines, setUniversalLines] = useState<CostLine[]>(initUniversal);
@@ -234,11 +236,12 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
                     2: data["scenario_2"] ?? {},
                     3: data["scenario_3"] ?? {},
                     4: data["scenario_4"] ?? {},
-                    5: {},
+                    5: data["scenario_5"] ?? {},
                 };
                 const { universal, scenario } = buildAllLines(sources);
                 setUniversalLines(universal);
                 setScenarioLines(scenario);
+                setOvers(sources[1].overs ?? 0);
             })
             .catch((err) => console.error("Recalculate error:", err))
             .finally(() => setIsRecalculating(false));
@@ -371,6 +374,17 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
                         <span className="text-[10px] font-black text-[#B1B3B6] uppercase tracking-widest">Blank Forms / Standee</span>
                         <span className="text-sm font-black text-[#000005] text-right py-1.5">
                             {printFormsPerStandee + structureFormsPerStandee}
+                        </span>
+                    </div>
+                    <div className="h-10 w-px bg-[#E0E0E0]" />
+                    <div className="flex flex-col gap-1">
+                        <span className="text-[10px] font-black text-[#B1B3B6] uppercase tracking-widest">Overs / Standee</span>
+                        <span className="text-sm font-black text-[#000005] text-right py-1.5">{overs}</span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <span className="text-[10px] font-black text-[#B1B3B6] uppercase tracking-widest">Total Overs Forms</span>
+                        <span className="text-sm font-black text-[#000005] text-right py-1.5">
+                            {overs * printFormsPerStandee * numStandees}
                         </span>
                     </div>
                     <div className="h-10 w-px bg-[#E0E0E0]" />
