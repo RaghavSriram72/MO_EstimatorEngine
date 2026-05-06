@@ -24,6 +24,7 @@ export type RequestPayload = {
     standee_type: number;
 };
 
+// information that gets displayed in the projects sidebar
 type PersistedProjectSummary = {
     _id: string;
     project_name: string;
@@ -31,6 +32,7 @@ type PersistedProjectSummary = {
     standee_type: StandeeType;
 };
 
+// converts the inputted elements array into a format that can be stored in the MongoDB
 function buildElementsForApi(elements: Element[]) {
     return elements.map((el) => ({
         name: "",

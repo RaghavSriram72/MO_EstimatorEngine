@@ -76,7 +76,7 @@ def persisted_create_to_mongo_document(data: PersistedProjectCreate) -> dict[str
 
 
 class PersistedProjectUpdateBody(BaseModel):
-    """Editable fields when updating an existing project document."""
+    # allows you to edit fields when updating an existing project document
 
     project_name: str = Field(..., min_length=1, max_length=512)
     num_standees: int = Field(..., ge=1)
