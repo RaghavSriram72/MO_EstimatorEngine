@@ -174,7 +174,6 @@ async def generate_quote(payload: QuoteRequest):
     }
 
     # Persist the project if an authenticated owner is provided.
-    owner = payload.owner.strip() if payload.owner else None
     owner = None
     if payload.owner:
         owner = payload.owner.strip()
@@ -190,8 +189,23 @@ async def generate_quote(payload: QuoteRequest):
                     standee_type=complexity_to_str(Complexity(payload.standee_type)),
                     elements=elements_to_persisted(elements),
                 )
-                out["project_id"] = db.insert_persisted_project(persisted_create_to_mongo_document(persisted))
                 full_doc = persisted_create_to_mongo_document(persisted)
+
+                persisted_project_id = (payload.project_id or "").strip()
+                updatable_keys = ("project_name", "num_standees", "standee_type", "elements")
+
+                if persisted_project_id:
+                    update_fields = {}
+                    for key, value in full_doc.items():
+                        if key in updatable_keys:
+                            update_fields[key] = value
+
+                    updated = db.update_persisted_project(persisted_project_id, owner, update_fields)
+                    if updated:
+                        out["project_id"] = persisted_project_id
+                else:
+                    inserted_id = db.insert_persisted_project(full_doc)
+                    out["project_id"] = inserted_id
 
     return out
 
