@@ -75,6 +75,19 @@ def persisted_create_to_mongo_document(data: PersistedProjectCreate) -> dict[str
     return data.model_dump()
 
 
+class PersistedProjectUpdateBody(BaseModel):
+    """Editable fields when updating an existing project document."""
+
+    project_name: str = Field(..., min_length=1, max_length=512)
+    num_standees: int = Field(..., ge=1)
+    standee_type: ComplexityStr
+    elements: list[PersistedElement] = Field(..., min_length=1)
+
+
+def persisted_update_to_mongo_set(data: PersistedProjectUpdateBody) -> dict[str, Any]:
+    return data.model_dump()
+
+
 def elements_from_persisted_project(rows: list[PersistedElement]) -> list[Element]:
     return [
         Element(

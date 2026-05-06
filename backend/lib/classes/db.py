@@ -94,6 +94,19 @@ class MidnightOilDB:
         doc["_id"] = str(doc["_id"])
         return doc
 
+    def update_persisted_project(self, project_id: str, owner: str, fields: dict[str, Any]) -> bool:
+        """Update ``project_name``, ``num_standees``, ``standee_type``, and/or ``elements`` for an owned project."""
+        try:
+            oid = ObjectId(project_id)
+        except (InvalidId, TypeError):
+            return False
+        allowed = {"project_name", "num_standees", "standee_type", "elements"}
+        update_doc = {k: v for k, v in fields.items() if k in allowed}
+        if not update_doc:
+            return False
+        result = self.projects_collection.update_one({"_id": oid, "owner": owner}, {"$set": update_doc})
+        return result.matched_count > 0
+
     def get_unit_cost(self, cost_name: str) -> float:
         """Return the unit cost for a given cost name."""
         result = self.by_unit_costs_collection.find_one({"name": cost_name})
