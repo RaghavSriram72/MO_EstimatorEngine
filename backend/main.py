@@ -399,6 +399,21 @@ async def get_project(
     return row
 
 
+@app.patch("/projects/{project_id}")
+async def update_project(
+    project_id: str,
+    payload: PersistedProjectUpdateBody,
+    owner: str = Query(..., description="Must match the document's owner field"),
+):
+    with MOADB() as db:
+        if not db.check_username_exists(owner):
+            return JSONResponse(status_code=404, content={"error": "Unknown owner"})
+        fields = persisted_update_to_mongo_set(payload)
+        if not db.update_persisted_project(project_id, owner, fields):
+            return JSONResponse(status_code=404, content={"error": "Project not found"})
+    return {"message": "Project updated successfully", "project_id": project_id}
+
+
 @app.post("/create-account")
 async def create_account(payload: AccountRequest):
     with MOADB() as db:
