@@ -173,27 +173,26 @@ async def generate_quote(payload: QuoteRequest):
     # Persist the project if an authenticated owner is provided.
     owner = payload.owner.strip() if payload.owner else None
     if owner and payload.num_standees >= 1 and payload.elements:
-        db = MOADB()
-        if db.check_username_exists(owner):
-            pname = (payload.project_name or "").strip() or "Untitled project"
-            persisted = PersistedProjectCreate(
-                owner=owner,
-                project_name=pname,
-                num_standees=payload.num_standees,
-                standee_type=complexity_to_str(Complexity(payload.standee_type)),
-                elements=elements_to_persisted(elements),
-            )
-            out["project_id"] = db.insert_persisted_project(persisted_create_to_mongo_document(persisted))
+        with MOADB() as db:
+            if db.check_username_exists(owner):
+                pname = (payload.project_name or "").strip() or "Untitled project"
+                persisted = PersistedProjectCreate(
+                    owner=owner,
+                    project_name=pname,
+                    num_standees=payload.num_standees,
+                    standee_type=complexity_to_str(Complexity(payload.standee_type)),
+                    elements=elements_to_persisted(elements),
+                )
+                out["project_id"] = db.insert_persisted_project(persisted_create_to_mongo_document(persisted))
 
     return out
 
 
 @app.get("/standee-data")
 async def get_standee_data(standee_type: int, data_type: str):
+    type_mapping = {0: "Simple Standee", 1: "Moderate Standee", 2: "Complex Standee"}
     with MOADB() as db:
-        type_mapping = {0: "Simple Standee", 1: "Moderate Standee", 2: "Complex Standee"}
-
-    standee_data = db.get_standee_data(type_mapping[standee_type], data_type.strip())
+        standee_data = db.get_standee_data(type_mapping[standee_type], data_type.strip())
     print(f"Retrieved standee data for type {type_mapping[standee_type]} and field '{data_type}': {standee_data}")
     return {"data": standee_data}
 
@@ -417,4 +416,5 @@ if __name__ == "__main__":
     import code
 
     db = MOADB()
+    db.connect()
     code.interact(local=globals())
