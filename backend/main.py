@@ -91,6 +91,7 @@ class QuoteRequest(BaseModel):
     standee_type: int = 1
     owner: str | None = None
     project_name: str | None = None
+    project_id: str | None = None
     print_forms_per_standee: int | None = None
     structure_forms_per_standee: int | None = None
 
