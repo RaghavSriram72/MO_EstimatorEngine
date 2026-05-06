@@ -69,6 +69,8 @@ export default function Inputter() {
             .finally(() => setIsLoading(false));
     }
 
+    const canCalculate = (standeeCount !== "" && standeeCount > 0) && elements.length > 0;
+
     if (isLoading) {
         return (
             <div className="flex flex-col items-center justify-center w-full flex-1 bg-white">
@@ -154,10 +156,14 @@ export default function Inputter() {
                         CLEAR
                     </div>
                     <div
-                        onClick={handleQuoteGeneration}
-                        className="group flex flex-row justify-center gap-4 text-xs font-black bg-[#FFC843] text-[#000005] hover:bg-[#000005] hover:text-white py-3 rounded-sm flex-[2] cursor-pointer transition-all duration-200 ease-in-out uppercase tracking-widest"
+                        onClick={canCalculate ? handleQuoteGeneration : undefined}
+                        className={`group flex flex-row justify-center gap-4 text-xs font-black py-3 rounded-sm flex-[2] transition-all duration-200 ease-in-out uppercase tracking-widest ${
+                            canCalculate
+                                ? "bg-[#FFC843] text-[#000005] hover:bg-[#000005] hover:text-white cursor-pointer"
+                                : "bg-[#E0E0E0] text-[#B1B3B6] cursor-not-allowed"
+                        }`}
                     >
-                        CALCULATE <img src="/submitarrow.svg" alt="" className="transition-all duration-300 ease-in-out group-hover:translate-x-1 group-hover:invert" />
+                        CALCULATE <img src="/submitarrow.svg" alt="" className={`transition-all duration-300 ease-in-out ${canCalculate ? "group-hover:translate-x-1 group-hover:invert" : "opacity-40"}`} />
                     </div>
                 </div>
             </div>

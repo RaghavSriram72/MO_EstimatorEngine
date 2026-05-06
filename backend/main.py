@@ -10,7 +10,8 @@ from lib.classes.db import MidnightOilDB as MOADB
 
 # from lib.globals import
 from lib.classes.form import Element, Form, Complexity
-from lib.classes.project import Project, Scenario1, Scenario2, Scenario3, Scenario4, Scenario5
+from lib.classes.project import Project
+from lib.classes.scenarios import Scenario1, Scenario2, Scenario3, Scenario4, Scenario5
 from lib.persisted_project import (
     PersistedProjectCreate,
     complexity_to_str,
@@ -36,6 +37,7 @@ app.add_middleware(
 class AccountRequest(BaseModel):
     username: str
     password: str
+
 
 def _verify_password(password: str, stored_hash: str) -> bool:
     """Verify a password against a stored PBKDF2 hash string."""
@@ -89,7 +91,6 @@ class QuoteRequest(BaseModel):
     project_name: str | None = None
     print_forms_per_standee: int | None = None
     structure_forms_per_standee: int | None = None
-
 
 
 @app.post("/generate_quote")
@@ -182,17 +183,15 @@ async def generate_quote(payload: QuoteRequest):
                 standee_type=complexity_to_str(Complexity(payload.standee_type)),
                 elements=elements_to_persisted(elements),
             )
-            out["project_id"] = db.insert_persisted_project(
-                persisted_create_to_mongo_document(persisted)
-            )
+            out["project_id"] = db.insert_persisted_project(persisted_create_to_mongo_document(persisted))
 
     return out
 
 
 @app.get("/standee-data")
 async def get_standee_data(standee_type: int, data_type: str):
-    db = MOADB()
-    type_mapping = {0: "Simple Standee", 1: "Moderate Standee", 2: "Complex Standee"}
+    with MOADB() as db:
+        type_mapping = {0: "Simple Standee", 1: "Moderate Standee", 2: "Complex Standee"}
 
     standee_data = db.get_standee_data(type_mapping[standee_type], data_type.strip())
     print(f"Retrieved standee data for type {type_mapping[standee_type]} and field '{data_type}': {standee_data}")
@@ -201,8 +200,8 @@ async def get_standee_data(standee_type: int, data_type: str):
 
 @app.get("/unit-costs")
 async def get_unit_costs():
-    db = MOADB()
-    return {"data": db.get_all_unit_costs()}
+    with MOADB() as db:
+        return {"data": db.get_all_unit_costs()}
 
 
 class UpdateCostRequest(BaseModel):
@@ -217,11 +216,11 @@ class UpdateCostRequest(BaseModel):
 @app.get("/standee-static-costs")
 async def get_standee_static_costs(standee_type: str):
     """Return the full static cost record for a given standee type."""
-    db = MOADB()
-    try:
-        return {"data": db.get_standee_record(standee_type)}
-    except ValueError as e:
-        return JSONResponse(status_code=404, content={"error": str(e)})
+    with MOADB() as db:
+        try:
+            return {"data": db.get_standee_record(standee_type)}
+        except ValueError as e:
+            return JSONResponse(status_code=404, content={"error": str(e)})
 
 
 class UpdateStandeeRequest(BaseModel):
@@ -233,19 +232,19 @@ class UpdateStandeeRequest(BaseModel):
 @app.patch("/standee-static-costs")
 async def update_standee_static_costs(standee_type: str, payload: UpdateStandeeRequest):
     """Update numeric fields on a standee static cost record."""
-    db = MOADB()
-    try:
-        db.update_standee_record(standee_type, payload.updates)
-        return {"message": "Updated successfully"}
-    except ValueError as e:
-        return JSONResponse(status_code=404, content={"error": str(e)})
+    with MOADB() as db:
+        try:
+            db.update_standee_record(standee_type, payload.updates)
+            return {"message": "Updated successfully"}
+        except ValueError as e:
+            return JSONResponse(status_code=404, content={"error": str(e)})
 
 
 @app.get("/work-center-costs")
 async def get_work_center_costs():
     """Return all work center cost records."""
-    db = MOADB()
-    return {"data": db.get_all_work_center_costs()}
+    with MOADB() as db:
+        return {"data": db.get_all_work_center_costs()}
 
 
 class UpdateWorkCenterRequest(BaseModel):
@@ -260,44 +259,110 @@ class UpdateWorkCenterRequest(BaseModel):
 @app.patch("/work-center-costs/{activity}")
 async def update_work_center_cost(activity: str, payload: UpdateWorkCenterRequest):
     """Update editable fields on a work center cost record."""
-    db = MOADB()
-    updates = {k: v for k, v in payload.model_dump().items() if v is not None}
-    try:
-        db.update_work_center_cost(activity, updates)
-        return {"message": "Updated successfully"}
-    except ValueError as e:
-        return JSONResponse(status_code=404, content={"error": str(e)})
+    with MOADB() as db:
+        updates = {k: v for k, v in payload.model_dump().items() if v is not None}
+        try:
+            db.update_work_center_cost(activity, updates)
+            return {"message": "Updated successfully"}
+        except ValueError as e:
+            return JSONResponse(status_code=404, content={"error": str(e)})
 
 
 @app.patch("/unit-costs/{name}")
 async def update_unit_cost(name: str, payload: UpdateCostRequest):
-    db = MOADB()
-    updates = {k: v for k, v in payload.model_dump().items() if v is not None}
-    try:
-        db.update_unit_cost_entry(name, updates)
-        return {"message": "Updated successfully"}
-    except ValueError as e:
-        return JSONResponse(status_code=404, content={"error": str(e)})
+    with MOADB() as db:
+        updates = {k: v for k, v in payload.model_dump().items() if v is not None}
+        try:
+            db.update_unit_cost_entry(name, updates)
+            return {"message": "Updated successfully"}
+        except ValueError as e:
+            return JSONResponse(status_code=404, content={"error": str(e)})
+
+
+@app.get("/overs")
+async def get_overs():
+    """Return all overs tier records sorted by lower_bound."""
+    with MOADB() as db:
+        return {"data": db.get_all_overs()}
+
+
+class UpdateOversRequest(BaseModel):
+    """Payload for updating all editable fields on an overs tier record."""
+
+    lower_bound: int
+    upper_bound: int | None
+    overs: int
+
+
+@app.patch("/overs/{record_id}")
+async def update_overs(record_id: str, payload: UpdateOversRequest):
+    """Update lower_bound, upper_bound, and overs percentage for a tier."""
+    with MOADB() as db:
+        try:
+            db.update_overs(record_id, payload.lower_bound, payload.upper_bound, payload.overs)
+            return {"message": "Updated successfully"}
+        except ValueError as e:
+            return JSONResponse(status_code=404, content={"error": str(e)})
+
+
+@app.get("/suppliers")
+async def get_suppliers():
+    """Return all distinct supplier names."""
+    with MOADB() as db:
+        return {"data": db.get_distinct_suppliers()}
+
+
+@app.get("/suppliers/{supplier}/materials")
+async def get_supplier_materials(supplier: str):
+    """Return distinct materials for a supplier with display names."""
+    with MOADB() as db:
+        return {"data": db.get_distinct_materials(supplier)}
+
+
+@app.get("/suppliers/{supplier}/{material}")
+async def get_supplier_material_records(supplier: str, material: str):
+    """Return all cost records for a supplier+material pair sorted by amount."""
+    with MOADB() as db:
+        return {"data": db.get_supplier_material_records(supplier, material)}
+
+
+class UpdateSupplierRequest(BaseModel):
+    """Payload for updating amount, cost, and unit on a supplier record."""
+
+    amount: float
+    cost: float
+    unit: str
+
+
+@app.patch("/suppliers/{record_id}")
+async def update_supplier_record(record_id: str, payload: UpdateSupplierRequest):
+    """Update amount, cost, and unit on a supplier cost record."""
+    with MOADB() as db:
+        try:
+            db.update_supplier_record(record_id, payload.amount, payload.cost, payload.unit)
+            return {"message": "Updated successfully"}
+        except ValueError as e:
+            return JSONResponse(status_code=404, content={"error": str(e)})
 
 
 @app.post("/create-project")
 async def create_project(payload: PersistedProjectCreate):
-    db = MOADB()
-    if not db.check_username_exists(payload.owner):
-        return JSONResponse(status_code=404, content={"error": "Unknown owner"})
-    doc = persisted_create_to_mongo_document(payload)
-    project_id = db.insert_persisted_project(doc)
-    return JSONResponse(
-        status_code=201,
-        content={"project_id": project_id, "message": "Project created successfully"},
-    )
+    with MOADB() as db:
+        if not db.check_username_exists(payload.owner):
+            return JSONResponse(status_code=404, content={"error": "Unknown owner"})
+        doc = persisted_create_to_mongo_document(payload)
+        project_id = db.insert_persisted_project(doc)
+        return JSONResponse(
+            status_code=201,
+            content={"project_id": project_id, "message": "Project created successfully"},
+        )
 
 
 @app.get("/projects")
 async def list_projects(owner: str = Query(..., description="Username of the account that owns the projects")):
-    db = MOADB()
-    if not db.check_username_exists(owner):
-        return JSONResponse(status_code=404, content={"error": "Unknown owner"})
+    with MOADB() as db:
+        if not db.check_username_exists(owner):
+            return JSONResponse(status_code=404, content={"error": "Unknown owner"})
     return {"projects": db.list_projects_by_owner(owner)}
 
 
@@ -306,8 +371,8 @@ async def get_project(
     project_id: str,
     owner: str = Query(..., description="Must match the document's owner field"),
 ):
-    db = MOADB()
-    row = db.get_project_by_owner(project_id, owner)
+    with MOADB() as db:
+        row = db.get_project_by_owner(project_id, owner)
     if row is None:
         return JSONResponse(status_code=404, content={"error": "Project not found"})
     return row
@@ -315,37 +380,37 @@ async def get_project(
 
 @app.post("/create-account")
 async def create_account(payload: AccountRequest):
-    db = MOADB()
-    username = payload.username
-    password = payload.password
+    with MOADB() as db:
+        username = payload.username
+        password = payload.password
 
-    # Check if username already exists
-    if db.check_username_exists(username):
-        return JSONResponse(status_code=400, content={"error": "Username already exists"})
+        # Check if username already exists
+        if db.check_username_exists(username):
+            return JSONResponse(status_code=400, content={"error": "Username already exists"})
 
-    # Create new user
-    success = db.create_user(username, password)
-    if success:
-        return JSONResponse(status_code=201, content={"message": "Account created successfully"})
-    else:
-        return JSONResponse(status_code=400, content={"error": "Failed to create account"})
+        # Create new user
+        success = db.create_user(username, password)
+        if success:
+            return JSONResponse(status_code=201, content={"message": "Account created successfully"})
+        else:
+            return JSONResponse(status_code=400, content={"error": "Failed to create account"})
 
 
 @app.post("/sign-in")
 async def sign_in(payload: AccountRequest):
-    db = MOADB()
-    username = payload.username
-    password = payload.password
+    with MOADB() as db:
+        username = payload.username
+        password = payload.password
 
-    if not db.check_username_exists(username):
-        return JSONResponse(status_code=400, content={"error": "Invalid username or password"})
+        if not db.check_username_exists(username):
+            return JSONResponse(status_code=400, content={"error": "Invalid username or password"})
 
-    user = db.get_user(username)
+        user = db.get_user(username)
 
-    if not user or not _verify_password(password, user["password_hash"]):
-        return JSONResponse(status_code=400, content={"error": "Invalid username or password"})
-    else:
-        return JSONResponse(status_code=200, content={"message": "Sign-in successful"})
+        if not user or not _verify_password(password, user["password_hash"]):
+            return JSONResponse(status_code=400, content={"error": "Invalid username or password"})
+        else:
+            return JSONResponse(status_code=200, content={"message": "Sign-in successful"})
 
 
 if __name__ == "__main__":

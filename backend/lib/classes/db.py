@@ -28,6 +28,7 @@ class MidnightOilDB:
         self.standee_collection = self.db["standee_static_costs"]
         self.print_blank_collection = self.db["print_blank_ratio"]
         self.overs_collection = self.db["overs"]
+        self.work_center_costs_collection = self.db["work_center_costs"]
         self.suppliers_collection = self.db["suppliers"]
         self.users_collection = self.db["users"]
         self.projects_collection = self.db["projects"]
@@ -189,6 +190,61 @@ class MidnightOilDB:
         except Exception as e:
             raise ValueError(f"Failed to set print blank ratio: {str(e)}")
 
+    def get_all_work_center_costs(self) -> list[dict]:
+        """Return all work center cost records, serialized for JSON."""
+        records = []
+        for r in self.work_center_costs_collection.find({}, sort=[("activity", 1)]):
+            r["_id"] = str(r["_id"])
+            records.append(r)
+        return records
+
+    def update_work_center_cost(self, activity: str, updates: dict) -> None:
+        """Update editable fields on a work center cost record."""
+        if not updates:
+            return
+        result = self.work_center_costs_collection.update_one({"activity": activity}, {"$set": updates})
+        if result.matched_count == 0:
+            raise ValueError(f"Work center cost not found for activity '{activity}'")
+
+    def get_distinct_suppliers(self) -> list[str]:
+        """Return all distinct supplier names."""
+        return sorted(self.suppliers_collection.distinct("supplier"))
+
+    def get_distinct_materials(self, supplier: str) -> list[dict]:
+        """Return distinct materials for a supplier with their display names."""
+        pipeline = [
+            {"$match": {"supplier": supplier}},
+            {"$group": {"_id": "$material", "display_name": {"$first": "$material_display_name"}}},
+            {"$sort": {"_id": 1}},
+        ]
+        return [
+            {"material": r["_id"], "display_name": r["display_name"]}
+            for r in self.suppliers_collection.aggregate(pipeline)
+        ]
+
+    def get_supplier_material_records(self, supplier: str, material: str) -> list[dict]:
+        """Return all records for a supplier+material pair, sorted by amount ascending."""
+        records = []
+        for r in self.suppliers_collection.find({"supplier": supplier, "material": material}, sort=[("amount", 1)]):
+            r["_id"] = str(r["_id"])
+            if "last_updated" in r and hasattr(r["last_updated"], "isoformat"):
+                r["last_updated"] = r["last_updated"].isoformat()
+            records.append(r)
+        return records
+
+    def update_supplier_record(self, record_id: str, amount: float, cost: float, unit: str) -> None:
+        """Update amount, cost, and unit on a supplier record by _id."""
+        try:
+            oid = ObjectId(record_id)
+        except Exception:
+            raise ValueError(f"Invalid supplier record id '{record_id}'")
+        result = self.suppliers_collection.update_one(
+            {"_id": oid},
+            {"$set": {"amount": amount, "cost": cost, "unit": unit, "last_updated": datetime.now(UTC)}},
+        )
+        if result.matched_count == 0:
+            raise ValueError(f"Supplier record not found for id '{record_id}'")
+
     def get_supplier_values(self, supplier: str, material: str) -> dict[str, list[float]]:
         """Return the current suppliers print values."""
         # get all records from the suppliers collection and return as a dict of lists
@@ -222,17 +278,34 @@ class MidnightOilDB:
             return result["overs"]
         else:
             raise ValueError(f"Overs not found for quantity {quantity}")
-    
-    def update_overs(self, lower_bound: int, upper_bound: int | None, overs: int) -> None:
-        """Update or insert an overs record."""
+
+    def get_all_overs(self) -> list[dict]:
+        """Return all overs tier records sorted by lower_bound."""
+        records = []
+        for r in self.overs_collection.find({}, sort=[("lower_bound", 1)]):
+            r["_id"] = str(r["_id"])
+            if "last_updated" in r and hasattr(r["last_updated"], "isoformat"):
+                r["last_updated"] = r["last_updated"].isoformat()
+            records.append(r)
+        return records
+
+    def update_overs(self, record_id: str, lower_bound: int, upper_bound: int | None, overs: int) -> None:
+        """Update lower_bound, upper_bound, and overs on an overs tier record."""
         try:
-            self.overs_collection.update_one(
-                {"lower_bound": lower_bound, "upper_bound": upper_bound},
-                {"$set": {"overs": overs}},
-                upsert=True
-            )
-        except Exception as e:
-            raise ValueError(f"Failed to update/insert overs for bounds ({lower_bound}, {upper_bound}): {str(e)}")
+            oid = ObjectId(record_id)
+        except Exception:
+            raise ValueError(f"Invalid overs record id '{record_id}'")
+        result = self.overs_collection.update_one(
+            {"_id": oid},
+            {"$set": {
+                "lower_bound": lower_bound,
+                "upper_bound": upper_bound,
+                "overs": overs,
+                "last_updated": datetime.now(UTC),
+            }}
+        )
+        if result.matched_count == 0:
+            raise ValueError(f"Overs record not found for id '{record_id}'")
 
 def _hash_password(password: str) -> str:
     """Hash a password using PBKDF2-HMAC-SHA256 with random salt."""

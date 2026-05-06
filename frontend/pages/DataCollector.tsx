@@ -43,7 +43,33 @@ type StandeeRecord = {
     [key: string]: number | string;
 };
 
-type ModuleId = 0 | 1 | 2;
+type OversRecord = {
+    _id: string;
+    lower_bound: number;
+    upper_bound: number | null;
+    overs: number;
+    last_updated: string;
+};
+
+type SupplierMaterial = {
+    material: string;
+    display_name: string;
+};
+
+type SupplierRecord = {
+    _id: string;
+    amount: number;
+    cost: number;
+    unit: string;
+    supplier: string;
+    material: string;
+    material_display_name: string;
+    last_updated: string;
+};
+
+type SupplierEditFields = { amount: number; cost: number; unit: string };
+
+type ModuleId = 0 | 1 | 2 | 3 | 4;
 
 const STANDEE_TYPES = ["Simple Standee", "Moderate Standee", "Complex Standee"];
 
@@ -248,21 +274,189 @@ export default function DataCollector() {
         finally { setIsSaving(false); }
     }
 
+    // ── Module 3: Overs ───────────────────────────────────────────────────
+    type OversEditFields = { lower_bound: number; upper_bound: number | null; overs: number };
+
+    const [oversRecords, setOversRecords]     = useState<OversRecord[]>([]);
+    const [oversEdits, setOversEdits]         = useState<Record<string, OversEditFields> | null>(null);
+    const [isLoadingOvers, setIsLoadingOvers] = useState(false);
+
+    function buildOversEdits(records: OversRecord[]): Record<string, OversEditFields> {
+        const edits: Record<string, OversEditFields> = {};
+        records.forEach((r) => { edits[r._id] = { lower_bound: r.lower_bound, upper_bound: r.upper_bound, overs: r.overs }; });
+        return edits;
+    }
+
+    useEffect(() => {
+        if (currentModule !== 3) return;
+        setIsLoadingOvers(true);
+        fetch("http://localhost:8000/overs")
+            .then((r) => r.json())
+            .then((data) => {
+                const records: OversRecord[] = data.data ?? [];
+                setOversRecords(records);
+                setOversEdits(buildOversEdits(records));
+            })
+            .catch(console.error)
+            .finally(() => setIsLoadingOvers(false));
+    }, [currentModule]);
+
+    function handleOversEdit(id: string, field: keyof OversEditFields, value: string) {
+        setOversEdits((prev) => {
+            if (!prev) return null;
+            const current = prev[id];
+            if (field === "upper_bound") {
+                const parsed = value === "" ? null : parseInt(value);
+                return { ...prev, [id]: { ...current, upper_bound: parsed } };
+            }
+            return { ...prev, [id]: { ...current, [field]: parseInt(value) || 0 } };
+        });
+    }
+
+    const isOversDirty = !!oversEdits && oversRecords.some((r) => {
+        const e = oversEdits[r._id];
+        return e && (e.lower_bound !== r.lower_bound || e.upper_bound !== r.upper_bound || e.overs !== r.overs);
+    });
+
+    async function handleOversSubmit() {
+        if (!isOversDirty || !oversEdits) return;
+        setIsSaving(true);
+        try {
+            await Promise.all(
+                oversRecords
+                    .filter((r) => {
+                        const e = oversEdits[r._id];
+                        return e && (e.lower_bound !== r.lower_bound || e.upper_bound !== r.upper_bound || e.overs !== r.overs);
+                    })
+                    .map((r) =>
+                        fetch(`http://localhost:8000/overs/${r._id}`, {
+                            method: "PATCH",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify(oversEdits[r._id]),
+                        })
+                    )
+            );
+            const data = await fetch("http://localhost:8000/overs").then((r) => r.json());
+            const updated: OversRecord[] = data.data ?? [];
+            setOversRecords(updated);
+            setOversEdits(buildOversEdits(updated));
+        } catch (e) { console.error(e); }
+        finally { setIsSaving(false); }
+    }
+
+    // ── Module 4: Suppliers ───────────────────────────────────────────────
+    const [supplierNames, setSupplierNames]         = useState<string[]>([]);
+    const [selectedSupplier, setSelectedSupplier]   = useState<string>("");
+    const [supplierMaterials, setSupplierMaterials] = useState<SupplierMaterial[]>([]);
+    const [selectedMaterial, setSelectedMaterial]   = useState<string>("");
+    const [supplierRecords, setSupplierRecords]     = useState<SupplierRecord[]>([]);
+    const [supplierEdits, setSupplierEdits]         = useState<Record<string, SupplierEditFields> | null>(null);
+    const [isLoadingSupplier, setIsLoadingSupplier] = useState(false);
+
+    function buildSupplierEdits(records: SupplierRecord[]): Record<string, SupplierEditFields> {
+        const edits: Record<string, SupplierEditFields> = {};
+        records.forEach((r) => { edits[r._id] = { amount: r.amount, cost: r.cost, unit: r.unit }; });
+        return edits;
+    }
+
+    useEffect(() => {
+        if (currentModule !== 4) return;
+        fetch("http://localhost:8000/suppliers")
+            .then((r) => r.json())
+            .then((data) => setSupplierNames(data.data ?? []))
+            .catch(console.error);
+    }, [currentModule]);
+
+    useEffect(() => {
+        if (!selectedSupplier || currentModule !== 4) return;
+        setSelectedMaterial("");
+        setSupplierRecords([]);
+        setSupplierEdits(null);
+        fetch(`http://localhost:8000/suppliers/${encodeURIComponent(selectedSupplier)}/materials`)
+            .then((r) => r.json())
+            .then((data) => setSupplierMaterials(data.data ?? []))
+            .catch(console.error);
+    }, [selectedSupplier, currentModule]);
+
+    useEffect(() => {
+        if (!selectedSupplier || !selectedMaterial || currentModule !== 4) return;
+        setIsLoadingSupplier(true);
+        fetch(`http://localhost:8000/suppliers/${encodeURIComponent(selectedSupplier)}/${encodeURIComponent(selectedMaterial)}`)
+            .then((r) => r.json())
+            .then((data) => {
+                const records: SupplierRecord[] = data.data ?? [];
+                setSupplierRecords(records);
+                setSupplierEdits(buildSupplierEdits(records));
+            })
+            .catch(console.error)
+            .finally(() => setIsLoadingSupplier(false));
+    }, [selectedSupplier, selectedMaterial, currentModule]);
+
+    function handleSupplierEdit(id: string, field: keyof SupplierEditFields, value: string) {
+        setSupplierEdits((prev) => {
+            if (!prev) return null;
+            const parsed = field === "unit" ? value : parseFloat(value) || 0;
+            return { ...prev, [id]: { ...prev[id], [field]: parsed } };
+        });
+    }
+
+    const isSupplierDirty = !!supplierEdits && supplierRecords.some((r) => {
+        const e = supplierEdits[r._id];
+        return e && (e.amount !== r.amount || e.cost !== r.cost || e.unit !== r.unit);
+    });
+
+    async function handleSupplierSubmit() {
+        if (!isSupplierDirty || !supplierEdits) return;
+        setIsSaving(true);
+        try {
+            await Promise.all(
+                supplierRecords
+                    .filter((r) => {
+                        const e = supplierEdits[r._id];
+                        return e && (e.amount !== r.amount || e.cost !== r.cost || e.unit !== r.unit);
+                    })
+                    .map((r) =>
+                        fetch(`http://localhost:8000/suppliers/${r._id}`, {
+                            method: "PATCH",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify(supplierEdits[r._id]),
+                        })
+                    )
+            );
+            const data = await fetch(`http://localhost:8000/suppliers/${encodeURIComponent(selectedSupplier)}/${encodeURIComponent(selectedMaterial)}`).then((r) => r.json());
+            const updated: SupplierRecord[] = data.data ?? [];
+            setSupplierRecords(updated);
+            setSupplierEdits(buildSupplierEdits(updated));
+        } catch (e) { console.error(e); }
+        finally { setIsSaving(false); }
+    }
+
     // ── Shared footer actions ──────────────────────────────────────────────
     const activeIsDirty =
         currentModule === 0 ? isUnitDirty :
         currentModule === 1 ? isStandeeDirty :
-        isWcDirty;
+        currentModule === 2 ? isWcDirty :
+        currentModule === 3 ? isOversDirty :
+        isSupplierDirty;
 
     const activeHandleSubmit =
         currentModule === 0 ? handleUnitSubmit :
         currentModule === 1 ? handleStandeeSubmit :
-        handleWcSubmit;
+        currentModule === 2 ? handleWcSubmit :
+        currentModule === 3 ? handleOversSubmit :
+        handleSupplierSubmit;
 
     function handleClear() {
         if (currentModule === 0) { setSelectedName(""); setUnitEdits(null); }
         if (currentModule === 1) { setStandeeType(""); setStandeeRecord(null); setStandeeEdits(null); }
         if (currentModule === 2) { setWcSelected(""); setWcEdits(null); }
+        if (currentModule === 3) { setOversEdits(buildOversEdits(oversRecords)); }
+        if (currentModule === 4) {
+            setSelectedSupplier("");
+            setSelectedMaterial("");
+            setSupplierRecords([]);
+            setSupplierEdits(null);
+        }
     }
 
     const unitDisplayNames = unitRecords.map((r) => r.display_name);
@@ -275,13 +469,13 @@ export default function DataCollector() {
             <div className="flex flex-col items-start justify-start pl-10 p-5 gap-3">
                 <div className="text-[1.2em] font-bold">DB Modules</div>
                 <ul className="flex flex-col gap-4 w-full">
-                    {([0, 1, 2] as ModuleId[]).map((id) => (
+                    {([0, 1, 2, 3, 4] as ModuleId[]).map((id) => (
                         <li
                             key={id}
                             className={`${currentModule === id ? "tab-active" : "tab-inactive"} flex items-center gap-5 w-full cursor-pointer`}
                             onClick={() => setCurrentModule(id)}
                         >
-                            <span>•</span> {["Unit Costs", "Standee Static Costs", "Work Center Costs"][id]}
+                            <span>•</span> {["Unit Costs", "Standee Static Costs", "Work Center Costs", "Overs", "Suppliers"][id]}
                         </li>
                     ))}
                 </ul>
@@ -291,7 +485,7 @@ export default function DataCollector() {
             <div className="flex flex-col ml-5 p-1 justify-start">
                 {/* Animated title */}
                 <div className="relative ml-15 pb-3 h-[90px] overflow-hidden">
-                    {(["Unit", "Standee Static", "Work Center"] as const).map((label, idx) => (
+                    {(["Unit", "Standee Static", "Work Center", "Overs", "Supplier"] as const).map((label, idx) => (
                         <div key={idx} className={`absolute inset-0 ${currentModule === idx ? "data-collector-title-active" : "data-collector-title-inactive"}`}>
                             <div className="text-[3em] font-instrument">Update <span className="italic text-[#FFB604]">{label}</span> Costs</div>
                             <p className="text-xs">Modify Live Data for {label} Cost Records</p>
@@ -493,6 +687,201 @@ export default function DataCollector() {
                                 </div>
                             ) : (
                                 <div className="text-xs m-2">Select a record above to edit values.</div>
+                            )}
+                        </div>
+                    </>)}
+
+                    {/* ── MODULE 3: Overs ── */}
+                    {currentModule === 3 && (<>
+                        {/* Section 01 */}
+                        <div className="flex flex-col justify-center items-start w-full p-5 border-b-2 border-[#EDEAEA]">
+                            <div className="text-[10px] m-2">01 — QUANTITY TIERS</div>
+                            {isLoadingOvers ? (
+                                <div className="text-xs m-2">Loading records...</div>
+                            ) : (
+                                <div className="text-xs m-2 text-[#ABABAB]">
+                                    {oversRecords.length} tiers loaded. Edit bounds and overs for any tier below. Leave Upper Bound blank for an open-ended tier.
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Section 02 */}
+                        <div className="flex flex-col items-start w-full flex-1 p-5 overflow-y-auto">
+                            <div className="flex items-center gap-2 m-2">
+                                <span className="text-[10px]">02 — TIER VALUES</span>
+                                {isOversDirty && (
+                                    <span className="text-[10px] font-bold text-[#FFB604] px-1.5 py-0.5 tracking-wide">
+                                        Unsaved Changes
+                                    </span>
+                                )}
+                            </div>
+                            {isLoadingOvers ? (
+                                <div className="text-xs m-2">Loading...</div>
+                            ) : oversRecords.length > 0 && oversEdits ? (
+                                <div className="w-full flex flex-col gap-4">
+                                    {oversRecords.map((rec) => {
+                                        const e = oversEdits[rec._id];
+                                        if (!e) return null;
+                                        const lbChanged = e.lower_bound !== rec.lower_bound;
+                                        const ubChanged = e.upper_bound !== rec.upper_bound;
+                                        const ovChanged = e.overs !== rec.overs;
+                                        return (
+                                            <div key={rec._id} className="flex flex-row items-end gap-3">
+                                                <div className="flex flex-col flex-1">
+                                                    <div className="text-xs font-bold m-1 flex items-center gap-2">
+                                                        Lower Bound
+                                                        {lbChanged && <span className="text-[9px] text-[#FFB604] font-bold tracking-wider">CHANGED</span>}
+                                                    </div>
+                                                    <input
+                                                        type="number"
+                                                        min={0}
+                                                        step={1}
+                                                        value={e.lower_bound}
+                                                        onChange={(ev) => handleOversEdit(rec._id, "lower_bound", ev.target.value)}
+                                                        className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
+                                                    />
+                                                </div>
+                                                <div className="flex flex-col flex-1">
+                                                    <div className="text-xs font-bold m-1 flex items-center gap-2">
+                                                        Upper Bound
+                                                        {ubChanged && <span className="text-[9px] text-[#FFB604] font-bold tracking-wider">CHANGED</span>}
+                                                    </div>
+                                                    <input
+                                                        type="number"
+                                                        min={0}
+                                                        step={1}
+                                                        placeholder="∞ (open-ended)"
+                                                        value={e.upper_bound ?? ""}
+                                                        onChange={(ev) => handleOversEdit(rec._id, "upper_bound", ev.target.value)}
+                                                        className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
+                                                    />
+                                                </div>
+                                                <div className="flex flex-col flex-1">
+                                                    <div className="text-xs font-bold m-1 flex items-center gap-2">
+                                                        Overs
+                                                        {ovChanged && <span className="text-[9px] text-[#FFB604] font-bold tracking-wider">CHANGED</span>}
+                                                    </div>
+                                                    <input
+                                                        type="number"
+                                                        min={0}
+                                                        step={1}
+                                                        value={e.overs}
+                                                        onChange={(ev) => handleOversEdit(rec._id, "overs", ev.target.value)}
+                                                        className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
+                                                    />
+                                                </div>
+                                                <div className="flex flex-col justify-center items-start p-2 border-2 w-[130px] shrink-0 border-[#EDEAEA] rounded-md h-[46px]">
+                                                    <div className="text-[9px]">LAST UPDATED</div>
+                                                    <div className="text-[0.8em] font-instrument text-black">{formatDate(rec.last_updated)}</div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ) : (
+                                <div className="text-xs m-2">No overs records found.</div>
+                            )}
+                        </div>
+                    </>)}
+
+                    {/* ── MODULE 4: Suppliers ── */}
+                    {currentModule === 4 && (<>
+                        {/* Section 01 — supplier + material selection */}
+                        <div className="flex flex-col justify-center items-start w-full p-5 border-b-2 border-[#EDEAEA]">
+                            <div className="text-[10px] m-2">01 — SUPPLIER & MATERIAL</div>
+                            <div className="flex flex-row gap-4 w-full">
+                                <div className="flex flex-col gap-1 flex-1">
+                                    <div className="text-[10px] ml-1">Supplier</div>
+                                    <Dropdown
+                                        options={supplierNames}
+                                        currOption={selectedSupplier}
+                                        onSelect={(v: string) => setSelectedSupplier(v)}
+                                        width="w-full"
+                                    />
+                                </div>
+                                <div className="flex flex-col gap-1 flex-[2]">
+                                    <div className="text-[10px] ml-1">Material</div>
+                                    <Dropdown
+                                        options={supplierMaterials.map((m) => m.display_name)}
+                                        currOption={supplierMaterials.find((m) => m.material === selectedMaterial)?.display_name ?? ""}
+                                        onSelect={(displayName: string) => {
+                                            const match = supplierMaterials.find((m) => m.display_name === displayName);
+                                            if (match) setSelectedMaterial(match.material);
+                                        }}
+                                        width="w-full"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Section 02 — cost data points */}
+                        <div className="flex flex-col items-start w-full flex-1 p-5 overflow-y-auto">
+                            <div className="flex items-center gap-2 m-2">
+                                <span className="text-[10px]">02 — COST DATA POINTS</span>
+                                {isSupplierDirty && (
+                                    <span className="text-[10px] font-bold text-[#FFB604] px-1.5 py-0.5 tracking-wide">
+                                        Unsaved Changes
+                                    </span>
+                                )}
+                            </div>
+                            {!selectedSupplier || !selectedMaterial ? (
+                                <div className="text-xs m-2">Select a supplier and material above to view cost data points.</div>
+                            ) : isLoadingSupplier ? (
+                                <div className="text-xs m-2">Loading...</div>
+                            ) : supplierRecords.length > 0 && supplierEdits ? (
+                                <>
+                                    <div className="flex flex-row gap-3 w-full mb-1 px-1">
+                                        <div className="text-[9px] flex-1 font-bold tracking-wider">AMOUNT</div>
+                                        <div className="text-[9px] flex-[2] font-bold tracking-wider">COST</div>
+                                        <div className="text-[9px] flex-1 font-bold tracking-wider">UNIT</div>
+                                        <div className="text-[9px] w-[120px] shrink-0 font-bold tracking-wider">LAST UPDATED</div>
+                                    </div>
+                                    <div className="w-full flex flex-col gap-2">
+                                        {supplierRecords.map((rec) => {
+                                            const e = supplierEdits[rec._id];
+                                            if (!e) return null;
+                                            const amtChanged  = e.amount !== rec.amount;
+                                            const costChanged = e.cost   !== rec.cost;
+                                            const unitChanged = e.unit   !== rec.unit;
+                                            return (
+                                                <div key={rec._id} className="flex flex-row items-center gap-3">
+                                                    <div className="flex flex-col flex-1">
+                                                        {amtChanged && <span className="text-[8px] text-[#FFB604] font-bold mb-0.5">CHANGED</span>}
+                                                        <input
+                                                            type="number" min={0} step={1}
+                                                            value={e.amount}
+                                                            onChange={(ev) => handleSupplierEdit(rec._id, "amount", ev.target.value)}
+                                                            className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
+                                                        />
+                                                    </div>
+                                                    <div className="flex flex-col flex-[2]">
+                                                        {costChanged && <span className="text-[8px] text-[#FFB604] font-bold mb-0.5">CHANGED</span>}
+                                                        <input
+                                                            type="number" min={0} step={1}
+                                                            value={e.cost}
+                                                            onChange={(ev) => handleSupplierEdit(rec._id, "cost", ev.target.value)}
+                                                            className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
+                                                        />
+                                                    </div>
+                                                    <div className="flex flex-col flex-1">
+                                                        {unitChanged && <span className="text-[8px] text-[#FFB604] font-bold mb-0.5">CHANGED</span>}
+                                                        <input
+                                                            type="text"
+                                                            value={e.unit}
+                                                            onChange={(ev) => handleSupplierEdit(rec._id, "unit", ev.target.value)}
+                                                            className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
+                                                        />
+                                                    </div>
+                                                    <div className="flex justify-center items-center p-2 border-2 w-[120px] shrink-0 border-[#EDEAEA] rounded-md h-[34px]">
+                                                        <div className="text-[0.75em] font-instrument text-black">{formatDate(rec.last_updated)}</div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="text-xs m-2">No records found for this combination.</div>
                             )}
                         </div>
                     </>)}

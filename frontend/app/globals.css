@@ -79,7 +79,7 @@ body {
 }
 
 @utility nav-inactive {
-  background-color: #F0F0F0;
+  background-color: #e0e0e0;
   border-radius: 4px;
   padding: 6px 14px;
   color: var(--mo-grey);
@@ -90,8 +90,8 @@ body {
   font-size: 0.875rem;
 
   &:hover {
-    background-color: #f4f4f4;
-    color: var(--mo-black);
+    background-color: var(--mo-black);
+    color: var(--mo-white);
   }
 }
 
