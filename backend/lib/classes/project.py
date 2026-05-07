@@ -1,3 +1,4 @@
+import numpy as np
 from scipy.optimize import curve_fit
 
 from lib.classes import Complexity, Form, MidnightOilDB
@@ -178,11 +179,18 @@ class Project:
         supplier_data = db.get_supplier_values(supplier, material)
         amounts = supplier_data["amounts"]
         costs = supplier_data["costs"]
-
-        params, _ = curve_fit(lambda x, a, b: a * x**b, amounts, costs)
-        scale, power = params
-
-        return scale * (num_forms) ** power
+        a_guess = max(costs)
+        b_guess = np.log(costs[0] / costs[-1]) / np.log(amounts[0] / amounts[-1])
+        c_guess = min(costs) * 0.8
+        params, _ = curve_fit(
+            lambda x, a, b, c: a * x**b + c,
+            amounts,
+            costs,
+            p0=[a_guess, b_guess, c_guess]
+        )
+        scale, power, floor = params
+        cost_per_unit = scale * num_forms**power + floor
+        return cost_per_unit * num_forms
 
     def _get_num_corrugate_forms(self) -> int:
         return (

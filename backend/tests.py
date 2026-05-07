@@ -1,6 +1,6 @@
 import unittest
 
-from lib.classes import Complexity, Element, Scenario1, Scenario2, Scenario4
+from lib.classes import Complexity, Element, Scenario1, Scenario2, Scenario3, Scenario4, Scenario5
 from lib.print_form_calculator import print_form_calculator
 
 complexity_map = {
@@ -183,3 +183,20 @@ class TestStaticCostCalculator(unittest.TestCase):
         print(f"  {'─' * 38}")
         print(f"  Total static cost:        ${total_cost:.2f}\n")
         self.assertAlmostEqual(total_cost, 8884.20, delta=1.0)
+
+# if __name__ == "__main__":
+#     elements = [
+#         Element(name="monkey", length=80.1012, width=74.9667, complexity=Complexity.SIMPLE),
+#     ]
+#     _, bin_dict = print_form_calculator(elements, 1)
+#     scenarios = [
+#         scenario(
+#             name="Primate standee (test)",
+#             print_forms=list(bin_dict.values()),
+#             # iQuote project qty; spreadsheet "STANDEE PRINT-NLANK FORMS DATA" says quantity of standeess is only 2
+#             num_standees=1,
+#             standee_type=Complexity.SIMPLE,
+#         ) for scenario in [Scenario1, Scenario2, Scenario3, Scenario4, Scenario5]
+#     ]
+#     for scenario in scenarios:
+#         scenario.calculate_cost(color_comp_count=0)
