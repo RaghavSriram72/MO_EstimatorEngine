@@ -97,6 +97,11 @@ export default function Inputter() {
         setActiveProjectId(null);
     }
 
+    // TODO: Implement blue upload
+    function handleBlueUpload() {
+        console.log("Uploading blue...");
+    }
+
     function handleNewProject() {
         handleClear();
     }
@@ -389,6 +394,12 @@ export default function Inputter() {
                             className="text-xs text-center font-black text-[#B1B3B6] border-2 border-[#E0E0E0] py-3 rounded-sm flex-1 min-w-[100px] cursor-pointer hover:bg-[#F4F4F4] hover:text-[#000005] hover:border-[#B1B3B6] transition-all duration-200 uppercase tracking-widest"
                         >
                             CLEAR
+                        </div>
+                        <div
+                            onClick={handleBlueUpload}
+                            className="text-xs text-center font-black text-[#B1B3B6] border-2 border-[#E0E0E0] py-3 rounded-sm flex-1 min-w-[100px] cursor-pointer hover:bg-[#F4F4F4] hover:text-[#000005] hover:border-[#B1B3B6] transition-all duration-200 uppercase tracking-widest"
+                        >
+                            UPLOAD BLUE
                         </div>
                         <div
                             onClick={canPersist ? () => void handleSave() : undefined}
