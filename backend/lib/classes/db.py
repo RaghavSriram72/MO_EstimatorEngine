@@ -22,23 +22,21 @@ class MidnightOilDB:
 
     def connect(self):
         """Establish a connection to the MongoDB database."""
-        self._cache = {}
+        self._cache: dict[str, list] = {}
         self.client = MongoClient(self.uri, server_api=ServerApi("1"))
         self.db = self.client["DB"]
         self.by_unit_costs_collection = self.db["by_unit_costs"]
         self.standee_collection = self.db["standee_static_costs"]
         self.print_blank_collection = self.db["print_blank_ratio"]
         self.overs_collection = self.db["overs"]
-        self.work_center_costs_collection = self.db["work_center_costs"]
         self.suppliers_collection = self.db["suppliers"]
         self.users_collection = self.db["users"]
         self.projects_collection = self.db["projects"]
         self.projects_collection.create_index([("owner", 1), ("_id", -1)])
+        self._load_cache()
         return self
 
     def _load_cache(self) -> None:
-        self.client = MongoClient(self.uri, server_api=ServerApi("1"))
-        self.db = self.client["DB"]
         self._cache["by_unit_costs"] = list(self.db["by_unit_costs"].find())
         self._cache["standee_static_costs"] = list(self.db["standee_static_costs"].find())
         self._cache["print_blank_ratio"] = list(self.db["print_blank_ratio"].find())
@@ -115,13 +113,14 @@ class MidnightOilDB:
         if not update_doc:
             return False
         result = self.projects_collection.update_one({"_id": oid, "owner": owner}, {"$set": update_doc})
+        self._load_cache()
         return result.matched_count > 0
 
     def get_unit_cost_entry(self, cost_name: str) -> dict:
         """Return the entire unit cost entry for a given cost name."""
-        result = self.by_unit_costs_collection.find_one({"name": cost_name})
-        if result:
-            return result
+        record = next((entry for entry in self._cache["by_unit_costs"] if entry["name"] == cost_name), None)
+        if record:
+            return record
         else:
             raise ValueError(f"Cost entry not found for '{cost_name}'")
 
@@ -150,39 +149,45 @@ class MidnightOilDB:
         updates["last_updated"] = datetime.now(UTC)
         try:
             self.by_unit_costs_collection.update_one({"name": cost_name}, {"$set": updates})
+            self._load_cache()
         except Exception as e:
             raise ValueError(f"Failed to update entry for '{cost_name}': {str(e)}")
 
     def get_standee_record(self, standee_category: str) -> dict:
         """Return the full standee static cost document for a given category."""
-        entry = self._cache["standee_static_costs"].find(lambda x: x["standee_type"] == standee_category)
-        if entry:
-            entry["_id"] = str(entry["_id"])
-            return entry
+        record = next(
+            (entry for entry in self._cache["standee_static_costs"] if entry["standee_type"] == standee_category), None
+        )
+        if record:
+            record["_id"] = str(record["_id"])
+            return record
         raise ValueError(f"Standee record not found for '{standee_category}'")
 
     def get_standee_data(self, standee_category: str, data_field: str) -> int | float:
         """Return the specified data field for a given standee category."""
-        entry = self._cache["standee_static_costs"].find(lambda x: x["standee_type"] == standee_category)
-        if entry and data_field in entry:
-            return entry[data_field]
+        record = next(
+            (entry for entry in self._cache["standee_static_costs"] if entry["standee_type"] == standee_category), None
+        )
+        if record and data_field in record:
+            return record[data_field]
         else:
             raise ValueError(f"Data field '{data_field}' not found for standee category '{standee_category}'")
-  
+
     def update_standee_record(self, standee_category: str, updates: dict) -> None:
         """Update arbitrary numeric fields on a standee static cost record."""
         if not updates:
             return
         try:
             self.standee_collection.update_one({"standee_type": standee_category}, {"$set": updates})
+            self._load_cache()
         except Exception as e:
             raise ValueError(f"Failed to update standee record for '{standee_category}': {str(e)}")
 
     def get_structure_forms_per_standee(self, print_forms: int) -> int:
         """Return the current print blank ratio."""
-        entry = self._cache["print_blank_ratio"].find(lambda x: x["print_forms"] == print_forms)
-        if entry and "blank_forms" in entry:
-            return entry["blank_forms"]
+        record = next((entry for entry in self._cache["print_blank_ratio"] if entry["print_forms"] == print_forms), None)
+        if record and "blank_forms" in record:
+            return record["blank_forms"]
         else:
             raise ValueError(f"Print blank ratio not found for {print_forms} print forms")
 
@@ -190,29 +195,29 @@ class MidnightOilDB:
         """Set the current print blank ratio."""
         try:
             self.print_blank_collection.update_one({"print_forms": print_forms}, {"$set": {"blank_forms": blank_forms}})
+            self._load_cache()
         except Exception as e:
             raise ValueError(f"Failed to set print blank ratio: {str(e)}")
 
     def get_distinct_suppliers(self) -> list[str]:
         """Return all distinct supplier names."""
-        return sorted([])
+        return sorted({r["supplier"] for r in self._cache["suppliers"]})
 
     def get_distinct_materials(self, supplier: str) -> list[dict]:
         """Return distinct materials for a supplier with their display names."""
-        pipeline = [
-            {"$match": {"supplier": supplier}},
-            {"$group": {"_id": "$material", "display_name": {"$first": "$material_display_name"}}},
-            {"$sort": {"_id": 1}},
-        ]
-        return [
-            {"material": r["_id"], "display_name": r["display_name"]}
-            for r in self.suppliers_collection.aggregate(pipeline)
-        ]
+        seen = {}
+        for r in self._cache["suppliers"]:
+            if r["supplier"] == supplier and r["material"] not in seen:
+                seen[r["material"]] = r["material_display_name"]
+        return sorted([{"material": k, "display_name": v} for k, v in seen.items()], key=lambda x: x["material"])
 
     def get_supplier_material_records(self, supplier: str, material: str) -> list[dict]:
         """Return all records for a supplier+material pair, sorted by amount ascending."""
         records = []
-        for r in self.suppliers_collection.find({"supplier": supplier, "material": material}, sort=[("amount", 1)]):
+        for r in sorted(
+            (r for r in self._cache["suppliers"] if r["supplier"] == supplier and r["material"] == material),
+            key=lambda x: x["amount"],
+        ):
             r["_id"] = str(r["_id"])
             if "last_updated" in r and hasattr(r["last_updated"], "isoformat"):
                 r["last_updated"] = r["last_updated"].isoformat()
@@ -225,18 +230,20 @@ class MidnightOilDB:
             oid = ObjectId(record_id)
         except Exception:
             raise ValueError(f"Invalid supplier record id '{record_id}'")
+
         result = self.suppliers_collection.update_one(
             {"_id": oid},
             {"$set": {"amount": amount, "cost": cost, "unit": unit, "last_updated": datetime.now(UTC)}},
         )
         if result.matched_count == 0:
             raise ValueError(f"Supplier record not found for id '{record_id}'")
+        self._load_cache()
 
     def get_supplier_values(self, supplier: str, material: str) -> dict[str, list[float]]:
         """Return the current suppliers print values."""
         # get all records from the suppliers collection and return as a dict of lists
         suppliers_data = {"amounts": [], "costs": []}
-        for record in self.suppliers_collection.find({"supplier": supplier, "material": material}):
+        for record in (r for r in self._cache["suppliers"] if r["supplier"] == supplier and r["material"] == material):
             suppliers_data["amounts"].append(record["amount"])
             suppliers_data["costs"].append(record["cost"] * UNIT_MAP[record["unit"]])
         return suppliers_data
@@ -247,23 +254,30 @@ class MidnightOilDB:
             self.suppliers_collection.update_one(
                 {"supplier": supplier, "amount": amount}, {"$set": {"cost": cost, "unit": unit, **kwargs}}, upsert=True
             )
+            self._load_cache()
         except Exception as e:
             raise ValueError(f"Failed to update/insert supplier value for amount {amount}: {str(e)}")
 
     def get_overs(self, quantity: int) -> int:
         """Return the over cost for a given quantity."""
-        result = self.overs_collection.find_one(
-            {"lower_bound": {"$lte": quantity}, "$or": [{"upper_bound": None}, {"upper_bound": {"$gte": quantity}}]}
+        record = next(
+            (
+                entry
+                for entry in self._cache["overs"]
+                if entry["lower_bound"] <= quantity
+                and (entry["upper_bound"] is None or entry["upper_bound"] >= quantity)
+            ),
+            None,
         )
-        if result and "overs" in result:
-            return result["overs"]
+        if record and "overs" in record:
+            return record["overs"]
         else:
             raise ValueError(f"Overs not found for quantity {quantity}")
 
     def get_all_overs(self) -> list[dict]:
         """Return all overs tier records sorted by lower_bound."""
         records = []
-        for r in self.overs_collection.find({}, sort=[("lower_bound", 1)]):
+        for r in sorted(self._cache["overs"], key=lambda x: x["lower_bound"]):
             r["_id"] = str(r["_id"])
             if "last_updated" in r and hasattr(r["last_updated"], "isoformat"):
                 r["last_updated"] = r["last_updated"].isoformat()
@@ -289,6 +303,7 @@ class MidnightOilDB:
         )
         if result.matched_count == 0:
             raise ValueError(f"Overs record not found for id '{record_id}'")
+        self._load_cache()
 
 
 def _hash_password(password: str) -> str:
