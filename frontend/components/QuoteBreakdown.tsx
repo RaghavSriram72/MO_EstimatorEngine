@@ -487,7 +487,7 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
                         disabled={isRecalculating || !isDirty}
                         className="text-xs font-black uppercase tracking-widest px-4 py-2 rounded-sm bg-[#FFC843] text-[#000005] hover:bg-[#000005] hover:text-white transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                     >
-                        {isRecalculating ? "Recalculating…" : "↻ Regenerate"}
+                        {isRecalculating ? "Recalculating…" : "↻ Recalculate"}
                     </button>
                 </div>
 

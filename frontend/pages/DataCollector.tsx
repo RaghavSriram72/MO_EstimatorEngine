@@ -85,6 +85,7 @@ export default function DataCollector() {
 
     // ── Module 0: Unit Costs ───────────────────────────────────────────────
     const [unitRecords, setUnitRecords]     = useState<UnitCostRecord[]>([]);
+    const [selectedUnitType, setSelectedUnitType] = useState<string>("");
     const [selectedName, setSelectedName]   = useState<string>("");
     const [unitEdits, setUnitEdits]         = useState<UnitEditFields | null>(null);
     const [isLoadingUnit, setIsLoadingUnit] = useState(false);
@@ -101,10 +102,18 @@ export default function DataCollector() {
             .finally(() => setIsLoadingUnit(false));
     }, [currentModule]);
 
+    const unitTypes = [...new Set(unitRecords.map((r) => r.type))].sort();
+    const unitRecordsForType = selectedUnitType ? unitRecords.filter((r) => r.type === selectedUnitType) : [];
     const selectedUnitRecord = unitRecords.find((r) => r.name === selectedName) ?? null;
 
+    function handleUnitTypeSelect(type: string) {
+        setSelectedUnitType(type);
+        setSelectedName("");
+        setUnitEdits(null);
+    }
+
     function handleUnitSelect(displayName: string) {
-        const rec = unitRecords.find((r) => r.display_name === displayName);
+        const rec = unitRecordsForType.find((r) => r.display_name === displayName);
         if (!rec) return;
         setSelectedName(rec.name);
         setUnitEdits({ display_name: rec.display_name, cost: rec.cost, unit: rec.unit, type: rec.type });
@@ -372,7 +381,7 @@ export default function DataCollector() {
         handleSupplierSubmit;
 
     function handleClear() {
-        if (currentModule === 0) { setSelectedName(""); setUnitEdits(null); }
+        if (currentModule === 0) { setSelectedUnitType(""); setSelectedName(""); setUnitEdits(null); }
         if (currentModule === 1) { setStandeeType(""); setStandeeRecord(null); setStandeeEdits(null); }
         if (currentModule === 2) { setOversEdits(buildOversEdits(oversRecords)); }
         if (currentModule === 3) {
@@ -382,8 +391,6 @@ export default function DataCollector() {
             setSupplierEdits(null);
         }
     }
-
-    const unitDisplayNames = unitRecords.map((r) => r.display_name);
 
     // ── Render ─────────────────────────────────────────────────────────────
     return (
@@ -427,7 +434,21 @@ export default function DataCollector() {
                             {isLoadingUnit ? (
                                 <div className="text-xs m-2">Loading records...</div>
                             ) : (
-                                <Dropdown options={unitDisplayNames} currOption={selectedUnitRecord?.display_name ?? ""} onSelect={handleUnitSelect} width="w-[420px]" />
+                                <div className="flex flex-row gap-4 w-full">
+                                    <div className="flex flex-col gap-1 flex-1">
+                                        <div className="text-[10px] ml-1">Type</div>
+                                        <Dropdown options={unitTypes} currOption={selectedUnitType} onSelect={handleUnitTypeSelect} width="w-full" />
+                                    </div>
+                                    <div className="flex flex-col gap-1 flex-[2]">
+                                        <div className="text-[10px] ml-1">Record</div>
+                                        <Dropdown
+                                            options={unitRecordsForType.map((r) => r.display_name)}
+                                            currOption={selectedUnitRecord?.display_name ?? ""}
+                                            onSelect={handleUnitSelect}
+                                            width="w-full"
+                                        />
+                                    </div>
+                                </div>
                             )}
                         </div>
 
