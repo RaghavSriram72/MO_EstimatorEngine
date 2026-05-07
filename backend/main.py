@@ -113,7 +113,7 @@ async def generate_quote(payload: QuoteRequest):
             name=e.name,
             length=e.height,
             width=e.width,
-            linear_inches=e.linear_inches,
+            linear_inches=e.linear_inches or 0,
             complexity=_COMPLEXITY_MAP.get(e.complexity, Complexity.SIMPLE),
         )
         for e in payload.elements
@@ -228,7 +228,6 @@ async def update_standee_static_costs(standee_type: str, payload: UpdateStandeeR
             return {"message": "Updated successfully"}
         except ValueError as e:
             return JSONResponse(status_code=404, content={"error": str(e)})
-
 
 
 @app.patch("/unit-costs/{name}")
