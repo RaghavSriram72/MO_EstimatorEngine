@@ -25,7 +25,7 @@ class MidnightOilDB:
         self._cache: dict[str, list] = {}
         self.client = MongoClient(self.uri, server_api=ServerApi("1"))
         self.db = self.client["DB"]
-        self.by_unit_costs_collection = self.db["by_unit_costs"]
+        self.unit_costs_collection = self.db["unit_costs"]
         self.standee_collection = self.db["standee_static_costs"]
         self.print_blank_collection = self.db["print_blank_ratio"]
         self.overs_collection = self.db["overs"]
@@ -37,7 +37,7 @@ class MidnightOilDB:
         return self
 
     def _load_cache(self) -> None:
-        self._cache["by_unit_costs"] = list(self.db["by_unit_costs"].find())
+        self._cache["unit_costs"] = list(self.db["unit_costs"].find())
         self._cache["standee_static_costs"] = list(self.db["standee_static_costs"].find())
         self._cache["print_blank_ratio"] = list(self.db["print_blank_ratio"].find())
         self._cache["overs"] = list(self.db["overs"].find())
@@ -118,7 +118,7 @@ class MidnightOilDB:
 
     def get_unit_cost_entry(self, cost_name: str) -> dict:
         """Return the entire unit cost entry for a given cost name."""
-        record = next((entry for entry in self._cache["by_unit_costs"] if entry["name"] == cost_name), None)
+        record = next((entry for entry in self._cache["unit_costs"] if entry["name"] == cost_name), None)
         if record:
             return record
         else:
@@ -148,7 +148,7 @@ class MidnightOilDB:
             return
         updates["last_updated"] = datetime.now(UTC)
         try:
-            self.by_unit_costs_collection.update_one({"name": cost_name}, {"$set": updates})
+            self.unit_costs_collection.update_one({"name": cost_name}, {"$set": updates})
             self._load_cache()
         except Exception as e:
             raise ValueError(f"Failed to update entry for '{cost_name}': {str(e)}")
@@ -185,7 +185,9 @@ class MidnightOilDB:
 
     def get_structure_forms_per_standee(self, print_forms: int) -> int:
         """Return the current print blank ratio."""
-        record = next((entry for entry in self._cache["print_blank_ratio"] if entry["print_forms"] == print_forms), None)
+        record = next(
+            (entry for entry in self._cache["print_blank_ratio"] if entry["print_forms"] == print_forms), None
+        )
         if record and "blank_forms" in record:
             return record["blank_forms"]
         else:
