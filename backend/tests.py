@@ -1,6 +1,6 @@
 import unittest
 
-from lib.classes import Complexity, Element, Scenario1, Scenario2, Scenario3, Scenario4, Scenario5
+from lib.classes import Complexity, Element, MidnightOilDB, Scenario1, Scenario2, Scenario3, Scenario4, Scenario5
 from lib.print_form_calculator import print_form_calculator
 
 complexity_map = {
@@ -8,7 +8,6 @@ complexity_map = {
     Complexity.MODERATE: "Moderate",
     Complexity.COMPLEX: "Complex",
 }
-
 
 class TestPrintFormCalculator(unittest.TestCase):
     """Tests for print form calculation of standee projects."""
@@ -62,6 +61,14 @@ class TestPrintFormCalculator(unittest.TestCase):
 class TestStaticCostCalculator(unittest.TestCase):
     """Tests for static cost calculation of standee projects."""
 
+    @classmethod
+    def setUpClass(cls):
+        cls.db = MidnightOilDB().connect()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.db.close()
+
     def test_static_cost_calculator_primate_standee(self):
         """Test static cost calculation for Primate standee project."""
         elements = [
@@ -69,6 +76,7 @@ class TestStaticCostCalculator(unittest.TestCase):
         ]
         _, bin_dict = print_form_calculator(elements, 1)
         project = Scenario2(
+            TestStaticCostCalculator.db,
             name="Primate standee (test)",
             print_forms=list(bin_dict.values()),
             # iQuote project qty; spreadsheet "STANDEE PRINT-NLANK FORMS DATA" says quantity of standeess is only 2
@@ -123,6 +131,7 @@ class TestStaticCostCalculator(unittest.TestCase):
         ]
         _, bin_dict = print_form_calculator(elements, 1)
         project = Scenario4(
+            TestStaticCostCalculator.db,
             name="Sonic standee (test)",
             print_forms=list(bin_dict.values()),
             # iQuote project qty; spreadsheet "STANDEE PRINT-NLANK FORMS DATA" says quantity of standeess is only 2
@@ -159,6 +168,7 @@ class TestStaticCostCalculator(unittest.TestCase):
         ]
         _, bin_dict = print_form_calculator(elements, 1)
         project = Scenario1(
+            TestStaticCostCalculator.db,
             name="Sinner standee (test)",
             print_forms=list(bin_dict.values()),
             # iQuote project qty; spreadsheet "STANDEE PRINT-NLANK FORMS DATA" says quantity of standeess is only 10
@@ -184,19 +194,22 @@ class TestStaticCostCalculator(unittest.TestCase):
         print(f"  Total static cost:        ${total_cost:.2f}\n")
         self.assertAlmostEqual(total_cost, 8884.20, delta=1.0)
 
-# if __name__ == "__main__":
-#     elements = [
-#         Element(name="monkey", length=80.1012, width=74.9667, complexity=Complexity.SIMPLE),
-#     ]
-#     _, bin_dict = print_form_calculator(elements, 1)
-#     scenarios = [
-#         scenario(
-#             name="Primate standee (test)",
-#             print_forms=list(bin_dict.values()),
-#             # iQuote project qty; spreadsheet "STANDEE PRINT-NLANK FORMS DATA" says quantity of standeess is only 2
-#             num_standees=1,
-#             standee_type=Complexity.SIMPLE,
-#         ) for scenario in [Scenario1, Scenario2, Scenario3, Scenario4, Scenario5]
-#     ]
-#     for scenario in scenarios:
-#         scenario.calculate_cost(color_comp_count=0)
+if __name__ == "__main__":
+    elements = [
+        Element(name="monkey", length=80.1012, width=74.9667, complexity=Complexity.SIMPLE),
+    ]
+    _, bin_dict = print_form_calculator(elements, 1)
+    db = MidnightOilDB().connect()
+    scenarios = [
+        scenario(
+            db,
+            name="Primate standee (test)",
+            print_forms=list(bin_dict.values()),
+            # iQuote project qty; spreadsheet "STANDEE PRINT-NLANK FORMS DATA" says quantity of standeess is only 2
+            num_standees=1,
+            standee_type=Complexity.SIMPLE,
+        ) for scenario in [Scenario1, Scenario2, Scenario3, Scenario4, Scenario5]
+    ]
+    for scenario in scenarios:
+        scenario.calculate_cost(color_comp_count=0)
+    db.close()

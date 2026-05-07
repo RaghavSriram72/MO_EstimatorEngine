@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+
 import numpy as np
 from scipy.optimize import curve_fit
 
@@ -11,21 +13,18 @@ STANDEE_MAP = {
 }
 
 
+@dataclass
 class Project:
     """Class to represent a overall standee project."""
+    
+    db: MidnightOilDB
+    name: str
+    print_forms: list[Form]
+    num_standees: int
+    standee_type: Complexity
 
-    def __init__(
-        self,
-        name: str,
-        print_forms: list[Form],
-        num_standees: int,
-        standee_type: Complexity,
-    ):
-        self.name = name
-        self.standee_type = standee_type
-        self.standee_key = STANDEE_MAP[standee_type]
-        self.print_forms = print_forms
-        self.num_standees = num_standees
+    def __post_init__(self):
+        self.standee_key = STANDEE_MAP[self.standee_type]
         self._calculate_universal_costs()
 
     @property
@@ -64,32 +63,32 @@ class Project:
         color_comp_count: float = 0,
     ) -> float:
         self.num_standees = num_standees or self.num_standees
-        with MidnightOilDB() as db:
-            # corrugate cost calculation
-            self.print_forms_per_standee = print_forms_per_standee or len(self.print_forms)
-            self.structure_forms_per_standee = structure_forms_per_standee or db.get_structure_forms_per_standee(
-                self.print_forms_per_standee
-            )
-            self.blank_forms_per_standee = self.print_forms_per_standee + self.structure_forms_per_standee
-            # imposition cost
-            self.imposition_hours = imposition_hours or self.print_forms_per_standee
-            # imposition_rate = db.get_standee_data(self.standee_key, "imposition_cost_per_hour")
-            imposition_rate = db.get_unit_cost(DB_LABELS["imposition_labor"])
-            self.imposition_cost = imposition_rate * self.imposition_hours
+        db = self.db
+        # corrugate cost calculation
+        self.print_forms_per_standee = print_forms_per_standee or len(self.print_forms)
+        self.structure_forms_per_standee = structure_forms_per_standee or db.get_structure_forms_per_standee(
+            self.print_forms_per_standee
+        )
+        self.blank_forms_per_standee = self.print_forms_per_standee + self.structure_forms_per_standee
+        # imposition cost
+        self.imposition_hours = imposition_hours or self.print_forms_per_standee
+        # imposition_rate = db.get_standee_data(self.standee_key, "imposition_cost_per_hour")
+        imposition_rate = db.get_unit_cost(DB_LABELS["imposition_labor"])
+        self.imposition_cost = imposition_rate * self.imposition_hours
 
-            # hardware cost calculation
-            self.hardware_cost = db.get_standee_data(self.standee_key, "hardware_cost") * self.num_standees
+        # hardware cost calculation
+        self.hardware_cost = db.get_standee_data(self.standee_key, "hardware_cost") * self.num_standees
 
-            # misc costs and project vars
-            self.overs = num_overs or db.get_overs(self.num_standees)
-            self.print_form_total = (
-                self.overs * self.print_forms_per_standee + self.print_forms_per_standee
-            ) * self.num_standees
-            self.engineering_design_cost = db.get_standee_data(self.standee_key, "engineering_design_cost_per_project")
-            self.blank_comp_count = blank_comp_count or 1
-            self.blank_comp_cost = db.get_unit_cost(DB_LABELS["blank_comp"]) * self.blank_comp_count
-            self.color_comp_count = color_comp_count or 1
-            self.color_comp_cost = db.get_unit_cost(DB_LABELS["color_comp"]) * self.color_comp_count
+        # misc costs and project vars
+        self.overs = num_overs or db.get_overs(self.num_standees)
+        self.print_form_total = (
+            self.overs * self.print_forms_per_standee + self.print_forms_per_standee
+        ) * self.num_standees
+        self.engineering_design_cost = db.get_standee_data(self.standee_key, "engineering_design_cost_per_project")
+        self.blank_comp_count = blank_comp_count or 1
+        self.blank_comp_cost = db.get_unit_cost(DB_LABELS["blank_comp"]) * self.blank_comp_count
+        self.color_comp_count = color_comp_count or 1
+        self.color_comp_cost = db.get_unit_cost(DB_LABELS["color_comp"]) * self.color_comp_count
         return self.total_universal_cost
 
     # Helpers
@@ -182,12 +181,7 @@ class Project:
         a_guess = max(costs)
         b_guess = np.log(costs[0] / costs[-1]) / np.log(amounts[0] / amounts[-1])
         c_guess = min(costs) * 0.8
-        params, _ = curve_fit(
-            lambda x, a, b, c: a * x**b + c,
-            amounts,
-            costs,
-            p0=[a_guess, b_guess, c_guess]
-        )
+        params, _ = curve_fit(lambda x, a, b, c: a * x**b + c, amounts, costs, p0=[a_guess, b_guess, c_guess])
         scale, power, floor = params
         cost_per_unit = scale * num_forms**power + floor
         return cost_per_unit * num_forms

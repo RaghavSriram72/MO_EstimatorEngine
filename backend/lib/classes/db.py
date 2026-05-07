@@ -95,7 +95,7 @@ class MidnightOilDB:
         return doc
 
     def update_persisted_project(self, project_id: str, owner: str, fields: dict[str, Any]) -> bool:
-        #update an existing project MongoDB entry
+        """Update an existing project MongoDB entry."""
         try:
             oid = ObjectId(project_id)
         except (InvalidId, TypeError):
