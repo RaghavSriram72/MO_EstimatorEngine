@@ -12,6 +12,20 @@ type CostLine = {
     unitCost: number;
 };
 
+type ScenarioParams = {
+    numStandees: number;
+    printFormsPerStandee: number;
+    structureFormsPerStandee: number;
+    overs: number;
+};
+
+type PerScenarioState = {
+    params: ScenarioParams;
+    baseline: ScenarioParams;
+    universalLines: CostLine[];
+    universalSubtotalOverride: string;
+};
+
 type Props = {
     quoteData: QuoteData;
     numStandees: number;
@@ -49,7 +63,7 @@ const SCENARIO_LINE_DEFS: Record<string, LineDef> = {
     shipping_box_cost:      { label: "Shipping Box",         unit: "standees" },
     label_cost:             { label: "Labels",               unit: "standees" },
     instruction_sheet_cost: { label: "Instruction Sheet",    unit: "standees" },
-    freight_cost:           { label: "External Vendor Cost", unit: "flat"     },
+    freight_cost:           { label: "Freight Cost",         unit: "flat"     },
 };
 
 const SCENARIO_KEYS: Record<ScenarioId, string[]> = {
@@ -64,8 +78,11 @@ function lineTotal(l: CostLine) {
     return l.unit === "flat" ? l.unitCost : l.qty * l.unitCost;
 }
 
+function fmt(value: number): string {
+    return value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 // Maps each cost key to a function that derives its qty from the backend source object.
-// The backend returns total costs, so we need qty to back-compute the per-unit cost.
 const QTY_FROM_SOURCE: Partial<Record<string, (s: Record<string, number>) => number>> = {
     imposition_cost:        (s) => s.imposition_hours    ?? 1,
     blank_comp_cost:        (s) => s.blank_comp_count    ?? 1,
@@ -97,11 +114,40 @@ function seedLines(lines: CostLine[], source: Record<string, number>): CostLine[
         const isFlat = line.unit === "flat";
         if (isFlat) return { ...line, unitCost: total };
 
-        const getQty  = QTY_FROM_SOURCE[line.key];
-        const rawQty  = getQty ? getQty(source) : 1;
-        const qty     = rawQty > 0 ? rawQty : 1;
+        const getQty = QTY_FROM_SOURCE[line.key];
+        const rawQty = getQty ? getQty(source) : 1;
+        const qty    = rawQty > 0 ? rawQty : 1;
         return { ...line, qty, unitCost: total / qty };
     });
+}
+
+function buildScenarioState(
+    sources: Record<ScenarioId, Record<string, number>>,
+    initialStandees: number,
+): {
+    perScenario: Record<ScenarioId, PerScenarioState>;
+    scenarioLines: Record<ScenarioId, CostLine[]>;
+} {
+    const ids: ScenarioId[] = [1, 2, 3, 4, 5];
+    const perScenario = {} as Record<ScenarioId, PerScenarioState>;
+    const scenarioLines = {} as Record<ScenarioId, CostLine[]>;
+    for (const id of ids) {
+        const src = sources[id] ?? {};
+        const params: ScenarioParams = {
+            numStandees: initialStandees,
+            printFormsPerStandee: src.print_forms_per_standee ?? 1,
+            structureFormsPerStandee: src.structure_forms_per_standee ?? 0,
+            overs: src.overs ?? 0,
+        };
+        perScenario[id] = {
+            params,
+            baseline: { ...params },
+            universalLines: seedLines(buildLines(Object.keys(UNIVERSAL_LINE_DEFS), UNIVERSAL_LINE_DEFS), src),
+            universalSubtotalOverride: "",
+        };
+        scenarioLines[id] = seedLines(buildLines(SCENARIO_KEYS[id], SCENARIO_LINE_DEFS), src);
+    }
+    return { perScenario, scenarioLines };
 }
 
 function CostRow({
@@ -111,8 +157,9 @@ function CostRow({
     line: CostLine;
     onChange: (key: string, field: "qty" | "unitCost", value: number) => void;
 }) {
-    const isFlat = line.unit === "flat";
-    const total  = lineTotal(line);
+    const isFlat     = line.unit === "flat";
+    const isStandees = line.unit === "standees";
+    const total      = lineTotal(line);
 
     return (
         <div className="grid grid-cols-[1fr_auto] items-center gap-6 py-2.5 border-b border-[#F0F0F0] last:border-0">
@@ -134,14 +181,20 @@ function CostRow({
                 {!isFlat && (
                     <div className="flex flex-col items-end gap-0.5">
                         <span className="text-[9px] text-[#B1B3B6] uppercase font-bold tracking-wider">qty</span>
-                        <input
-                            type="number"
-                            min={0}
-                            step={1}
-                            value={line.qty}
-                            onChange={(e) => onChange(line.key, "qty", parseFloat(e.target.value) || 0)}
-                            className="border border-[#E0E0E0] rounded-sm px-2 py-1 text-xs text-[#000005] outline-none bg-[#F8F8F8] focus:border-[#FFC843] focus:bg-white w-[68px] text-right transition-colors font-semibold"
-                        />
+                        {isStandees ? (
+                            <span className="w-[68px] px-2 py-1 text-xs font-semibold text-[#000005] text-right">
+                                {line.qty}
+                            </span>
+                        ) : (
+                            <input
+                                type="number"
+                                min={0}
+                                step={1}
+                                value={line.qty}
+                                onChange={(e) => onChange(line.key, "qty", parseFloat(e.target.value) || 0)}
+                                className="border border-[#E0E0E0] rounded-sm px-2 py-1 text-xs text-[#000005] outline-none bg-[#F8F8F8] focus:border-[#FFC843] focus:bg-white w-[68px] text-right transition-colors font-semibold"
+                            />
+                        )}
                     </div>
                 )}
 
@@ -161,69 +214,120 @@ function CostRow({
 
                 <div className="flex flex-col items-end gap-0.5 w-[80px]">
                     <span className="text-[9px] text-[#B1B3B6] uppercase font-bold tracking-wider">total</span>
-                    <span className="text-xs font-black text-[#000005]">${total.toFixed(2)}</span>
+                    <span className="text-xs font-black text-[#000005]">${fmt(total)}</span>
                 </div>
             </div>
         </div>
     );
 }
 
-function buildAllLines(sources: Record<ScenarioId, Record<string, number>>) {
-    return {
-        universal: seedLines(buildLines(Object.keys(UNIVERSAL_LINE_DEFS), UNIVERSAL_LINE_DEFS), sources[1]),
-        scenario: {
-            1: seedLines(buildLines(SCENARIO_KEYS[1], SCENARIO_LINE_DEFS), sources[1]),
-            2: seedLines(buildLines(SCENARIO_KEYS[2], SCENARIO_LINE_DEFS), sources[2]),
-            3: seedLines(buildLines(SCENARIO_KEYS[3], SCENARIO_LINE_DEFS), sources[3]),
-            4: seedLines(buildLines(SCENARIO_KEYS[4], SCENARIO_LINE_DEFS), sources[4]),
-            5: seedLines(buildLines(SCENARIO_KEYS[5], SCENARIO_LINE_DEFS), sources[5]),
-        } as Record<ScenarioId, CostLine[]>,
-    };
-}
-
 export default function QuoteBreakdown({ quoteData, numStandees: initialStandees, requestPayload, onBack }: Props) {
     const [activeScenario, setActiveScenario] = useState<ScenarioId>(1);
-    const [numStandees, setNumStandees]        = useState<number>(initialStandees);
     const [isRecalculating, setIsRecalculating] = useState(false);
 
-    // Resolve each scenario's source data (fall back to empty object if not returned)
     const initialSources: Record<ScenarioId, Record<string, number>> = {
-        1: quoteData["scenario_1"] ?? {},
-        2: quoteData["scenario_2"] ?? {},
-        3: quoteData["scenario_3"] ?? {},
-        4: quoteData["scenario_4"] ?? {},
-        5: quoteData["scenario_5"] ?? {},
+        1: (quoteData["scenario_1"] as Record<string, number>) ?? {},
+        2: (quoteData["scenario_2"] as Record<string, number>) ?? {},
+        3: (quoteData["scenario_3"] as Record<string, number>) ?? {},
+        4: (quoteData["scenario_4"] as Record<string, number>) ?? {},
+        5: (quoteData["scenario_5"] as Record<string, number>) ?? {},
     };
 
-    const [printFormsPerStandee, setPrintFormsPerStandee] = useState<number>(
-        initialSources[1].print_forms_per_standee ?? 1
+    const [perScenario, setPerScenario] = useState<Record<ScenarioId, PerScenarioState>>(
+        () => buildScenarioState(initialSources, initialStandees).perScenario
     );
-    const [structureFormsPerStandee, setStructureFormsPerStandee] = useState<number>(
-        initialSources[1].structure_forms_per_standee ?? 0
+    const [scenarioLines, setScenarioLines] = useState<Record<ScenarioId, CostLine[]>>(
+        () => buildScenarioState(initialSources, initialStandees).scenarioLines
     );
-    const [overs, setOvers] = useState<number>(initialSources[1].overs ?? 0);
-
-    const { universal: initUniversal, scenario: initScenario } = buildAllLines(initialSources);
-    const [universalLines, setUniversalLines] = useState<CostLine[]>(initUniversal);
-    const [scenarioLines, setScenarioLines]   = useState<Record<ScenarioId, CostLine[]>>(initScenario);
-    /** Empty = use sum of cost lines; otherwise force universal subtotal to this amount. */
-    const [universalSubtotalOverride, setUniversalSubtotalOverride] = useState("");
     const [scenarioSubtotalOverride, setScenarioSubtotalOverride] = useState<Record<ScenarioId, string>>({
-        1: "",
-        2: "",
-        3: "",
-        4: "",
-        5: "",
+        1: "", 2: "", 3: "", 4: "", 5: "",
     });
+
+    // Active scenario shortcuts
+    const active = perScenario[activeScenario];
+    const { params, baseline, universalLines, universalSubtotalOverride } = active;
+    const { numStandees, printFormsPerStandee, structureFormsPerStandee, overs } = params;
+
+    const isDirty =
+        numStandees !== baseline.numStandees ||
+        printFormsPerStandee !== baseline.printFormsPerStandee ||
+        structureFormsPerStandee !== baseline.structureFormsPerStandee ||
+        overs !== baseline.overs;
+
+    function patchActive(patch: Partial<PerScenarioState>) {
+        setPerScenario((prev) => ({
+            ...prev,
+            [activeScenario]: { ...prev[activeScenario], ...patch },
+        }));
+    }
+
+    function patchParams(updates: Partial<ScenarioParams>) {
+        setPerScenario((prev) => ({
+            ...prev,
+            [activeScenario]: {
+                ...prev[activeScenario],
+                params: { ...prev[activeScenario].params, ...updates },
+            },
+        }));
+    }
+
+    function syncStandeesQty(qty: number, lines: CostLine[]): CostLine[] {
+        return lines.map((l) => (l.unit === "standees" ? { ...l, qty } : l));
+    }
+
+    function handleStandeesChange(value: number) {
+        setPerScenario((prev) => ({
+            ...prev,
+            [activeScenario]: {
+                ...prev[activeScenario],
+                params: { ...prev[activeScenario].params, numStandees: value },
+                universalLines: syncStandeesQty(value, prev[activeScenario].universalLines),
+            },
+        }));
+        setScenarioLines((prev) => ({
+            ...prev,
+            [activeScenario]: syncStandeesQty(value, prev[activeScenario]),
+        }));
+    }
+
+    function updateUniversal(key: string, field: "qty" | "unitCost", value: number) {
+        if (field === "qty") {
+            const line = perScenario[activeScenario].universalLines.find((l) => l.key === key);
+            if (line?.unit === "standees") { handleStandeesChange(value); return; }
+        }
+        setPerScenario((prev) => ({
+            ...prev,
+            [activeScenario]: {
+                ...prev[activeScenario],
+                universalLines: prev[activeScenario].universalLines.map((l) =>
+                    l.key === key ? { ...l, [field]: value } : l
+                ),
+            },
+        }));
+    }
+
+    function updateScenario(key: string, field: "qty" | "unitCost", value: number) {
+        if (field === "qty") {
+            const line = scenarioLines[activeScenario].find((l) => l.key === key);
+            if (line?.unit === "standees") { handleStandeesChange(value); return; }
+        }
+        setScenarioLines((prev) => ({
+            ...prev,
+            [activeScenario]: prev[activeScenario].map((l) => (l.key === key ? { ...l, [field]: value } : l)),
+        }));
+    }
 
     function recalculate() {
         setIsRecalculating(true);
+        const sid = activeScenario;
+        const { params: p, baseline: bl } = perScenario[sid];
         const body = {
             ...requestPayload,
-            num_standees: numStandees,
-            print_forms_per_standee: printFormsPerStandee,
-            structure_forms_per_standee: structureFormsPerStandee,
-            num_overs: overs,
+            scenario: sid,
+            num_standees: p.numStandees,
+            ...(p.printFormsPerStandee !== bl.printFormsPerStandee && { print_forms_per_standee: p.printFormsPerStandee }),
+            ...(p.structureFormsPerStandee !== bl.structureFormsPerStandee && { structure_forms_per_standee: p.structureFormsPerStandee }),
+            ...(p.overs !== bl.overs && { num_overs: p.overs }),
         };
         fetch("http://localhost:8000/generate_quote", {
             method: "POST",
@@ -239,57 +343,27 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
             })
             .then((data) => {
                 if (!data) return;
-                const sources: Record<ScenarioId, Record<string, number>> = {
-                    1: data["scenario_1"] ?? {},
-                    2: data["scenario_2"] ?? {},
-                    3: data["scenario_3"] ?? {},
-                    4: data["scenario_4"] ?? {},
-                    5: data["scenario_5"] ?? {},
-                };
-                const { universal, scenario } = buildAllLines(sources);
-                setUniversalLines(universal);
-                setScenarioLines(scenario);
-                setOvers(sources[1].overs ?? 0);
-                setUniversalSubtotalOverride("");
-                setScenarioSubtotalOverride({ 1: "", 2: "", 3: "", 4: "", 5: "" });
+                const src: Record<string, number> = (data[`scenario_${sid}`] as Record<string, number>) ?? {};
+                const newUniversalLines = seedLines(
+                    buildLines(Object.keys(UNIVERSAL_LINE_DEFS), UNIVERSAL_LINE_DEFS), src
+                );
+                const newScenarioLines = seedLines(buildLines(SCENARIO_KEYS[sid], SCENARIO_LINE_DEFS), src);
+                const newOvers = src.overs ?? p.overs;
+                const newParams: ScenarioParams = { ...p, overs: newOvers };
+                setPerScenario((prev) => ({
+                    ...prev,
+                    [sid]: {
+                        params: newParams,
+                        baseline: { ...newParams },
+                        universalLines: newUniversalLines,
+                        universalSubtotalOverride: "",
+                    },
+                }));
+                setScenarioLines((prev) => ({ ...prev, [sid]: newScenarioLines }));
+                setScenarioSubtotalOverride((prev) => ({ ...prev, [sid]: "" }));
             })
             .catch((err) => console.error("Recalculate error:", err))
             .finally(() => setIsRecalculating(false));
-    }
-
-    function syncStandeesQty(qty: number, lines: CostLine[]): CostLine[] {
-        return lines.map((l) => (l.unit === "standees" ? { ...l, qty } : l));
-    }
-
-    function handleStandeesChange(value: number) {
-        setNumStandees(value);
-        setUniversalLines((prev) => syncStandeesQty(value, prev));
-        setScenarioLines((prev) => ({
-            1: syncStandeesQty(value, prev[1]),
-            2: syncStandeesQty(value, prev[2]),
-            3: syncStandeesQty(value, prev[3]),
-            4: syncStandeesQty(value, prev[4]),
-            5: syncStandeesQty(value, prev[5]),
-        }));
-    }
-
-    function updateUniversal(key: string, field: "qty" | "unitCost", value: number) {
-        if (field === "qty") {
-            const line = universalLines.find((l) => l.key === key);
-            if (line?.unit === "standees") { handleStandeesChange(value); return; }
-        }
-        setUniversalLines((prev) => prev.map((l) => (l.key === key ? { ...l, [field]: value } : l)));
-    }
-
-    function updateScenario(key: string, field: "qty" | "unitCost", value: number) {
-        if (field === "qty") {
-            const line = scenarioLines[activeScenario].find((l) => l.key === key);
-            if (line?.unit === "standees") { handleStandeesChange(value); return; }
-        }
-        setScenarioLines((prev) => ({
-            ...prev,
-            [activeScenario]: prev[activeScenario].map((l) => (l.key === key ? { ...l, [field]: value } : l)),
-        }));
     }
 
     const universalLinesSum = universalLines.reduce((s, l) => s + lineTotal(l), 0);
@@ -306,7 +380,6 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
             : scenarioLinesSum;
     const grandTotal = universalTotal + scenarioTotal;
 
-    // Which scenario IDs were actually returned by the backend
     const availableScenarios: ScenarioId[] = [1, 2, 3, 4, 5].filter((id) =>
         id === 5 || quoteData[`scenario_${id}`] !== undefined
     ) as ScenarioId[];
@@ -373,7 +446,7 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
                             min={1}
                             step={1}
                             value={printFormsPerStandee}
-                            onChange={(e) => setPrintFormsPerStandee(Math.max(1, parseInt(e.target.value) || 1))}
+                            onChange={(e) => patchParams({ printFormsPerStandee: Math.max(1, parseInt(e.target.value) || 1) })}
                             disabled={isRecalculating}
                             className="border-2 border-[#E0E0E0] rounded-sm px-3 py-1.5 text-sm font-black text-[#000005] outline-none bg-[#F8F8F8] focus:border-[#FFC843] w-[100px] text-right transition-colors disabled:opacity-50"
                         />
@@ -385,7 +458,7 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
                             min={0}
                             step={1}
                             value={structureFormsPerStandee}
-                            onChange={(e) => setStructureFormsPerStandee(Math.max(0, parseInt(e.target.value) || 0))}
+                            onChange={(e) => patchParams({ structureFormsPerStandee: Math.max(0, parseInt(e.target.value) || 0) })}
                             disabled={isRecalculating}
                             className="border-2 border-[#E0E0E0] rounded-sm px-3 py-1.5 text-sm font-black text-[#000005] outline-none bg-[#F8F8F8] focus:border-[#FFC843] w-[100px] text-right transition-colors disabled:opacity-50"
                         />
@@ -403,7 +476,7 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
                             min={0}
                             step={1}
                             value={overs}
-                            onChange={(e) => setOvers(Math.max(0, parseInt(e.target.value) || 0))}
+                            onChange={(e) => patchParams({ overs: Math.max(0, parseInt(e.target.value) || 0) })}
                             disabled={isRecalculating}
                             className="border-2 border-[#E0E0E0] rounded-sm px-3 py-1.5 text-sm font-black text-[#000005] outline-none bg-[#F8F8F8] focus:border-[#FFC843] w-[100px] text-right transition-colors disabled:opacity-50"
                         />
@@ -411,7 +484,7 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
                     <div className="h-10 w-px bg-[#E0E0E0]" />
                     <button
                         onClick={recalculate}
-                        disabled={isRecalculating}
+                        disabled={isRecalculating || !isDirty}
                         className="text-xs font-black uppercase tracking-widest px-4 py-2 rounded-sm bg-[#FFC843] text-[#000005] hover:bg-[#000005] hover:text-white transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                     >
                         {isRecalculating ? "Recalculating…" : "↻ Regenerate"}
@@ -431,7 +504,7 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
                         ))}
                         <div className="flex justify-between items-center pt-3 mt-1 border-t-2 border-[#F0F0F0]">
                             <span className="text-xs font-black text-[#B1B3B6] uppercase tracking-wider">Subtotal</span>
-                            <span className="text-sm font-black text-[#000005]">${universalLinesSum.toFixed(2)}</span>
+                            <span className="text-sm font-black text-[#000005]">${fmt(universalLinesSum)}</span>
                         </div>
                         <div className="flex flex-wrap items-end justify-between gap-3 pt-2">
                             <div className="flex flex-col gap-1 min-w-[200px] flex-1">
@@ -443,15 +516,15 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
                                     min={0}
                                     step={0.01}
                                     value={universalSubtotalOverride}
-                                    onChange={(e) => setUniversalSubtotalOverride(e.target.value)}
-                                    placeholder={`e.g. 5000 — default ${universalLinesSum.toFixed(2)}`}
+                                    onChange={(e) => patchActive({ universalSubtotalOverride: e.target.value })}
+                                    placeholder={`e.g. 5000 — default ${fmt(universalLinesSum)}`}
                                     className="border border-[#E0E0E0] rounded-sm px-2 py-1.5 text-xs text-[#000005] outline-none bg-[#F8F8F8] focus:border-[#FFC843] w-full font-semibold"
                                 />
                             </div>
                             <div className="flex flex-col items-end gap-0.5 pb-0.5">
                                 <span className="text-[9px] text-[#B1B3B6] uppercase font-bold tracking-wider">Used in total</span>
                                 <span className="text-sm font-black text-[#000005]">
-                                    ${universalTotal.toFixed(2)}
+                                    ${fmt(universalTotal)}
                                     {universalSubtotalOverride.trim() !== "" && Number.isFinite(parsedUniversalOv) && (
                                         <span className="text-[10px] font-bold text-[#F57F17] ml-1">override</span>
                                     )}
@@ -470,7 +543,7 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
                         ))}
                         <div className="flex justify-between items-center pt-3 mt-1 border-t-2 border-[#F0F0F0]">
                             <span className="text-xs font-black text-[#B1B3B6] uppercase tracking-wider">Subtotal</span>
-                            <span className="text-sm font-black text-[#000005]">${scenarioLinesSum.toFixed(2)}</span>
+                            <span className="text-sm font-black text-[#000005]">${fmt(scenarioLinesSum)}</span>
                         </div>
                         <div className="flex flex-wrap items-end justify-between gap-3 pt-2">
                             <div className="flex flex-col gap-1 min-w-[200px] flex-1">
@@ -488,14 +561,14 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
                                             [activeScenario]: e.target.value,
                                         }))
                                     }
-                                    placeholder={`default ${scenarioLinesSum.toFixed(2)}`}
+                                    placeholder={`default ${fmt(scenarioLinesSum)}`}
                                     className="border border-[#E0E0E0] rounded-sm px-2 py-1.5 text-xs text-[#000005] outline-none bg-[#F8F8F8] focus:border-[#FFC843] w-full font-semibold"
                                 />
                             </div>
                             <div className="flex flex-col items-end gap-0.5 pb-0.5">
                                 <span className="text-[9px] text-[#B1B3B6] uppercase font-bold tracking-wider">Used in total</span>
                                 <span className="text-sm font-black text-[#000005]">
-                                    ${scenarioTotal.toFixed(2)}
+                                    ${fmt(scenarioTotal)}
                                     {(scenarioSubtotalOverride[activeScenario] ?? "").trim() !== "" &&
                                         Number.isFinite(parsedScenarioOv) && (
                                             <span className="text-[10px] font-bold text-[#F57F17] ml-1">override</span>
@@ -506,10 +579,10 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
                     </div>
 
                     {/* Grand total */}
-                    <div className="shrink-0 flex items-center justify-between bg-[#000005] text-white rounded-sm px-5 py-4">
+                    <div className="shrink-0 sticky bottom-0 flex items-center justify-between bg-[#000005] text-white rounded-sm px-5 py-4">
                         <span className="text-sm font-black uppercase tracking-widest">Total Estimated Cost</span>
                         <span className="text-2xl font-black text-[#FFC843]">
-                            ${grandTotal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            ${fmt(grandTotal)}
                         </span>
                     </div>
 

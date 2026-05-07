@@ -14,7 +14,7 @@ export default function Home() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [userSignedIn, setUserSignedIn] = React.useState<boolean>(false);
 
-  const [currentScreen, setCurrentScreen] = React.useState("MIDNIGHT AI");
+  const [currentScreen, setCurrentScreen] = React.useState("Inputter");
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -30,7 +30,7 @@ export default function Home() {
     <div className="flex flex-col h-screen w-full bg-white" style={{ fontFamily: "'Proxima Nova', sans-serif" }}>
       {userSignedIn && (<Header currentScreen={currentScreen} setCurrentScreen={setCurrentScreen}/>)}
 
-      {userSignedIn && currentScreen === "MIDNIGHT AI" ? (
+      {userSignedIn && currentScreen === "Inputter" ? (
         <Inputter />
       ) : (
         <DataCollector />

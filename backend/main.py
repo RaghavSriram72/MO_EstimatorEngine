@@ -87,7 +87,7 @@ class ElementType(BaseModel):
 class QuoteRequest(BaseModel):
     elements: list[ElementType]
     num_standees: int
-    scenario: int = 1
+    scenario: int | None = None
     standee_type: int = 1
     owner: str | None = None
     project_name: str | None = None
@@ -95,6 +95,15 @@ class QuoteRequest(BaseModel):
     print_forms_per_standee: int | None = None
     structure_forms_per_standee: int | None = None
     num_overs: int | None = None
+
+
+_SCENARIO_CLASSES = {
+    1: Scenario1,
+    2: Scenario2,
+    3: Scenario3,
+    4: Scenario4,
+    5: Scenario5,
+}
 
 
 @app.post("/generate_quote")
@@ -110,12 +119,6 @@ async def generate_quote(payload: QuoteRequest):
         for e in payload.elements
     ]
 
-    # Determine standee complexity by taking majority of element complexities
-    # complexity_counts = {Complexity.SIMPLE: 0, Complexity.MODERATE: 0, Complexity.COMPLEX: 0}
-    # for element in elements:
-    #     complexity_counts[element.complexity] += 1
-    # majority_complexity = max(complexity_counts, key=complexity_counts.get)
-
     _, bin_dict = print_form_calculator(elements, payload.num_standees)
     print_forms = list(bin_dict.values())
 
@@ -125,67 +128,19 @@ async def generate_quote(payload: QuoteRequest):
         "num_overs": payload.num_overs or 0,
     }
 
-    scenario_1 = Scenario1(
-        name="API quote",
-        print_forms=print_forms,
-        num_standees=payload.num_standees,
-        standee_type=Complexity(payload.standee_type),
-    )
-
-    scenario_1.calculate_cost(**form_overrides)
-    scenario_1_obj = scenario_1.to_dict()
-
-    scenario_2 = Scenario2(
-        name="API quote",
-        print_forms=print_forms,
-        num_standees=payload.num_standees,
-        standee_type=Complexity(payload.standee_type),
-    )
-
-    scenario_2.calculate_cost(**form_overrides)
-
-    scenario_2_obj = scenario_2.to_dict()
-
-    scenario_3 = Scenario3(
-        name="API quote",
-        print_forms=print_forms,
-        num_standees=payload.num_standees,
-        standee_type=Complexity(payload.standee_type),
-    )
-
-    scenario_3.calculate_cost(**form_overrides)
-
-    scenario_3_obj = scenario_3.to_dict()
-
-    scenario_4 = Scenario4(
-        name="API quote",
-        print_forms=print_forms,
-        num_standees=payload.num_standees,
-        standee_type=Complexity(payload.standee_type),
-    )
-
-    scenario_4.calculate_cost(**form_overrides)
-
-    scenario_4_obj = scenario_4.to_dict()
-
-    scenario_5 = Scenario5(
-        name="API quote",
-        print_forms=print_forms,
-        num_standees=payload.num_standees,
-        standee_type=Complexity(payload.standee_type),
-    )
-
-    scenario_5.calculate_cost(**form_overrides)
-
-    scenario_5_obj = scenario_5.to_dict()
-
-    out: dict = {
-        "scenario_1": scenario_1_obj,
-        "scenario_2": scenario_2_obj,
-        "scenario_3": scenario_3_obj,
-        "scenario_4": scenario_4_obj,
-        "scenario_5": scenario_5_obj,
-    }
+    scenarios_to_run = [payload.scenario] if payload.scenario is not None else [1, 2, 3, 4, 5]
+    out: dict = {}
+    with MOADB() as db:
+        for sid in scenarios_to_run:
+            s = _SCENARIO_CLASSES[sid](
+                db=db,
+                name="API quote",
+                print_forms=print_forms,
+                num_standees=payload.num_standees,
+                standee_type=Complexity(payload.standee_type),
+            )
+            s.calculate_cost(**form_overrides)
+            out[f"scenario_{sid}"] = s.to_dict()
 
     # Persist the project if an authenticated owner is provided.
     owner = None

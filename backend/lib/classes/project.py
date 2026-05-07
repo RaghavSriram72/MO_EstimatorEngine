@@ -16,7 +16,7 @@ STANDEE_MAP = {
 @dataclass
 class Project:
     """Class to represent a overall standee project."""
-    
+
     db: MidnightOilDB
     name: str
     print_forms: list[Form]
@@ -49,7 +49,7 @@ class Project:
 
     def to_dict(self) -> dict:
         """Return common project/scenario fields as a dictionary."""
-        return {k: v for k, v in self.__dict__.items() if not k.startswith("_")}
+        return {k: v for k, v in self.__dict__.items() if not k.startswith("_") and k != "db"}
 
     def _calculate_universal_costs(
         self,

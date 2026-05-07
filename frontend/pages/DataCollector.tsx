@@ -3,6 +3,12 @@ import Dropdown from "@/components/Dropdown";
 import EditableValueBox from "@/components/EditableValueBox";
 import { useState, useEffect } from "react";
 
+const SUPPLIER_DISPLAY: Record<string, string> = {
+    pq: "Pacific Quality",
+    fosters: "Foster",
+};
+const supplierLabel = (raw: string) => SUPPLIER_DISPLAY[raw] ?? raw;
+
 // ── Types ──────────────────────────────────────────────────────────────────
 type WorkCenterRecord = {
     _id: string;
@@ -793,9 +799,12 @@ export default function DataCollector() {
                                 <div className="flex flex-col gap-1 flex-1">
                                     <div className="text-[10px] ml-1">Supplier</div>
                                     <Dropdown
-                                        options={supplierNames}
-                                        currOption={selectedSupplier}
-                                        onSelect={(v: string) => setSelectedSupplier(v)}
+                                        options={supplierNames.map(supplierLabel)}
+                                        currOption={supplierLabel(selectedSupplier)}
+                                        onSelect={(displayName: string) => {
+                                            const raw = supplierNames.find((s) => supplierLabel(s) === displayName) ?? displayName;
+                                            setSelectedSupplier(raw);
+                                        }}
                                         width="w-full"
                                     />
                                 </div>
