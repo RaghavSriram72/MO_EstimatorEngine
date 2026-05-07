@@ -36,7 +36,6 @@ class Project:
             + self.color_comp_cost
             + self.engineering_design_cost
             + self.hardware_cost
-            + self.overs_cost
         )
 
     @property
@@ -82,8 +81,6 @@ class Project:
 
             # misc costs and project vars
             self.overs = num_overs or db.get_overs(self.num_standees)
-            self.overs_forms = self.overs * self.print_forms_per_standee * self.num_standees
-            self.overs_cost = db.get_unit_cost(DB_LABELS["corrugate"]) * self.overs_forms
             self.print_form_total = (
                 self.overs * self.print_forms_per_standee + self.print_forms_per_standee
             ) * self.num_standees
@@ -188,4 +185,8 @@ class Project:
         return scale * (num_forms) ** power
 
     def _get_num_corrugate_forms(self) -> int:
-        return (self.print_forms_per_standee + self.structure_forms_per_standee) * self.num_standees
+        return (
+            (self.print_forms_per_standee * self.overs)
+            + self.print_forms_per_standee
+            + self.structure_forms_per_standee
+        ) * self.num_standees

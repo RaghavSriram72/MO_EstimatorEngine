@@ -35,7 +35,6 @@ const UNIVERSAL_LINE_DEFS: Record<string, LineDef> = {
     color_comp_cost:         { label: "Color Comp",           unit: "units"    },
     engineering_design_cost: { label: "Engineering & Design", unit: "flat"     },
     hardware_cost:           { label: "Hardware",             unit: "standees" },
-    overs_cost:              { label: "Overs            ",    unit: "forms"    },
 };
 
 const SCENARIO_LINE_DEFS: Record<string, LineDef> = {
@@ -80,7 +79,6 @@ const QTY_FROM_SOURCE: Partial<Record<string, (s: Record<string, number>) => num
     instruction_sheet_cost: (s) => s.num_standees         ?? 1,
     pallet_material_cost:   (s) => s.pallet_count         ?? 1,
     pallet_labor_cost:      (s) => s.pallet_count         ?? 1,
-    overs_cost:             (s) => s.overs_forms          ?? 1,
 };
 
 function buildLines(keys: string[], defs: Record<string, LineDef>): CostLine[] {
@@ -155,7 +153,7 @@ function CostRow({
                         type="number"
                         min={0}
                         step={0.01}
-                        value={line.unitCost}
+                        value={parseFloat(line.unitCost.toFixed(2))}
                         onChange={(e) => onChange(line.key, "unitCost", parseFloat(e.target.value) || 0)}
                         className="border border-[#E0E0E0] rounded-sm px-2 py-1 text-xs text-[#000005] outline-none bg-[#F8F8F8] focus:border-[#FFC843] focus:bg-white w-[96px] text-right transition-colors font-semibold"
                     />
@@ -225,6 +223,7 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
             num_standees: numStandees,
             print_forms_per_standee: printFormsPerStandee,
             structure_forms_per_standee: structureFormsPerStandee,
+            num_overs: overs,
         };
         fetch("http://localhost:8000/generate_quote", {
             method: "POST",
@@ -397,16 +396,17 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
                             {printFormsPerStandee + structureFormsPerStandee}
                         </span>
                     </div>
-                    <div className="h-10 w-px bg-[#E0E0E0]" />
                     <div className="flex flex-col gap-1">
                         <span className="text-[10px] font-black text-[#B1B3B6] uppercase tracking-widest">Overs / Standee</span>
-                        <span className="text-sm font-black text-[#000005] text-right py-1.5">{overs}</span>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                        <span className="text-[10px] font-black text-[#B1B3B6] uppercase tracking-widest">Total Overs Forms</span>
-                        <span className="text-sm font-black text-[#000005] text-right py-1.5">
-                            {overs * printFormsPerStandee * numStandees}
-                        </span>
+                        <input
+                            type="number"
+                            min={0}
+                            step={1}
+                            value={overs}
+                            onChange={(e) => setOvers(Math.max(0, parseInt(e.target.value) || 0))}
+                            disabled={isRecalculating}
+                            className="border-2 border-[#E0E0E0] rounded-sm px-3 py-1.5 text-sm font-black text-[#000005] outline-none bg-[#F8F8F8] focus:border-[#FFC843] w-[100px] text-right transition-colors disabled:opacity-50"
+                        />
                     </div>
                     <div className="h-10 w-px bg-[#E0E0E0]" />
                     <button
@@ -508,7 +508,9 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
                     {/* Grand total */}
                     <div className="shrink-0 flex items-center justify-between bg-[#000005] text-white rounded-sm px-5 py-4">
                         <span className="text-sm font-black uppercase tracking-widest">Total Estimated Cost</span>
-                        <span className="text-2xl font-black text-[#FFC843]">${grandTotal.toFixed(2)}</span>
+                        <span className="text-2xl font-black text-[#FFC843]">
+                            ${grandTotal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
                     </div>
 
                 </div>
