@@ -208,6 +208,15 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
     const { universal: initUniversal, scenario: initScenario } = buildAllLines(initialSources);
     const [universalLines, setUniversalLines] = useState<CostLine[]>(initUniversal);
     const [scenarioLines, setScenarioLines]   = useState<Record<ScenarioId, CostLine[]>>(initScenario);
+    /** Empty = use sum of cost lines; otherwise force universal subtotal to this amount. */
+    const [universalSubtotalOverride, setUniversalSubtotalOverride] = useState("");
+    const [scenarioSubtotalOverride, setScenarioSubtotalOverride] = useState<Record<ScenarioId, string>>({
+        1: "",
+        2: "",
+        3: "",
+        4: "",
+        5: "",
+    });
 
     function recalculate() {
         setIsRecalculating(true);
@@ -242,6 +251,8 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
                 setUniversalLines(universal);
                 setScenarioLines(scenario);
                 setOvers(sources[1].overs ?? 0);
+                setUniversalSubtotalOverride("");
+                setScenarioSubtotalOverride({ 1: "", 2: "", 3: "", 4: "", 5: "" });
             })
             .catch((err) => console.error("Recalculate error:", err))
             .finally(() => setIsRecalculating(false));
@@ -282,9 +293,19 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
         }));
     }
 
-    const universalTotal = universalLines.reduce((s, l) => s + lineTotal(l), 0);
-    const scenarioTotal  = scenarioLines[activeScenario].reduce((s, l) => s + lineTotal(l), 0);
-    const grandTotal     = universalTotal + scenarioTotal;
+    const universalLinesSum = universalLines.reduce((s, l) => s + lineTotal(l), 0);
+    const scenarioLinesSum  = scenarioLines[activeScenario].reduce((s, l) => s + lineTotal(l), 0);
+    const parsedUniversalOv = parseFloat(universalSubtotalOverride);
+    const parsedScenarioOv  = parseFloat(scenarioSubtotalOverride[activeScenario]);
+    const universalTotal =
+        universalSubtotalOverride.trim() !== "" && Number.isFinite(parsedUniversalOv)
+            ? parsedUniversalOv
+            : universalLinesSum;
+    const scenarioTotal =
+        (scenarioSubtotalOverride[activeScenario] ?? "").trim() !== "" && Number.isFinite(parsedScenarioOv)
+            ? parsedScenarioOv
+            : scenarioLinesSum;
+    const grandTotal = universalTotal + scenarioTotal;
 
     // Which scenario IDs were actually returned by the backend
     const availableScenarios: ScenarioId[] = [1, 2, 3, 4, 5].filter((id) =>
@@ -410,7 +431,32 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
                         ))}
                         <div className="flex justify-between items-center pt-3 mt-1 border-t-2 border-[#F0F0F0]">
                             <span className="text-xs font-black text-[#B1B3B6] uppercase tracking-wider">Subtotal</span>
-                            <span className="text-sm font-black text-[#000005]">${universalTotal.toFixed(2)}</span>
+                            <span className="text-sm font-black text-[#000005]">${universalLinesSum.toFixed(2)}</span>
+                        </div>
+                        <div className="flex flex-wrap items-end justify-between gap-3 pt-2">
+                            <div className="flex flex-col gap-1 min-w-[200px] flex-1">
+                                <span className="text-[9px] font-black text-[#B1B3B6] uppercase tracking-widest">
+                                    Override universal subtotal ($)
+                                </span>
+                                <input
+                                    type="number"
+                                    min={0}
+                                    step={0.01}
+                                    value={universalSubtotalOverride}
+                                    onChange={(e) => setUniversalSubtotalOverride(e.target.value)}
+                                    placeholder={`e.g. 5000 — default ${universalLinesSum.toFixed(2)}`}
+                                    className="border border-[#E0E0E0] rounded-sm px-2 py-1.5 text-xs text-[#000005] outline-none bg-[#F8F8F8] focus:border-[#FFC843] w-full font-semibold"
+                                />
+                            </div>
+                            <div className="flex flex-col items-end gap-0.5 pb-0.5">
+                                <span className="text-[9px] text-[#B1B3B6] uppercase font-bold tracking-wider">Used in total</span>
+                                <span className="text-sm font-black text-[#000005]">
+                                    ${universalTotal.toFixed(2)}
+                                    {universalSubtotalOverride.trim() !== "" && Number.isFinite(parsedUniversalOv) && (
+                                        <span className="text-[10px] font-bold text-[#F57F17] ml-1">override</span>
+                                    )}
+                                </span>
+                            </div>
                         </div>
                     </div>
 
@@ -424,7 +470,38 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
                         ))}
                         <div className="flex justify-between items-center pt-3 mt-1 border-t-2 border-[#F0F0F0]">
                             <span className="text-xs font-black text-[#B1B3B6] uppercase tracking-wider">Subtotal</span>
-                            <span className="text-sm font-black text-[#000005]">${scenarioTotal.toFixed(2)}</span>
+                            <span className="text-sm font-black text-[#000005]">${scenarioLinesSum.toFixed(2)}</span>
+                        </div>
+                        <div className="flex flex-wrap items-end justify-between gap-3 pt-2">
+                            <div className="flex flex-col gap-1 min-w-[200px] flex-1">
+                                <span className="text-[9px] font-black text-[#B1B3B6] uppercase tracking-widest">
+                                    Override scenario subtotal ($)
+                                </span>
+                                <input
+                                    type="number"
+                                    min={0}
+                                    step={0.01}
+                                    value={scenarioSubtotalOverride[activeScenario]}
+                                    onChange={(e) =>
+                                        setScenarioSubtotalOverride((prev) => ({
+                                            ...prev,
+                                            [activeScenario]: e.target.value,
+                                        }))
+                                    }
+                                    placeholder={`default ${scenarioLinesSum.toFixed(2)}`}
+                                    className="border border-[#E0E0E0] rounded-sm px-2 py-1.5 text-xs text-[#000005] outline-none bg-[#F8F8F8] focus:border-[#FFC843] w-full font-semibold"
+                                />
+                            </div>
+                            <div className="flex flex-col items-end gap-0.5 pb-0.5">
+                                <span className="text-[9px] text-[#B1B3B6] uppercase font-bold tracking-wider">Used in total</span>
+                                <span className="text-sm font-black text-[#000005]">
+                                    ${scenarioTotal.toFixed(2)}
+                                    {(scenarioSubtotalOverride[activeScenario] ?? "").trim() !== "" &&
+                                        Number.isFinite(parsedScenarioOv) && (
+                                            <span className="text-[10px] font-bold text-[#F57F17] ml-1">override</span>
+                                        )}
+                                </span>
+                            </div>
                         </div>
                     </div>
 
