@@ -116,6 +116,17 @@ class MidnightOilDB:
         self._load_cache()
         return result.matched_count > 0
 
+    def delete_persisted_project(self, project_id: str, owner: str) -> bool:
+        """Delete a project document if it exists and belongs to ``owner``."""
+        try:
+            oid = ObjectId(project_id)
+        except (InvalidId, TypeError):
+            return False
+        result = self.projects_collection.delete_one({"_id": oid, "owner": owner})
+        if result.deleted_count > 0:
+            self._load_cache()
+        return result.deleted_count > 0
+
     def get_unit_cost_entry(self, cost_name: str) -> dict:
         """Return the entire unit cost entry for a given cost name."""
         record = next((entry for entry in self._cache["unit_costs"] if entry["name"] == cost_name), None)

@@ -357,6 +357,19 @@ async def update_project(
     return {"message": "Project updated successfully", "project_id": project_id}
 
 
+@app.delete("/projects/{project_id}")
+async def delete_project(
+    project_id: str,
+    owner: str = Query(..., description="Must match the document's owner field"),
+):
+    with MOADB() as db:
+        if not db.check_username_exists(owner):
+            return JSONResponse(status_code=404, content={"error": "Unknown owner"})
+        if not db.delete_persisted_project(project_id, owner):
+            return JSONResponse(status_code=404, content={"error": "Project not found"})
+    return {"message": "Project deleted", "project_id": project_id}
+
+
 @app.post("/create-account")
 async def create_account(payload: AccountRequest):
     with MOADB() as db:

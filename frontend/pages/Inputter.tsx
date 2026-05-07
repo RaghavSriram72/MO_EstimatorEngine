@@ -143,6 +143,34 @@ export default function Inputter() {
         }
     }
 
+    async function deleteProject(projectId: string, projectLabel: string) {
+        if (!window.confirm(`Are you sure you want to delete "${projectLabel}"? This action cannot be undone.`)) {
+            return;
+        }
+        const owner = localStorage.getItem("username");
+        if (!owner) {
+            return;
+        }
+        setProjectsError(null);
+        try {
+            const res = await fetch(
+                `${API_BASE}/projects/${encodeURIComponent(projectId)}?owner=${encodeURIComponent(owner)}`,
+                { method: "DELETE" },
+            );
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                setProjectsError(typeof data.error === "string" ? data.error : "Could not delete project");
+                return;
+            }
+            if (activeProjectId === projectId) {
+                handleClear();
+            }
+            setListVersion((v) => v + 1);
+        } catch {
+            setProjectsError("Could not delete project");
+        }
+    }
+
     const canCalculate = (standeeCount !== "" && standeeCount > 0) && elements.length > 0;
     const canPersist = canCalculate;
 
@@ -298,23 +326,38 @@ export default function Inputter() {
                         <div className="text-[11px] text-[#B1B3B6] font-semibold px-1">No saved projects yet.</div>
                     )}
                     {projects.map((p) => (
-                        <button
+                        <div
                             key={p._id}
-                            type="button"
-                            onClick={() => void loadProject(p._id)}
-                            className={`text-left rounded-sm border-2 px-2 py-2 transition-all duration-200 ${
+                            className={`flex items-stretch gap-1 rounded-sm border-2 transition-all duration-200 ${
                                 activeProjectId === p._id
                                     ? "border-[#FFC843] bg-[#FFFBF0]"
                                     : "border-[#E0E0E0] bg-[#F8F8F8] hover:border-[#B1B3B6]"
                             }`}
                         >
-                            <div className="text-[11px] font-black text-[#000005] uppercase tracking-tight line-clamp-2">
-                                {p.project_name || "Untitled"}
-                            </div>
-                            <div className="text-[9px] text-[#B1B3B6] font-bold mt-0.5 uppercase tracking-wider">
-                                {p.num_standees} × {p.standee_type}
-                            </div>
-                        </button>
+                            <button
+                                type="button"
+                                onClick={() => void loadProject(p._id)}
+                                className="min-w-0 flex-1 text-left px-2 py-2 outline-none focus-visible:ring-2 focus-visible:ring-[#FFC843]"
+                            >
+                                <div className="text-[11px] font-black text-[#000005] uppercase tracking-tight line-clamp-2">
+                                    {p.project_name || "Untitled"}
+                                </div>
+                                <div className="text-[9px] text-[#B1B3B6] font-bold mt-0.5 uppercase tracking-wider">
+                                    {p.num_standees} × {p.standee_type}
+                                </div>
+                            </button>
+                            <button
+                                type="button"
+                                aria-label={`Delete project ${p.project_name || "Untitled"}`}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    void deleteProject(p._id, p.project_name || "Untitled");
+                                }}
+                                className="shrink-0 w-8 flex items-center justify-center text-[12px] font-bold text-[#B1B3B6] hover:text-red-600 hover:bg-red-50 border-l-2 border-[#E0E0E0] transition-colors"
+                            >
+                                ✕
+                            </button>
+                        </div>
                     ))}
                 </div>
             </aside>
@@ -419,7 +462,7 @@ export default function Inputter() {
                                     : "bg-[#E0E0E0] text-[#B1B3B6] cursor-not-allowed"
                             }`}
                         >
-                            CALCULATE{" "}
+                            CONTINUE{" "}
                             <img
                                 src="/submitarrow.svg"
                                 alt=""
