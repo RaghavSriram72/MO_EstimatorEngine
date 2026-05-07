@@ -94,6 +94,7 @@ class QuoteRequest(BaseModel):
     project_id: str | None = None
     print_forms_per_standee: int | None = None
     structure_forms_per_standee: int | None = None
+    num_overs: int | None = None
 
 
 @app.post("/generate_quote")
@@ -121,6 +122,7 @@ async def generate_quote(payload: QuoteRequest):
     form_overrides = {
         "print_forms_per_standee": payload.print_forms_per_standee or 0,
         "structure_forms_per_standee": payload.structure_forms_per_standee or 0,
+        "num_overs": payload.num_overs or 0,
     }
 
     scenario_1 = Scenario1(
