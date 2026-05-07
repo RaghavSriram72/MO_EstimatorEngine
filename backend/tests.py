@@ -83,7 +83,7 @@ class TestStaticCostCalculator(unittest.TestCase):
             num_standees=1,
             standee_type=Complexity.SIMPLE,
         )
-        total_cost = project.calculate_cost(color_comp_count=0)
+        total_cost = project.calculate_cost(color_comp_count=0, blank_comp_count=0)
 
         print(f"\nPrimate standee static cost breakdown ({project.num_standees} standees):")
         print(f"  Imposition cost:          ${project.imposition_cost or 0:.2f}")
