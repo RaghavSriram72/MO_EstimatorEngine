@@ -59,8 +59,8 @@ class Project:
         structure_forms_per_standee: int = 0,
         num_overs: int = 0,
         imposition_hours: float = 0,
-        blank_comp_count: float = 0,
-        color_comp_count: float = 0,
+        blank_comp_count: float = 1,
+        color_comp_count: float = 1,
     ) -> float:
         self.num_standees = num_standees or self.num_standees
         db = self.db
@@ -85,9 +85,9 @@ class Project:
             self.overs * self.print_forms_per_standee + self.print_forms_per_standee
         ) * self.num_standees
         self.engineering_design_cost = db.get_standee_data(self.standee_key, "engineering_design_cost_per_project")
-        self.blank_comp_count = blank_comp_count or 1
+        self.blank_comp_count = blank_comp_count
         self.blank_comp_cost = db.get_unit_cost(DB_LABELS["blank_comp"]) * self.blank_comp_count
-        self.color_comp_count = color_comp_count or 1
+        self.color_comp_count = color_comp_count
         self.color_comp_cost = db.get_unit_cost(DB_LABELS["color_comp"]) * self.color_comp_count
         return self.total_universal_cost
 
