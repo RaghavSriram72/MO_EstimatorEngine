@@ -72,9 +72,7 @@ class Scenario1(Project):
         #     db, self.standee_key, self.print_forms_per_standee, self.structure_forms_per_standee, self.num_standee
         # )
         # linear inches for zund is linear inches for all print forms plus one blank form per print form per standee
-        element_linear_inches = sum(form.get_linear_inches() for form in self.print_forms)
-        zund_linear_inches = element_linear_inches * (self.overs * self.print_forms_per_standee) * self.num_standees
-        self.zund_hours = zund_hours or self._machine_time(db, ZUND_CUTTER, zund_linear_inches)
+        self.zund_hours = zund_hours or self._zund_hours(db)
         self.zund_cut_cost = self._machine_cost(db, ZUND_CUTTER, self.zund_hours)
 
         # shipping box and label cost calculation
@@ -204,8 +202,7 @@ class Scenario3(Project):
         self.rollx_cost = self._machine_cost(db, ROLLX, self.rollx_hours)
 
         # zund cost calculation
-        zund_linear_inches = sum(form.get_linear_inches() for form in self.print_forms)
-        self.zund_hours = zund_hours or self._machine_time(db, ZUND_CUTTER, zund_linear_inches)
+        self.zund_hours = zund_hours or self._zund_hours(db)
         self.zund_cut_cost = self._machine_cost(db, ZUND_CUTTER, self.zund_hours)
 
         # shipping box and label cost calculation
