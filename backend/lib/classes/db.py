@@ -126,6 +126,8 @@ class MidnightOilDB:
         if result.deleted_count > 0:
             self._load_cache()
         return result.deleted_count > 0
+        else:
+            return False
 
     def get_unit_cost_entry(self, cost_name: str) -> dict:
         """Return the entire unit cost entry for a given cost name."""

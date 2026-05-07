@@ -360,7 +360,7 @@ async def update_project(
 @app.delete("/projects/{project_id}")
 async def delete_project(
     project_id: str,
-    owner: str = Query(..., description="Must match the document's owner field"),
+    owner: str = Query(..., description="Owner must match project document's owner field"),
 ):
     with MOADB() as db:
         if not db.check_username_exists(owner):
