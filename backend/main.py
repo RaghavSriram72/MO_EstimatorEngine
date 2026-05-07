@@ -230,33 +230,6 @@ async def update_standee_static_costs(standee_type: str, payload: UpdateStandeeR
             return JSONResponse(status_code=404, content={"error": str(e)})
 
 
-@app.get("/work-center-costs")
-async def get_work_center_costs():
-    """Return all work center cost records."""
-    with MOADB() as db:
-        return {"data": db.get_all_work_center_costs()}
-
-
-class UpdateWorkCenterRequest(BaseModel):
-    """Payload for updating fields on a work center cost record. All fields optional."""
-
-    cost: float | None = None
-    uom: str | None = None
-    speed: str | None = None
-    unit: str | None = None
-
-
-@app.patch("/work-center-costs/{activity}")
-async def update_work_center_cost(activity: str, payload: UpdateWorkCenterRequest):
-    """Update editable fields on a work center cost record."""
-    with MOADB() as db:
-        updates = {k: v for k, v in payload.model_dump().items() if v is not None}
-        try:
-            db.update_work_center_cost(activity, updates)
-            return {"message": "Updated successfully"}
-        except ValueError as e:
-            return JSONResponse(status_code=404, content={"error": str(e)})
-
 
 @app.patch("/unit-costs/{name}")
 async def update_unit_cost(name: str, payload: UpdateCostRequest):

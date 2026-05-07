@@ -10,22 +10,6 @@ const SUPPLIER_DISPLAY: Record<string, string> = {
 const supplierLabel = (raw: string) => SUPPLIER_DISPLAY[raw] ?? raw;
 
 // ── Types ──────────────────────────────────────────────────────────────────
-type WorkCenterRecord = {
-    _id: string;
-    activity: string;
-    cost: number;
-    uom: string;
-    speed: string;
-    unit: string;
-};
-
-type WorkCenterEditFields = {
-    cost: number;
-    uom: string;
-    speed: string;
-    unit: string;
-};
-
 type UnitCostRecord = {
     _id: string;
     name: string;
@@ -75,7 +59,7 @@ type SupplierRecord = {
 
 type SupplierEditFields = { amount: number; cost: number; unit: string };
 
-type ModuleId = 0 | 1 | 2 | 3 | 4;
+type ModuleId = 0 | 1 | 2 | 3;
 
 const STANDEE_TYPES = ["Simple Standee", "Moderate Standee", "Complex Standee"];
 
@@ -217,70 +201,7 @@ export default function DataCollector() {
         finally { setIsSaving(false); }
     }
 
-    // ── Module 2: Work Center Costs ───────────────────────────────────────
-    const [wcRecords, setWcRecords]         = useState<WorkCenterRecord[]>([]);
-    const [wcSelected, setWcSelected]       = useState<string>("");
-    const [wcEdits, setWcEdits]             = useState<WorkCenterEditFields | null>(null);
-    const [isLoadingWc, setIsLoadingWc]     = useState(false);
-
-    useEffect(() => {
-        if (currentModule !== 2) return;
-        setIsLoadingWc(true);
-        setWcSelected("");
-        setWcEdits(null);
-        fetch("http://localhost:8000/work-center-costs")
-            .then((r) => r.json())
-            .then((data) => setWcRecords(data.data ?? []))
-            .catch(console.error)
-            .finally(() => setIsLoadingWc(false));
-    }, [currentModule]);
-
-    const selectedWcRecord = wcRecords.find((r) => r.activity === wcSelected) ?? null;
-
-    function handleWcSelect(activity: string) {
-        const rec = wcRecords.find((r) => r.activity === activity);
-        if (!rec) return;
-        setWcSelected(rec.activity);
-        setWcEdits({ cost: rec.cost, uom: rec.uom, speed: rec.speed, unit: rec.unit });
-    }
-
-    function handleWcEdit(field: keyof WorkCenterEditFields, value: string) {
-        setWcEdits((prev) =>
-            prev ? { ...prev, [field]: field === "cost" ? parseFloat(value) || 0 : value } : null
-        );
-    }
-
-    const isWcDirty =
-        !!selectedWcRecord && !!wcEdits &&
-        (wcEdits.cost !== selectedWcRecord.cost ||
-            wcEdits.uom !== selectedWcRecord.uom ||
-            wcEdits.speed !== selectedWcRecord.speed ||
-            wcEdits.unit !== selectedWcRecord.unit);
-
-    async function handleWcSubmit() {
-        if (!selectedWcRecord || !wcEdits || !isWcDirty) return;
-        const updates: Partial<WorkCenterEditFields> = {};
-        if (wcEdits.cost !== selectedWcRecord.cost) updates.cost = wcEdits.cost;
-        if (wcEdits.uom !== selectedWcRecord.uom) updates.uom = wcEdits.uom;
-        if (wcEdits.speed !== selectedWcRecord.speed) updates.speed = wcEdits.speed;
-        if (wcEdits.unit !== selectedWcRecord.unit) updates.unit = wcEdits.unit;
-        setIsSaving(true);
-        try {
-            await fetch(`http://localhost:8000/work-center-costs/${encodeURIComponent(selectedWcRecord.activity)}`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(updates),
-            });
-            const data = await fetch("http://localhost:8000/work-center-costs").then((r) => r.json());
-            const updated: WorkCenterRecord[] = data.data ?? [];
-            setWcRecords(updated);
-            const newRec = updated.find((r) => r.activity === selectedWcRecord.activity);
-            if (newRec) setWcEdits({ cost: newRec.cost, uom: newRec.uom, speed: newRec.speed, unit: newRec.unit });
-        } catch (e) { console.error(e); }
-        finally { setIsSaving(false); }
-    }
-
-    // ── Module 3: Overs ───────────────────────────────────────────────────
+    // ── Module 2: Overs ───────────────────────────────────────────────────
     type OversEditFields = { lower_bound: number; upper_bound: number | null; overs: number };
 
     const [oversRecords, setOversRecords]     = useState<OversRecord[]>([]);
@@ -294,7 +215,7 @@ export default function DataCollector() {
     }
 
     useEffect(() => {
-        if (currentModule !== 3) return;
+        if (currentModule !== 2) return;
         setIsLoadingOvers(true);
         fetch("http://localhost:8000/overs")
             .then((r) => r.json())
@@ -350,7 +271,7 @@ export default function DataCollector() {
         finally { setIsSaving(false); }
     }
 
-    // ── Module 4: Suppliers ───────────────────────────────────────────────
+    // ── Module 3: Suppliers ───────────────────────────────────────────────
     const [supplierNames, setSupplierNames]         = useState<string[]>([]);
     const [selectedSupplier, setSelectedSupplier]   = useState<string>("");
     const [supplierMaterials, setSupplierMaterials] = useState<SupplierMaterial[]>([]);
@@ -366,7 +287,7 @@ export default function DataCollector() {
     }
 
     useEffect(() => {
-        if (currentModule !== 4) return;
+        if (currentModule !== 3) return;
         fetch("http://localhost:8000/suppliers")
             .then((r) => r.json())
             .then((data) => setSupplierNames(data.data ?? []))
@@ -374,7 +295,7 @@ export default function DataCollector() {
     }, [currentModule]);
 
     useEffect(() => {
-        if (!selectedSupplier || currentModule !== 4) return;
+        if (!selectedSupplier || currentModule !== 3) return;
         setSelectedMaterial("");
         setSupplierRecords([]);
         setSupplierEdits(null);
@@ -385,7 +306,7 @@ export default function DataCollector() {
     }, [selectedSupplier, currentModule]);
 
     useEffect(() => {
-        if (!selectedSupplier || !selectedMaterial || currentModule !== 4) return;
+        if (!selectedSupplier || !selectedMaterial || currentModule !== 3) return;
         setIsLoadingSupplier(true);
         fetch(`http://localhost:8000/suppliers/${encodeURIComponent(selectedSupplier)}/${encodeURIComponent(selectedMaterial)}`)
             .then((r) => r.json())
@@ -441,23 +362,20 @@ export default function DataCollector() {
     const activeIsDirty =
         currentModule === 0 ? isUnitDirty :
         currentModule === 1 ? isStandeeDirty :
-        currentModule === 2 ? isWcDirty :
-        currentModule === 3 ? isOversDirty :
+        currentModule === 2 ? isOversDirty :
         isSupplierDirty;
 
     const activeHandleSubmit =
         currentModule === 0 ? handleUnitSubmit :
         currentModule === 1 ? handleStandeeSubmit :
-        currentModule === 2 ? handleWcSubmit :
-        currentModule === 3 ? handleOversSubmit :
+        currentModule === 2 ? handleOversSubmit :
         handleSupplierSubmit;
 
     function handleClear() {
         if (currentModule === 0) { setSelectedName(""); setUnitEdits(null); }
         if (currentModule === 1) { setStandeeType(""); setStandeeRecord(null); setStandeeEdits(null); }
-        if (currentModule === 2) { setWcSelected(""); setWcEdits(null); }
-        if (currentModule === 3) { setOversEdits(buildOversEdits(oversRecords)); }
-        if (currentModule === 4) {
+        if (currentModule === 2) { setOversEdits(buildOversEdits(oversRecords)); }
+        if (currentModule === 3) {
             setSelectedSupplier("");
             setSelectedMaterial("");
             setSupplierRecords([]);
@@ -475,13 +393,13 @@ export default function DataCollector() {
             <div className="flex flex-col items-start justify-start pl-10 p-5 gap-3">
                 <div className="text-[1.2em] font-bold">DB Modules</div>
                 <ul className="flex flex-col gap-4 w-full">
-                    {([0, 1, 2, 3, 4] as ModuleId[]).map((id) => (
+                    {([0, 1, 2, 3] as ModuleId[]).map((id) => (
                         <li
                             key={id}
                             className={`${currentModule === id ? "tab-active" : "tab-inactive"} flex items-center gap-5 w-full cursor-pointer`}
                             onClick={() => setCurrentModule(id)}
                         >
-                            <span>•</span> {["Unit Costs", "Standee Static Costs", "Work Center Costs", "Overs", "Suppliers"][id]}
+                            <span>•</span> {["Unit Costs", "Standee Static Costs", "Overs", "Suppliers"][id]}
                         </li>
                     ))}
                 </ul>
@@ -491,7 +409,7 @@ export default function DataCollector() {
             <div className="flex flex-col ml-5 p-1 justify-start">
                 {/* Animated title */}
                 <div className="relative ml-15 pb-3 h-[90px] overflow-hidden">
-                    {(["Unit", "Standee Static", "Work Center", "Overs", "Supplier"] as const).map((label, idx) => (
+                    {(["Unit", "Standee Static", "Overs", "Supplier"] as const).map((label, idx) => (
                         <div key={idx} className={`absolute inset-0 ${currentModule === idx ? "data-collector-title-active" : "data-collector-title-inactive"}`}>
                             <div className="text-[3em] font-instrument">Update <span className="italic text-[#FFB604]">{label}</span> Costs</div>
                             <p className="text-xs">Modify Live Data for {label} Cost Records</p>
@@ -618,87 +536,8 @@ export default function DataCollector() {
                         </div>
                     </>)}
 
-                    {/* ── MODULE 2: Work Center Costs ── */}
+                    {/* ── MODULE 2: Overs ── */}
                     {currentModule === 2 && (<>
-                        {/* Section 01 */}
-                        <div className="flex flex-col justify-center items-start w-full p-5 border-b-2 border-[#EDEAEA]">
-                            <div className="text-[10px] m-2">01 — RECORD SELECTION</div>
-                            {isLoadingWc ? (
-                                <div className="text-xs m-2">Loading records...</div>
-                            ) : (
-                                <Dropdown options={wcRecords.map((r) => r.activity)} currOption={wcSelected} onSelect={handleWcSelect} width="w-[420px]" />
-                            )}
-                        </div>
-
-                        {/* Section 02 */}
-                        <div className="flex flex-col justify-evenly items-start w-full p-5 border-b-2 border-[#EDEAEA]">
-                            <div className="text-[10px] m-2">02 — CURRENT VALUES</div>
-                            {selectedWcRecord ? (
-                                <div className="w-full flex flex-row gap-3">
-                                    <div className="flex flex-col justify-center items-start p-4 border-2 flex-[2] h-[100px] bg-[#FFF3C2] border-[#FFB604] rounded-md">
-                                        <div className="text-xs">COST</div>
-                                        <div className="text-[#FFB604] text-[2.4em] font-instrument">${selectedWcRecord.cost.toFixed(2)}</div>
-                                    </div>
-                                    <div className="flex flex-col justify-center items-start p-4 border-2 flex-1 h-[100px] border-[#EDEAEA] rounded-md">
-                                        <div className="text-xs">UOM</div>
-                                        <div className="text-[1.2em] font-instrument">{selectedWcRecord.uom}</div>
-                                    </div>
-                                    <div className="flex flex-col justify-center items-start p-4 border-2 flex-1 h-[100px] border-[#EDEAEA] rounded-md">
-                                        <div className="text-xs">SPEED</div>
-                                        <div className="text-[1.2em] font-instrument">{selectedWcRecord.speed}</div>
-                                    </div>
-                                    <div className="flex flex-col justify-center items-start p-4 border-2 flex-1 h-[100px] border-[#EDEAEA] rounded-md">
-                                        <div className="text-xs">UNIT</div>
-                                        <div className="text-[1.2em] font-instrument">{selectedWcRecord.unit}</div>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="text-xs m-2">Select a record above to view current values.</div>
-                            )}
-                        </div>
-
-                        {/* Section 03 */}
-                        <div className="flex flex-col items-start w-full flex-1 p-5">
-                            <div className="text-[10px] m-2">03 — UPDATE VALUES</div>
-                            {wcEdits ? (
-                                <div className="flex flex-row gap-4 items-start w-full flex-wrap">
-                                    <div className="flex-1 min-w-[110px]">
-                                        <div className="text-xs font-bold m-2 flex items-center gap-2">
-                                            Cost ($)
-                                            {wcEdits.cost !== selectedWcRecord?.cost && <span className="text-[9px] text-[#FFB604] font-bold tracking-wider">CHANGED</span>}
-                                        </div>
-                                        <input type="number" min={0} step={1} value={wcEdits.cost} onChange={(e) => handleWcEdit("cost", e.target.value)} className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors" />
-                                    </div>
-                                    <div className="flex-1 min-w-[110px]">
-                                        <div className="text-xs font-bold m-2 flex items-center gap-2">
-                                            UOM
-                                            {wcEdits.uom !== selectedWcRecord?.uom && <span className="text-[9px] text-[#FFB604] font-bold tracking-wider">CHANGED</span>}
-                                        </div>
-                                        <input type="text" value={wcEdits.uom} onChange={(e) => handleWcEdit("uom", e.target.value)} className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors" />
-                                    </div>
-                                    <div className="flex-1 min-w-[110px]">
-                                        <div className="text-xs font-bold m-2 flex items-center gap-2">
-                                            Speed
-                                            {wcEdits.speed !== selectedWcRecord?.speed && <span className="text-[9px] text-[#FFB604] font-bold tracking-wider">CHANGED</span>}
-                                        </div>
-                                        <input type="text" value={wcEdits.speed} onChange={(e) => handleWcEdit("speed", e.target.value)} className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors" />
-                                    </div>
-                                    <div className="flex-1 min-w-[110px]">
-                                        <div className="text-xs font-bold m-2 flex items-center gap-2">
-                                            Unit
-                                            {wcEdits.unit !== selectedWcRecord?.unit && <span className="text-[9px] text-[#FFB604] font-bold tracking-wider">CHANGED</span>}
-                                        </div>
-                                        <input type="text" value={wcEdits.unit} onChange={(e) => handleWcEdit("unit", e.target.value)} className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors" />
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="text-xs m-2">Select a record above to edit values.</div>
-                            )}
-                        </div>
-                    </>)}
-
-                    {/* ── MODULE 3: Overs ── */}
-                    {currentModule === 3 && (<>
                         {/* Section 01 */}
                         <div className="flex flex-col justify-center items-start w-full p-5 border-b-2 border-[#EDEAEA]">
                             <div className="text-[10px] m-2">01 — QUANTITY TIERS</div>
@@ -790,8 +629,8 @@ export default function DataCollector() {
                         </div>
                     </>)}
 
-                    {/* ── MODULE 4: Suppliers ── */}
-                    {currentModule === 4 && (<>
+                    {/* ── MODULE 3: Suppliers ── */}
+                    {currentModule === 3 && (<>
                         {/* Section 01 — supplier + material selection */}
                         <div className="flex flex-col justify-center items-start w-full p-5 border-b-2 border-[#EDEAEA]">
                             <div className="text-[10px] m-2">01 — SUPPLIER & MATERIAL</div>
