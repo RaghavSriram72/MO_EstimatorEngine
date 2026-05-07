@@ -7,7 +7,24 @@ const SUPPLIER_DISPLAY: Record<string, string> = {
     pq: "Pacific Quality",
     fosters: "Foster",
 };
+
+const UNIT_COST_DISPLAY: Record<string, string> = {
+    comp: "Comp",
+    die: "Die",
+    freight: "Freight", 
+    imposition: "Imposition",
+    instruction_sheet: "Instruction Sheet",
+    machine: "Machine",
+    pallet: "Pallet",
+    shipping: "Shipping",
+    standee_material: "Standee Material",
+
+
+};
+
+
 const supplierLabel = (raw: string) => SUPPLIER_DISPLAY[raw] ?? raw;
+const unitTypeLabel = (raw: string) => UNIT_COST_DISPLAY[raw] ?? raw;
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type UnitCostRecord = {
@@ -437,7 +454,15 @@ export default function DataCollector() {
                                 <div className="flex flex-row gap-4 w-full">
                                     <div className="flex flex-col gap-1 flex-1">
                                         <div className="text-[10px] ml-1">Type</div>
-                                        <Dropdown options={unitTypes} currOption={selectedUnitType} onSelect={handleUnitTypeSelect} width="w-full" />
+                                        <Dropdown
+                                            options={unitTypes.map(unitTypeLabel)}
+                                            currOption={unitTypeLabel(selectedUnitType)}
+                                            onSelect={(label: string) => {
+                                                const raw = unitTypes.find((t) => unitTypeLabel(t) === label) ?? label;
+                                                handleUnitTypeSelect(raw);
+                                            }}
+                                            width="w-full"
+                                        />
                                     </div>
                                     <div className="flex flex-col gap-1 flex-[2]">
                                         <div className="text-[10px] ml-1">Record</div>

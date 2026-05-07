@@ -4,6 +4,12 @@ export default function Dropdown({ options, currOption, onSelect, width = "w-[20
     const [isOpen, setIsOpen] = React.useState(false);
     const [search, setSearch] = React.useState("");
 
+    React.useEffect(() => {
+        if (!currOption && options.length > 0) {
+            onSelect(options[0]);
+        }
+    }, [options]);
+
     const filtered = options.filter((o: any) =>
         String(o).toLowerCase().includes(search.toLowerCase())
     );
