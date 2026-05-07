@@ -56,7 +56,7 @@ const SCENARIO_LINE_DEFS: Record<string, LineDef> = {
     print_form_cost:        { label: "Print Form Material",  unit: "forms"    },
     print_cost:             { label: "Rho Print",            unit: "flat"     },
     rollx_cost:             { label: "Roll-X",               unit: "flat"     },
-    zund_cut_cost:          { label: "Zund Cut Labor",       unit: "hrs"      },
+    zund_cut_cost:          { label: "Zund Cutting",          unit: "hrs"      },
     die_cost:               { label: "Die Cost",             unit: "dies"     },
     pallet_material_cost:   { label: "Pallets",              unit: "pallets"  },
     pallet_labor_cost:      { label: "Pallet Labor",         unit: "pallets"  },
@@ -271,30 +271,11 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
         }));
     }
 
-    function syncStandeesQty(qty: number, lines: CostLine[]): CostLine[] {
-        return lines.map((l) => (l.unit === "standees" ? { ...l, qty } : l));
-    }
-
     function handleStandeesChange(value: number) {
-        setPerScenario((prev) => ({
-            ...prev,
-            [activeScenario]: {
-                ...prev[activeScenario],
-                params: { ...prev[activeScenario].params, numStandees: value },
-                universalLines: syncStandeesQty(value, prev[activeScenario].universalLines),
-            },
-        }));
-        setScenarioLines((prev) => ({
-            ...prev,
-            [activeScenario]: syncStandeesQty(value, prev[activeScenario]),
-        }));
+        patchParams({ numStandees: value });
     }
 
     function updateUniversal(key: string, field: "qty" | "unitCost", value: number) {
-        if (field === "qty") {
-            const line = perScenario[activeScenario].universalLines.find((l) => l.key === key);
-            if (line?.unit === "standees") { handleStandeesChange(value); return; }
-        }
         setPerScenario((prev) => ({
             ...prev,
             [activeScenario]: {
@@ -307,10 +288,6 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
     }
 
     function updateScenario(key: string, field: "qty" | "unitCost", value: number) {
-        if (field === "qty") {
-            const line = scenarioLines[activeScenario].find((l) => l.key === key);
-            if (line?.unit === "standees") { handleStandeesChange(value); return; }
-        }
         setScenarioLines((prev) => ({
             ...prev,
             [activeScenario]: prev[activeScenario].map((l) => (l.key === key ? { ...l, [field]: value } : l)),
@@ -435,7 +412,7 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
                             value={numStandees}
                             onChange={(e) => handleStandeesChange(parseInt(e.target.value) || 0)}
                             disabled={isRecalculating}
-                            className="border-2 border-[#E0E0E0] rounded-sm px-3 py-1.5 text-sm font-black text-[#000005] outline-none bg-[#F8F8F8] focus:border-[#FFC843] w-[140px] text-right transition-colors disabled:opacity-50"
+                            className={`border-2 border-[#E0E0E0] rounded-sm px-3 py-1.5 text-sm font-black text-[#000005] outline-none focus:border-[#FFC843] w-[140px] text-right transition-colors disabled:opacity-50 ${numStandees !== baseline.numStandees ? "bg-[#FFC843]/20" : "bg-[#F8F8F8]"}`}
                         />
                     </div>
                     <div className="h-10 w-px bg-[#E0E0E0]" />
@@ -448,7 +425,7 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
                             value={printFormsPerStandee}
                             onChange={(e) => patchParams({ printFormsPerStandee: Math.max(1, parseInt(e.target.value) || 1) })}
                             disabled={isRecalculating}
-                            className="border-2 border-[#E0E0E0] rounded-sm px-3 py-1.5 text-sm font-black text-[#000005] outline-none bg-[#F8F8F8] focus:border-[#FFC843] w-[100px] text-right transition-colors disabled:opacity-50"
+                            className={`border-2 border-[#E0E0E0] rounded-sm px-3 py-1.5 text-sm font-black text-[#000005] outline-none focus:border-[#FFC843] w-[100px] text-right transition-colors disabled:opacity-50 ${printFormsPerStandee !== baseline.printFormsPerStandee ? "bg-[#FFC843]/20" : "bg-[#F8F8F8]"}`}
                         />
                     </div>
                     <div className="flex flex-col gap-1">
@@ -460,7 +437,7 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
                             value={structureFormsPerStandee}
                             onChange={(e) => patchParams({ structureFormsPerStandee: Math.max(0, parseInt(e.target.value) || 0) })}
                             disabled={isRecalculating}
-                            className="border-2 border-[#E0E0E0] rounded-sm px-3 py-1.5 text-sm font-black text-[#000005] outline-none bg-[#F8F8F8] focus:border-[#FFC843] w-[100px] text-right transition-colors disabled:opacity-50"
+                            className={`border-2 border-[#E0E0E0] rounded-sm px-3 py-1.5 text-sm font-black text-[#000005] outline-none focus:border-[#FFC843] w-[100px] text-right transition-colors disabled:opacity-50 ${structureFormsPerStandee !== baseline.structureFormsPerStandee ? "bg-[#FFC843]/20" : "bg-[#F8F8F8]"}`}
                         />
                     </div>
                     <div className="flex flex-col gap-1">
@@ -478,7 +455,7 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
                             value={overs}
                             onChange={(e) => patchParams({ overs: Math.max(0, parseInt(e.target.value) || 0) })}
                             disabled={isRecalculating}
-                            className="border-2 border-[#E0E0E0] rounded-sm px-3 py-1.5 text-sm font-black text-[#000005] outline-none bg-[#F8F8F8] focus:border-[#FFC843] w-[100px] text-right transition-colors disabled:opacity-50"
+                            className={`border-2 border-[#E0E0E0] rounded-sm px-3 py-1.5 text-sm font-black text-[#000005] outline-none focus:border-[#FFC843] w-[100px] text-right transition-colors disabled:opacity-50 ${overs !== baseline.overs ? "bg-[#FFC843]/20" : "bg-[#F8F8F8]"}`}
                         />
                     </div>
                     <div className="h-10 w-px bg-[#E0E0E0]" />
