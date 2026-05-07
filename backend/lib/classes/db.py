@@ -117,7 +117,7 @@ class MidnightOilDB:
         return result.matched_count > 0
 
     def delete_persisted_project(self, project_id: str, owner: str) -> bool:
-        """Delete a project document if it exists and belongs to ``owner``."""
+        """Delete project entry if it exists and belongs to the owner asking to delete it"""
         try:
             oid = ObjectId(project_id)
         except (InvalidId, TypeError):
@@ -125,7 +125,7 @@ class MidnightOilDB:
         result = self.projects_collection.delete_one({"_id": oid, "owner": owner})
         if result.deleted_count > 0:
             self._load_cache()
-        return result.deleted_count > 0
+            return True
         else:
             return False
 
