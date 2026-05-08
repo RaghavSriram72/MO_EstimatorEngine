@@ -4,11 +4,13 @@ echo   MO EstimatorEngine - Startup
 echo ========================================
 echo.
 
+set "REPO=%~dp0MO_EstimatorEngine"
+
 echo Starting backend (uvicorn)...
-start cmd /k "cd /d "%~dp0backend" && uv run uvicorn main:app --reload"
+start "MO Backend" cmd /k "cd /d "%REPO%\backend" && uv run uvicorn main:app --reload"
 
 echo Starting frontend (Next.js)...
-start cmd /k "cd /d "%~dp0frontend" && npm run dev"
+start "MO Frontend" cmd /k "cd /d "%REPO%\frontend" && npm run dev"
 
 echo.
 echo Both servers are launching in separate windows.

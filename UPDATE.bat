@@ -4,7 +4,10 @@ echo   MO EstimatorEngine - Update
 echo ========================================
 echo.
 
+set "REPO=%~dp0MO_EstimatorEngine"
+
 echo [1/3] Pulling latest code from main...
+cd /d "%REPO%"
 git pull origin main
 if %ERRORLEVEL% neq 0 (
     echo ERROR: Git pull failed. Check your connection and credentials.
@@ -14,15 +17,13 @@ if %ERRORLEVEL% neq 0 (
 
 echo.
 echo [2/3] Syncing Python backend dependencies...
-cd backend
+cd /d "%REPO%\backend"
 uv sync
-cd ..
 
 echo.
 echo [3/3] Syncing frontend dependencies...
-cd frontend
+cd /d "%REPO%\frontend"
 npm install
-cd ..
 
 echo.
 echo ========================================
