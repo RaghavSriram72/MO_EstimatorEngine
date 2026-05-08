@@ -117,7 +117,7 @@ class MidnightOilDB:
         return result.matched_count > 0
 
     def delete_persisted_project(self, project_id: str, owner: str) -> bool:
-        """Delete project entry if it exists and belongs to the owner asking to delete it"""
+        """Delete project entry if it exists and belongs to the owner asking to delete it."""
         try:
             oid = ObjectId(project_id)
         except (InvalidId, TypeError):

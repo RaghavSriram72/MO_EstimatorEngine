@@ -92,8 +92,8 @@ class Project:
         return self.total_universal_cost
 
     # Helpers
-    def _print_form_cost(self, db, print_material_name: str) -> float:
-        print_form_material = db.get_unit_cost_entry(print_material_name)
+    def _print_form_cost(self, print_material_name: str) -> float:
+        print_form_material = self.db.get_unit_cost_entry(print_material_name)
         print_form_unit = print_form_material["unit"]  # linear_foot
         linear_inches = 0
         if print_form_unit != "linear_foot":
@@ -110,7 +110,7 @@ class Project:
         # ! do we need hi-tack if theyre doing mounting??
         # add hi-tack if not busmark
         else:
-            hi_tack_material = db.get_unit_cost_entry(DB_LABELS["roll_hi_tack"])
+            hi_tack_material = self.db.get_unit_cost_entry(DB_LABELS["roll_hi_tack"])
             hi_tack_unit = hi_tack_material["unit"]
             hi_tack_cost = hi_tack_material["cost"] * UNIT_MAP[hi_tack_unit] * linear_inches
             print_form_cost = print_form_material["cost"] * UNIT_MAP[print_form_unit] * linear_inches
@@ -123,8 +123,8 @@ class Project:
     def _setup_time(self, unit_cost_entry: dict, forms: int) -> float:
         return unit_cost_entry["setup_time"] * forms
 
-    def _machine_time(self, db, machine_name: str, linear_inches: float) -> float:
-        machine_entry = db.get_unit_cost_entry(machine_name)
+    def _machine_time(self, machine_name: str, linear_inches: float) -> float:
+        machine_entry = self.db.get_unit_cost_entry(machine_name)
         throughput: int = machine_entry["throughput"]
         throughput_unit: str = machine_entry["throughput_unit"]
         machine_time: float = linear_inches / (throughput / UNIT_MAP[throughput_unit]) + self._setup_time(
@@ -132,17 +132,17 @@ class Project:
         )
         return machine_time
 
-    def _machine_cost(self, db, machine_name: str, machine_hours: float) -> float:
-        machine_entry = db.get_unit_cost_entry(machine_name)
+    def _machine_cost(self, machine_name: str, machine_hours: float) -> float:
+        machine_entry = self.db.get_unit_cost_entry(machine_name)
         machine_cost = machine_entry["cost"] * UNIT_MAP[machine_entry["unit"]] * machine_hours
         return machine_cost
 
-    def _zund_hours(self, db) -> float:
+    def _zund_hours(self) -> float:
         # combination of linear inches and provided minute estimates
         zund_linear_inches = sum(form.get_linear_inches() for form in self.print_forms)
-        print_zund_hours = self._machine_time(db, DB_LABELS["zund_cutter"], zund_linear_inches)
+        print_zund_hours = self._machine_time(DB_LABELS["zund_cutter"], zund_linear_inches)
         structure_zund_hours = (
-            db.get_standee_data(self.standee_key, "zund_blank_form_minutes")
+            self.db.get_standee_data(self.standee_key, "zund_blank_form_minutes")
             * self.structure_forms_per_standee
             * self.num_standees
         ) / 60
@@ -150,32 +150,35 @@ class Project:
         return (
             print_zund_hours
             + structure_zund_hours
-            + self._setup_time(db.get_unit_cost_entry(DB_LABELS["zund_cutter"]), self.blank_forms_per_standee)
+            + self._setup_time(self.db.get_unit_cost_entry(DB_LABELS["zund_cutter"]), self.blank_forms_per_standee)
         )
 
-    def _shipping_box_and_label_cost(self, db) -> tuple[float, float]:
-        shipping_box_cost = db.get_unit_cost(DB_LABELS["shipping_box"]) * self.num_standees
-        desc_label_cost = db.get_unit_cost(DB_LABELS["desc_label"])
-        shipping_label_cost = db.get_unit_cost(DB_LABELS["shipping_label"])
+    def _shipping_box_and_label_cost(self) -> tuple[float, float]:
+        shipping_box_cost = self.db.get_unit_cost(DB_LABELS["shipping_box"]) * self.num_standees
+        desc_label_cost = self.db.get_unit_cost(DB_LABELS["desc_label"])
+        shipping_label_cost = self.db.get_unit_cost(DB_LABELS["shipping_label"])
         label_cost = (2 * desc_label_cost + shipping_label_cost) * self.num_standees
         return shipping_box_cost, label_cost
 
-    def _instruction_sheet_cost(self, db) -> float:
+    def _instruction_sheet_cost(self) -> float:
         instruction_sheet_cost = (
-            db.get_standee_data(self.standee_key, "instruction_sheet_total_cost") * self.num_standees
+            self.db.get_standee_data(self.standee_key, "instruction_sheet_total_cost") * self.num_standees
         )
         return instruction_sheet_cost
 
-    def _die_cost(self, db) -> float:
-        die_unit_cost = db.get_unit_cost(DB_LABELS["die_cost"])
+    def _die_cost(self) -> float:
+        die_unit_cost = self.db.get_unit_cost(DB_LABELS["die_cost"])
         die_complexity_map = {
-            complexity: db.get_standee_data(term, "cutting_die_inches_multiplier")
+            complexity: self.db.get_standee_data(term, "cutting_die_inches_multiplier")
             for complexity, term in STANDEE_MAP.items()
         }
         return sum(form.get_die_cost(die_complexity_map, die_unit_cost) for form in self.print_forms)
 
-    def _get_supplier_cost(self, db, supplier: str, material: str, num_forms: int) -> float:
-        supplier_data = db.get_supplier_values(supplier, material)
+    def _kitting_and_assembly_cost(self) -> float:
+        return self.db.get_standee_data(self.standee_key, "kitting_and_assembly") * self.num_standees
+
+    def _get_supplier_cost(self, supplier: str, material: str, num_forms: int) -> float:
+        supplier_data = self.db.get_supplier_values(supplier, material)
         amounts = supplier_data["amounts"]
         costs = supplier_data["costs"]
         a_guess = max(costs)
