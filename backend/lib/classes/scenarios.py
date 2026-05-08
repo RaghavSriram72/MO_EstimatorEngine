@@ -279,6 +279,7 @@ class Scenario4(Project):
         # print form cost calculation
         self.print_form_cost = self._print_form_cost(db, SHEET_95)
         print_linear_inches = self._get_print_form_linear_inches()
+        
         self.print_hours = print_hours or self._machine_time(db, RHO_1312, print_linear_inches)
         self.print_cost = self._machine_cost(db, RHO_1312, self.print_hours)
 
@@ -355,7 +356,6 @@ class Scenario5(Project):
         )
 
         # print form cost calculation
-        self.overs = db.get_overs(self.num_standees)
         self.print_form_cost = self._get_supplier_cost(
             db,
             FOSTERS,
