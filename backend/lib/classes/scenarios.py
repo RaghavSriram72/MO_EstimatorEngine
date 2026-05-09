@@ -60,7 +60,7 @@ class Scenario1(Project):
         )
         db = self.db
         # print form cost calculation
-        self.corrugate_cost = db.get_unit_cost(CORRUGATE) * self.blank_forms_per_standee * self.num_standees
+        self.corrugate_cost = self._get_corrugate_cost()
 
         self.print_form_cost = self._print_form_cost(ROLL_BUSMARK)
         print_linear_inches = self._get_print_form_linear_inches()
@@ -196,8 +196,7 @@ class Scenario3(Project):
             blank_comp_count=blank_comp_count,
             color_comp_count=color_comp_count,
         )
-        db = self.db
-        self.corrugate_cost = db.get_unit_cost(CORRUGATE) * self.blank_forms_per_standee * self.num_standees
+        self.corrugate_cost = self._get_corrugate_cost()
 
         # print form cost calculation
         self.print_form_cost = self._print_form_cost(ROLL_BUSMARK)
@@ -219,11 +218,11 @@ class Scenario3(Project):
 
         # pallet cost calculation
         self.pallet_count = pallet_count or self.print_forms_per_standee
-        self.pallet_material_cost = db.get_unit_cost(PALLET) * self.pallet_count
-        self.pallet_labor_cost = db.get_unit_cost(PALLET_LABOR) * self.pallet_count
+        self.pallet_material_cost = self.db.get_unit_cost(PALLET) * self.pallet_count
+        self.pallet_labor_cost = self.db.get_unit_cost(PALLET_LABOR) * self.pallet_count
         self.pallet_cost = self.pallet_material_cost + self.pallet_labor_cost
         # freight cost calculation
-        self.freight_cost = freight_cost or db.get_unit_cost(EXTERNAL_ASSEMBLY)
+        self.freight_cost = freight_cost or self.db.get_unit_cost(EXTERNAL_ASSEMBLY)
         return self.total_cost
 
     @property
@@ -275,7 +274,6 @@ class Scenario4(Project):
             blank_comp_count=blank_comp_count,
             color_comp_count=color_comp_count,
         )
-        db = self.db
         # corrugate cost calculation
         self.corrugate_supplier = corrugate_supplier
         self.corrugate_material = corrugate_material
@@ -298,11 +296,11 @@ class Scenario4(Project):
 
         # pallet cost calculation
         self.pallet_count = pallet_count or self.blank_forms_per_standee
-        self.pallet_material_cost = db.get_unit_cost(PALLET) * self.pallet_count
-        self.pallet_labor_cost = db.get_unit_cost(PALLET_LABOR) * self.pallet_count
+        self.pallet_material_cost = self.db.get_unit_cost(PALLET) * self.pallet_count
+        self.pallet_labor_cost = self.db.get_unit_cost(PALLET_LABOR) * self.pallet_count
         self.pallet_cost = self.pallet_material_cost + self.pallet_labor_cost
         # freight cost calculation
-        self.freight_cost = freight_cost or db.get_unit_cost(EXTERNAL_MOUNT_ASSEMBLY)
+        self.freight_cost = freight_cost or self.db.get_unit_cost(EXTERNAL_MOUNT_ASSEMBLY)
 
         # die cost calculation
         self.die_cost = die_cost or self._die_cost()
@@ -355,7 +353,6 @@ class Scenario5(Project):
             blank_comp_count=blank_comp_count,
             color_comp_count=color_comp_count,
         )
-        db = self.db
         # corrugate cost calculation
         self.corrugate_supplier = corrugate_supplier
         self.corrugate_material = corrugate_material
@@ -375,7 +372,7 @@ class Scenario5(Project):
         self.instruction_sheet_cost = self._instruction_sheet_cost()
 
         # freight cost calculation
-        self.freight_cost = freight_cost or db.get_unit_cost(FULL_OUT_SOURCE)
+        self.freight_cost = freight_cost or self.db.get_unit_cost(FULL_OUT_SOURCE)
 
         # die cost calculation
         self.die_cost = die_cost or self._die_cost()
