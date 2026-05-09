@@ -74,9 +74,7 @@ class Project[T: BaseInput]:
 
         # misc costs and project vars
         self.overs = input.num_overs or db.get_overs(self.num_standees)
-        self.print_form_total = (
-            self.print_forms_per_standee * self.num_standees + self.overs * self.print_forms_per_standee
-        )
+        self.print_form_total = self._get_num_print_forms()
         self.engineering_design_cost = db.get_standee_data(self.standee_key, "engineering_design_cost_per_project")
         self.blank_comp_count = input.blank_comp_count or 1
         self.blank_comp_cost = db.get_unit_cost(DB_LABELS["blank_comp"]) * self.blank_comp_count
@@ -186,3 +184,10 @@ class Project[T: BaseInput]:
         return (self.print_forms_per_standee + self.structure_forms_per_standee) * self.num_standees + (
             self.print_forms_per_standee * self.overs
         )
+
+    def _get_corrugate_cost(self) -> float:
+        corrugate_cost = self.db.get_unit_cost(DB_LABELS["corrugate_form"])
+        return self._get_num_corrugate_forms() * corrugate_cost
+    
+    def _get_num_print_forms(self) -> int:
+        return self.print_forms_per_standee * self.num_standees + self.overs * self.print_forms_per_standee
