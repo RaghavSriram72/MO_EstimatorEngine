@@ -1,6 +1,14 @@
-from typing import override
+from typing import TypeVar, override
 
 from lib.classes import Project
+from lib.classes.cost_inputs import (
+    BaseInput,
+    Scenario1Input,
+    Scenario2Input,
+    Scenario3Input,
+    Scenario4Input,
+    Scenario5Input,
+)
 
 DIE_COST = "die_cost"
 BLANK_COMP = "blank_comp"
@@ -29,46 +37,27 @@ FOSTERS_PRINT_FORM = "fosters_print_form"
 FOSTERS = "fosters"
 PQ = "pq"
 
+T = TypeVar("T", bound=BaseInput)
 
-class Scenario1(Project):
+
+class Scenario1[T: Scenario1Input](Project[T]):
     """Scenario 1: Internal Print, Internal Finishing, Packed out."""
 
     @override
-    def calculate_cost(
-        self,
-        *,
-        num_standees: int = 0,
-        print_forms_per_standee: int = 0,
-        structure_forms_per_standee: int = 0,
-        num_overs: int = 0,
-        imposition_hours: float = 0,
-        blank_comp_count: float = 1,
-        color_comp_count: float = 1,
-        zund_hours: float = 0,
-        print_hours: float = 0,
-        rollx_hours: float = 0,
-        **kwargs,
-    ) -> float:
-        super()._calculate_universal_costs(
-            num_standees=num_standees,
-            print_forms_per_standee=print_forms_per_standee,
-            structure_forms_per_standee=structure_forms_per_standee,
-            num_overs=num_overs,
-            imposition_hours=imposition_hours,
-            blank_comp_count=blank_comp_count,
-            color_comp_count=color_comp_count,
-        )
+    def calculate_cost(self, input: Scenario1Input, **kwargs) -> float:
+        super()._calculate_universal_costs(input)
         db = self.db
         # print form cost calculation
         self.corrugate_cost = db.get_unit_cost(CORRUGATE) * self.blank_forms_per_standee * self.num_standees
 
         self.print_form_cost = self._print_form_cost(ROLL_BUSMARK)
         print_linear_inches = self._get_print_form_linear_inches()
-        self.print_hours = print_hours or self._machine_time(RHO_512R, print_linear_inches)
+        self.print_hours = input.print_hours or self._machine_time(RHO_512R, print_linear_inches)
         self.print_cost = self._machine_cost(RHO_512R, self.print_hours)
-        self.rollx_hours = rollx_hours or self._machine_time(ROLLX, print_linear_inches)
+        self.rollx_hours = input.rollx_hours or self._machine_time(ROLLX, print_linear_inches)
         self.rollx_cost = self._machine_cost(ROLLX, self.rollx_hours)
-        self.zund_hours = zund_hours or self._zund_hours()
+        # linear inches for zund is linear inches for all print forms plus one blank form per print form per standee
+        self.zund_hours = input.zund_hours or self._zund_hours()
         self.zund_cut_cost = self._machine_cost(ZUND_CUTTER, self.zund_hours)
 
         # shipping box and label cost calculation
@@ -99,47 +88,25 @@ class Scenario1(Project):
         )
 
 
-class Scenario2(Project):
+class Scenario2[T: Scenario2Input](Project[T]):
     """Scenario 2: Internal Print, Internal Finishing, Assembled."""
 
     @override
-    def calculate_cost(
-        self,
-        *,
-        num_standees: int = 0,
-        print_forms_per_standee: int = 0,
-        structure_forms_per_standee: int = 0,
-        num_overs: int = 0,
-        imposition_hours: float = 0,
-        blank_comp_count: float = 1,
-        color_comp_count: float = 1,
-        zund_hours: float = 0,
-        print_hours: float = 0,
-        rollx_hours: float = 0,
-        **kwargs,
-    ) -> float:
-        super()._calculate_universal_costs(
-            num_standees=num_standees,
-            print_forms_per_standee=print_forms_per_standee,
-            structure_forms_per_standee=structure_forms_per_standee,
-            num_overs=num_overs,
-            imposition_hours=imposition_hours,
-            blank_comp_count=blank_comp_count,
-            color_comp_count=color_comp_count,
-        )
+    def calculate_cost(self, input: T, **kwargs) -> float:
+        super()._calculate_universal_costs(input)
         db = self.db
         self.corrugate_cost = db.get_unit_cost(CORRUGATE) * self.blank_forms_per_standee * self.num_standees
 
         # print form cost calculation
         self.print_form_cost = self._print_form_cost(ROLL_BUSMARK)
         print_linear_inches = self._get_print_form_linear_inches()
-        self.print_hours = print_hours or self._machine_time(RHO_512R, print_linear_inches)
+        self.print_hours = input.print_hours or self._machine_time(RHO_512R, print_linear_inches)
         self.print_cost = self._machine_cost(RHO_512R, self.print_hours)
-        self.rollx_hours = rollx_hours or self._machine_time(ROLLX, print_linear_inches)
+        self.rollx_hours = input.rollx_hours or self._machine_time(ROLLX, print_linear_inches)
         self.rollx_cost = self._machine_cost(ROLLX, self.rollx_hours)
 
         # zund cost calculation
-        self.zund_hours = zund_hours or self._zund_hours()
+        self.zund_hours = input.zund_hours or self._zund_hours()
         self.zund_cut_cost = self._machine_cost(ZUND_CUTTER, self.zund_hours)
 
         # shipping box and label cost calculation
@@ -166,49 +133,29 @@ class Scenario2(Project):
         )
 
 
-class Scenario3(Project):
+class Scenario3[T: Scenario3Input](Project[T]):
     """Scenario 3: Internal Print, Internal Finishing, External Assembly."""
 
     @override
     def calculate_cost(
         self,
-        *,
-        num_standees: int = 0,
-        print_forms_per_standee: int = 0,
-        structure_forms_per_standee: int = 0,
-        num_overs: int = 0,
-        imposition_hours: float = 0,
-        blank_comp_count: float = 1,
-        color_comp_count: float = 1,
-        print_hours: float = 0,
-        rollx_hours: float = 0,
-        zund_hours: float = 0,
-        pallet_count: int = 0,
-        freight_cost: float = 0,
+        input: T,
         **kwargs,
     ) -> float:
-        super()._calculate_universal_costs(
-            num_standees=num_standees,
-            print_forms_per_standee=print_forms_per_standee,
-            structure_forms_per_standee=structure_forms_per_standee,
-            num_overs=num_overs,
-            imposition_hours=imposition_hours,
-            blank_comp_count=blank_comp_count,
-            color_comp_count=color_comp_count,
-        )
+        super()._calculate_universal_costs(input)
         db = self.db
         self.corrugate_cost = db.get_unit_cost(CORRUGATE) * self.blank_forms_per_standee * self.num_standees
 
         # print form cost calculation
         self.print_form_cost = self._print_form_cost(ROLL_BUSMARK)
         print_linear_inches = self._get_print_form_linear_inches()
-        self.print_hours = print_hours or self._machine_time(RHO_512R, print_linear_inches)
+        self.print_hours = input.print_hours or self._machine_time(RHO_512R, print_linear_inches)
         self.print_cost = self._machine_cost(RHO_512R, self.print_hours)
-        self.rollx_hours = rollx_hours or self._machine_time(ROLLX, print_linear_inches)
+        self.rollx_hours = input.rollx_hours or self._machine_time(ROLLX, print_linear_inches)
         self.rollx_cost = self._machine_cost(ROLLX, self.rollx_hours)
 
         # zund cost calculation
-        self.zund_hours = zund_hours or self._zund_hours()
+        self.zund_hours = input.zund_hours or self._zund_hours()
         self.zund_cut_cost = self._machine_cost(ZUND_CUTTER, self.zund_hours)
 
         # shipping box and label cost calculation
@@ -218,12 +165,12 @@ class Scenario3(Project):
         self.instruction_sheet_cost = self._instruction_sheet_cost()
 
         # pallet cost calculation
-        self.pallet_count = pallet_count or self.print_forms_per_standee
+        self.pallet_count = input.pallet_count or self.print_forms_per_standee
         self.pallet_material_cost = db.get_unit_cost(PALLET) * self.pallet_count
         self.pallet_labor_cost = db.get_unit_cost(PALLET_LABOR) * self.pallet_count
         self.pallet_cost = self.pallet_material_cost + self.pallet_labor_cost
         # freight cost calculation
-        self.freight_cost = freight_cost or db.get_unit_cost(EXTERNAL_ASSEMBLY)
+        self.freight_cost = input.freight_cost or db.get_unit_cost(EXTERNAL_ASSEMBLY)
         return self.total_cost
 
     @property
@@ -244,41 +191,16 @@ class Scenario3(Project):
         )
 
 
-class Scenario4(Project):
+class Scenario4[T: Scenario4Input](Project[T]):
     """Scenario 4: Internal Print, External Mount & Die Cut, External Assembly."""
 
     @override
-    def calculate_cost(
-        self,
-        *,
-        num_standees: int = 0,
-        print_forms_per_standee: int = 0,
-        structure_forms_per_standee: int = 0,
-        num_overs: int = 0,
-        imposition_hours: float = 0,
-        blank_comp_count: float = 1,
-        color_comp_count: float = 1,
-        print_hours: float = 0,
-        corrugate_supplier: str = PQ,
-        corrugate_material: str = B_WHITE,
-        pallet_count: int = 0,
-        freight_cost: float = 0,
-        die_cost: float = 0,
-        **kwargs,
-    ) -> float:
-        super()._calculate_universal_costs(
-            num_standees=num_standees,
-            print_forms_per_standee=print_forms_per_standee,
-            structure_forms_per_standee=structure_forms_per_standee,
-            num_overs=num_overs,
-            imposition_hours=imposition_hours,
-            blank_comp_count=blank_comp_count,
-            color_comp_count=color_comp_count,
-        )
+    def calculate_cost(self, input: T, **kwargs) -> float:
+        super()._calculate_universal_costs(input)
         db = self.db
         # corrugate cost calculation
-        self.corrugate_supplier = corrugate_supplier
-        self.corrugate_material = corrugate_material
+        self.corrugate_supplier = input.corrugate_supplier
+        self.corrugate_material = input.corrugate_material
         self.corrugate_cost = self._get_supplier_cost(
             self.corrugate_supplier, self.corrugate_material, self._get_num_corrugate_forms()
         )
@@ -286,8 +208,7 @@ class Scenario4(Project):
         # print form cost calculation
         self.print_form_cost = self._print_form_cost(SHEET_95)
         print_linear_inches = self._get_print_form_linear_inches()
-
-        self.print_hours = print_hours or self._machine_time(RHO_1312, print_linear_inches)
+        self.print_hours = input.print_hours or self._machine_time(RHO_1312, print_linear_inches)
         self.print_cost = self._machine_cost(RHO_1312, self.print_hours)
 
         # shipping box and label cost calculation
@@ -297,15 +218,15 @@ class Scenario4(Project):
         self.instruction_sheet_cost = self._instruction_sheet_cost()
 
         # pallet cost calculation
-        self.pallet_count = pallet_count or self.blank_forms_per_standee
+        self.pallet_count = input.pallet_count or self.blank_forms_per_standee
         self.pallet_material_cost = db.get_unit_cost(PALLET) * self.pallet_count
         self.pallet_labor_cost = db.get_unit_cost(PALLET_LABOR) * self.pallet_count
         self.pallet_cost = self.pallet_material_cost + self.pallet_labor_cost
         # freight cost calculation
-        self.freight_cost = freight_cost or db.get_unit_cost(EXTERNAL_MOUNT_ASSEMBLY)
+        self.freight_cost = input.freight_cost or db.get_unit_cost(EXTERNAL_MOUNT_ASSEMBLY)
 
         # die cost calculation
-        self.die_cost = die_cost or self._die_cost()
+        self.die_cost = input.die_cost or self._die_cost()
 
         return self.total_cost
 
@@ -326,39 +247,16 @@ class Scenario4(Project):
         )
 
 
-class Scenario5(Project):
+class Scenario5[T: Scenario5Input](Project[T]):
     """Scenario 5: External Print, External Finishing, Packed out."""
 
     @override
-    def calculate_cost(
-        self,
-        *,
-        num_standees: int = 0,
-        print_forms_per_standee: int = 0,
-        structure_forms_per_standee: int = 0,
-        num_overs: int = 0,
-        imposition_hours: float = 0,
-        blank_comp_count: float = 1,
-        color_comp_count: float = 1,
-        corrugate_supplier: str = PQ,
-        corrugate_material: str = B_WHITE,
-        freight_cost: float = 0,
-        die_cost: float = 0,
-        **kwargs,
-    ) -> float:
-        super()._calculate_universal_costs(
-            num_standees=num_standees,
-            print_forms_per_standee=print_forms_per_standee,
-            structure_forms_per_standee=structure_forms_per_standee,
-            num_overs=num_overs,
-            imposition_hours=imposition_hours,
-            blank_comp_count=blank_comp_count,
-            color_comp_count=color_comp_count,
-        )
+    def calculate_cost(self, input: T, **kwargs) -> float:
+        super()._calculate_universal_costs(input)
         db = self.db
         # corrugate cost calculation
-        self.corrugate_supplier = corrugate_supplier
-        self.corrugate_material = corrugate_material
+        self.corrugate_supplier = input.corrugate_supplier
+        self.corrugate_material = input.corrugate_material
         self.corrugate_cost = self._get_supplier_cost(
             self.corrugate_supplier, self.corrugate_material, self._get_num_corrugate_forms()
         )
@@ -375,10 +273,10 @@ class Scenario5(Project):
         self.instruction_sheet_cost = self._instruction_sheet_cost()
 
         # freight cost calculation
-        self.freight_cost = freight_cost or db.get_unit_cost(FULL_OUT_SOURCE)
+        self.freight_cost = input.freight_cost or db.get_unit_cost(FULL_OUT_SOURCE)
 
         # die cost calculation
-        self.die_cost = die_cost or self._die_cost()
+        self.die_cost = input.die_cost or self._die_cost()
 
         return self.total_cost
 

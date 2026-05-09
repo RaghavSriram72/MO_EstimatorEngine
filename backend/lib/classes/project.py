@@ -1,9 +1,11 @@
 from dataclasses import dataclass
+from typing import TypeVar
 
 import numpy as np
 from scipy.optimize import curve_fit
 
 from lib.classes import Complexity, Form, MidnightOilDB
+from lib.classes.cost_inputs import BaseInput
 from lib.globals import BUSMARK_PADDING, DB_LABELS, PRINT_FORM_LENGTH, UNIT_MAP
 
 STANDEE_MAP = {
@@ -12,9 +14,11 @@ STANDEE_MAP = {
     Complexity.COMPLEX: "Complex Standee",
 }
 
+T = TypeVar("T", bound=BaseInput)
+
 
 @dataclass
-class Project:
+class Project[T: BaseInput]:
     """Class to represent a overall standee project."""
 
     db: MidnightOilDB
@@ -25,7 +29,6 @@ class Project:
 
     def __post_init__(self):
         self.standee_key = STANDEE_MAP[self.standee_type]
-        self._calculate_universal_costs()
 
     @property
     def total_universal_cost(self) -> float:
@@ -43,7 +46,7 @@ class Project:
         """Calculate the total cost of the project, including both universal and scenario-specific costs."""
         raise NotImplementedError("Subclasses must implement total_cost property")
 
-    def calculate_cost(self, **kwargs) -> float:
+    def calculate_cost(self, input: T, **kwargs) -> float:
         """Calculate the total cost of the project, including both universal and scenario-specific costs."""
         raise NotImplementedError("Subclasses must implement calculate_cost method")
 
@@ -51,27 +54,17 @@ class Project:
         """Return common project/scenario fields as a dictionary."""
         return {k: v for k, v in self.__dict__.items() if not k.startswith("_") and k != "db"}
 
-    def _calculate_universal_costs(
-        self,
-        *,
-        num_standees: int = 0,
-        print_forms_per_standee: int = 0,
-        structure_forms_per_standee: int = 0,
-        num_overs: int = 0,
-        imposition_hours: float = 0,
-        blank_comp_count: float = 1,
-        color_comp_count: float = 1,
-    ) -> float:
-        self.num_standees = num_standees or self.num_standees
+    def _calculate_universal_costs(self, input: BaseInput) -> float:
+        self.num_standees = input.num_standees or self.num_standees
         db = self.db
         # corrugate cost calculation
-        self.print_forms_per_standee = print_forms_per_standee or len(self.print_forms)
-        self.structure_forms_per_standee = structure_forms_per_standee or db.get_structure_forms_per_standee(
+        self.print_forms_per_standee = input.print_forms_per_standee or len(self.print_forms)
+        self.structure_forms_per_standee = input.structure_forms_per_standee or db.get_structure_forms_per_standee(
             self.print_forms_per_standee
         )
         self.blank_forms_per_standee = self.print_forms_per_standee + self.structure_forms_per_standee
         # imposition cost
-        self.imposition_hours = imposition_hours or self.print_forms_per_standee
+        self.imposition_hours = input.imposition_hours or self.print_forms_per_standee
         # imposition_rate = db.get_standee_data(self.standee_key, "imposition_cost_per_hour")
         imposition_rate = db.get_unit_cost(DB_LABELS["imposition_labor"])
         self.imposition_cost = imposition_rate * self.imposition_hours
@@ -80,14 +73,14 @@ class Project:
         self.hardware_cost = db.get_standee_data(self.standee_key, "hardware_cost") * self.num_standees
 
         # misc costs and project vars
-        self.overs = num_overs or db.get_overs(self.num_standees)
+        self.overs = input.num_overs or db.get_overs(self.num_standees)
         self.print_form_total = (
             self.print_forms_per_standee * self.num_standees + self.overs * self.print_forms_per_standee
         )
         self.engineering_design_cost = db.get_standee_data(self.standee_key, "engineering_design_cost_per_project")
-        self.blank_comp_count = blank_comp_count
+        self.blank_comp_count = input.blank_comp_count or 1
         self.blank_comp_cost = db.get_unit_cost(DB_LABELS["blank_comp"]) * self.blank_comp_count
-        self.color_comp_count = color_comp_count
+        self.color_comp_count = input.color_comp_count or 1
         self.color_comp_cost = db.get_unit_cost(DB_LABELS["color_comp"]) * self.color_comp_count
         return self.total_universal_cost
 
