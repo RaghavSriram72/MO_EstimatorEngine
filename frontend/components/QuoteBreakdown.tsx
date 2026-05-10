@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { type QuoteData, type RequestPayload } from "@/pages/Inputter";
+import { API_BASE } from "@/lib/config";
 
 type ScenarioId = 1 | 2 | 3 | 4 | 5;
 
@@ -306,7 +307,7 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
             ...(p.structureFormsPerStandee !== bl.structureFormsPerStandee && { structure_forms_per_standee: p.structureFormsPerStandee }),
             ...(p.overs !== bl.overs && { num_overs: p.overs }),
         };
-        fetch("http://localhost:8000/generate_quote", {
+        fetch(`${API_BASE}/generate_quote`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
