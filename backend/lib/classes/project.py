@@ -186,7 +186,7 @@ class Project[T: BaseInput]:
         )
 
     def _get_corrugate_cost(self) -> float:
-        corrugate_cost = self.db.get_unit_cost(DB_LABELS["corrugate_form"])
+        corrugate_cost = self.db.get_unit_cost(DB_LABELS["corrugate"])
         return self._get_num_corrugate_forms() * corrugate_cost
     
     def _get_num_print_forms(self) -> int:

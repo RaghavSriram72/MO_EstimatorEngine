@@ -1,14 +1,14 @@
 from typing import TypeVar, override
 
-from lib.classes import Project
-from lib.classes.cost_inputs import (
-    BaseInput,
+from lib.classes import (
+    Project,
     Scenario1Input,
     Scenario2Input,
     Scenario3Input,
     Scenario4Input,
     Scenario5Input,
 )
+from lib.classes.cost_inputs import BaseInput
 
 DIE_COST = "die_cost"
 BLANK_COMP = "blank_comp"

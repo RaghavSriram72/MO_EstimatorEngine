@@ -1,3 +1,4 @@
+from lib.classes.cost_inputs import Scenario1Input, Scenario2Input, Scenario3Input, Scenario4Input, Scenario5Input
 from lib.classes.db import MidnightOilDB
 from lib.classes.form import Complexity, Element, Form
 from lib.classes.project import Project
@@ -14,4 +15,9 @@ __all__ = [
     "Scenario3",
     "Scenario4",
     "Scenario5",
+    "Scenario1Input",
+    "Scenario2Input",
+    "Scenario3Input",
+    "Scenario4Input",
+    "Scenario5Input",
 ]

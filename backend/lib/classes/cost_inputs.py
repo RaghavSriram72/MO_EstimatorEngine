@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
-from lib.classes.scenarios import B_WHITE, PQ
+B_WHITE = "b_white_1_s"
+PQ = "pq"
 
 
 @dataclass
