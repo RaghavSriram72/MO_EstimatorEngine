@@ -14,6 +14,6 @@ start "MO Frontend" cmd /k "cd /d "%REPO%\frontend" && npm run dev"
 
 echo.
 echo Both servers are launching in separate windows.
-echo   Backend:  http://localhost:8000
+echo   Backend:  $API_BASE (default: http://localhost:8000)
 echo   Frontend: http://localhost:3000
 echo.

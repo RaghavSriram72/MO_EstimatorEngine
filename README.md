@@ -57,8 +57,8 @@ Start the FastAPI development server:
 uvicorn main:app --reload
 ```
 
-The API will be available at `http://localhost:8000`.
-Interactive API docs are available at `http://localhost:8000/docs`.
+The API will be available at `API_BASE` as inputted into the .env file.
+Interactive API docs are available at `API_BASE/docs`.
 
 ---
 
