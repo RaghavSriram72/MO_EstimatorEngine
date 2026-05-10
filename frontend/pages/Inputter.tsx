@@ -3,7 +3,7 @@ import ElementsManager from "@/components/ElementsManager";
 import Dropdown from "@/components/Dropdown";
 import QuoteBreakdown from "@/components/QuoteBreakdown";
 import { useCallback, useEffect, useState } from "react";
-import { API_BASE } from "@/config";
+import { API_BASE } from "@/lib/config";
 
 type StandeeType = "Simple" | "Moderate" | "Complex";
 
