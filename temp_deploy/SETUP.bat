@@ -4,29 +4,41 @@ echo ========================================
 echo   MO EstimatorEngine - Setup
 echo ========================================
 echo.
+echo NOTE: Do NOT run this script as Administrator.
+echo.
 
 :: ── Helper: reload PATH from registry so installs take effect immediately ──
 call :refresh_path
 
-:: ── Check winget ────────────────────────────────────────────────────────────
-where winget >nul 2>&1
-if %ERRORLEVEL% neq 0 (
-    echo ERROR: winget is not available on this machine.
-    echo Please update Windows or install App Installer from the Microsoft Store.
-    pause
-    exit /b 1
+:: ── Resolve winget path (App Execution Alias may not be in PATH) ─────────────
+set "WINGET="
+"%LOCALAPPDATA%\Microsoft\WindowsApps\winget.exe" --version >nul 2>&1
+if %ERRORLEVEL% equ 0 (
+    set "WINGET=%LOCALAPPDATA%\Microsoft\WindowsApps\winget.exe"
+) else (
+    winget --version >nul 2>&1
+    if %ERRORLEVEL% equ 0 set "WINGET=winget"
+)
+
+if not defined WINGET (
+    echo WARNING: winget not found. If any tool below is missing, install it manually.
+    echo   Git:    https://git-scm.com/download/win
+    echo   Node:   https://nodejs.org
+    echo   Python: https://www.python.org/downloads
+    echo   uv:     https://docs.astral.sh/uv/getting-started/installation
+    echo.
 )
 
 :: ── Git ─────────────────────────────────────────────────────────────────────
-where git >nul 2>&1
+git --version >nul 2>&1
 if %ERRORLEVEL% neq 0 (
-    echo [INSTALL] Git not found. Installing...
-    winget install --id Git.Git -e --source winget --accept-source-agreements --accept-package-agreements
-    if %ERRORLEVEL% neq 0 (
-        echo ERROR: Failed to install Git.
-        pause
-        exit /b 1
+    if not defined WINGET (
+        echo ERROR: Git not found and winget unavailable. Install Git manually: https://git-scm.com/download/win
+        pause & exit /b 1
     )
+    echo [INSTALL] Git not found. Installing...
+    "%WINGET%" install --id Git.Git -e --source winget --accept-source-agreements --accept-package-agreements
+    if %ERRORLEVEL% neq 0 ( echo ERROR: Failed to install Git. & pause & exit /b 1 )
     call :refresh_path
     echo [OK] Git installed.
 ) else (
@@ -34,15 +46,15 @@ if %ERRORLEVEL% neq 0 (
 )
 
 :: ── Node.js ─────────────────────────────────────────────────────────────────
-where node >nul 2>&1
+node --version >nul 2>&1
 if %ERRORLEVEL% neq 0 (
-    echo [INSTALL] Node.js not found. Installing...
-    winget install --id OpenJS.NodeJS.LTS -e --source winget --accept-source-agreements --accept-package-agreements
-    if %ERRORLEVEL% neq 0 (
-        echo ERROR: Failed to install Node.js.
-        pause
-        exit /b 1
+    if not defined WINGET (
+        echo ERROR: Node.js not found and winget unavailable. Install Node.js manually: https://nodejs.org
+        pause & exit /b 1
     )
+    echo [INSTALL] Node.js not found. Installing...
+    "%WINGET%" install --id OpenJS.NodeJS.LTS -e --source winget --accept-source-agreements --accept-package-agreements
+    if %ERRORLEVEL% neq 0 ( echo ERROR: Failed to install Node.js. & pause & exit /b 1 )
     call :refresh_path
     echo [OK] Node.js installed.
 ) else (
@@ -50,15 +62,15 @@ if %ERRORLEVEL% neq 0 (
 )
 
 :: ── Python ──────────────────────────────────────────────────────────────────
-where python >nul 2>&1
+python --version >nul 2>&1
 if %ERRORLEVEL% neq 0 (
-    echo [INSTALL] Python not found. Installing...
-    winget install --id Python.Python.3.11 -e --source winget --accept-source-agreements --accept-package-agreements
-    if %ERRORLEVEL% neq 0 (
-        echo ERROR: Failed to install Python.
-        pause
-        exit /b 1
+    if not defined WINGET (
+        echo ERROR: Python not found and winget unavailable. Install Python manually: https://www.python.org/downloads
+        pause & exit /b 1
     )
+    echo [INSTALL] Python not found. Installing...
+    "%WINGET%" install --id Python.Python.3.11 -e --source winget --accept-source-agreements --accept-package-agreements
+    if %ERRORLEVEL% neq 0 ( echo ERROR: Failed to install Python. & pause & exit /b 1 )
     call :refresh_path
     echo [OK] Python installed.
 ) else (
@@ -66,15 +78,11 @@ if %ERRORLEVEL% neq 0 (
 )
 
 :: ── uv ──────────────────────────────────────────────────────────────────────
-where uv >nul 2>&1
+uv --version >nul 2>&1
 if %ERRORLEVEL% neq 0 (
     echo [INSTALL] uv not found. Installing...
     powershell -ExecutionPolicy Bypass -Command "irm https://astral.sh/uv/install.ps1 | iex"
-    if %ERRORLEVEL% neq 0 (
-        echo ERROR: Failed to install uv.
-        pause
-        exit /b 1
-    )
+    if %ERRORLEVEL% neq 0 ( echo ERROR: Failed to install uv. & pause & exit /b 1 )
     call :refresh_path
     echo [OK] uv installed.
 ) else (
@@ -87,8 +95,7 @@ echo [1/3] Cloning repository...
 git clone https://github.com/RaghavSriram72/MO_EstimatorEngine
 if %ERRORLEVEL% neq 0 (
     echo ERROR: Git clone failed.
-    pause
-    exit /b 1
+    pause & exit /b 1
 )
 cd MO_EstimatorEngine
 
@@ -97,23 +104,15 @@ echo.
 echo [2/3] Installing Python backend dependencies...
 cd backend
 uv sync
-if %ERRORLEVEL% neq 0 (
-    echo ERROR: uv sync failed.
-    pause
-    exit /b 1
-)
+if %ERRORLEVEL% neq 0 ( echo ERROR: uv sync failed. & pause & exit /b 1 )
 cd ..
 
-:: ── Frontend deps ────────────────────────────────────────────────────────────
+:: ── Frontend deps ───────────────────────────────────────────────────────────
 echo.
 echo [3/3] Installing frontend dependencies...
 cd frontend
 npm install
-if %ERRORLEVEL% neq 0 (
-    echo ERROR: npm install failed.
-    pause
-    exit /b 1
-)
+if %ERRORLEVEL% neq 0 ( echo ERROR: npm install failed. & pause & exit /b 1 )
 cd ..
 
 echo.
@@ -124,7 +123,7 @@ echo ========================================
 pause
 exit /b 0
 
-:: ── Subroutine: reload PATH from registry ────────────────────────────────────
+:: ── Subroutine: reload PATH from registry ───────────────────────────────────
 :refresh_path
 for /f "tokens=2*" %%A in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v PATH 2^>nul') do set "SYS_PATH=%%B"
 for /f "tokens=2*" %%A in ('reg query "HKCU\Environment" /v PATH 2^>nul') do set "USR_PATH=%%B"
