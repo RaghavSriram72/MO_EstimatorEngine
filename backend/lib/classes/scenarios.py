@@ -58,7 +58,6 @@ class Scenario1(Project):
             blank_comp_count=blank_comp_count,
             color_comp_count=color_comp_count,
         )
-        db = self.db
         # print form cost calculation
         self.corrugate_cost = self._get_corrugate_cost()
 
@@ -127,8 +126,7 @@ class Scenario2(Project):
             blank_comp_count=blank_comp_count,
             color_comp_count=color_comp_count,
         )
-        db = self.db
-        self.corrugate_cost = db.get_unit_cost(CORRUGATE) * self.blank_forms_per_standee * self.num_standees
+        self.corrugate_cost = self._get_corrugate_cost()
 
         # print form cost calculation
         self.print_form_cost = self._print_form_cost(ROLL_BUSMARK)
@@ -196,6 +194,7 @@ class Scenario3(Project):
             blank_comp_count=blank_comp_count,
             color_comp_count=color_comp_count,
         )
+        # corrugate cost calculation
         self.corrugate_cost = self._get_corrugate_cost()
 
         # print form cost calculation
