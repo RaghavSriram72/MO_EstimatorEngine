@@ -21,8 +21,6 @@ type ScenarioParams = {
 };
 
 type PerScenarioState = {
-    params: ScenarioParams;
-    baseline: ScenarioParams;
     universalLines: CostLine[];
     universalSubtotalOverride: string;
 };
@@ -126,29 +124,29 @@ function buildScenarioState(
     sources: Record<ScenarioId, Record<string, number>>,
     initialStandees: number,
 ): {
+    params: ScenarioParams;
     perScenario: Record<ScenarioId, PerScenarioState>;
     scenarioLines: Record<ScenarioId, CostLine[]>;
 } {
     const ids: ScenarioId[] = [1, 2, 3, 4, 5];
     const perScenario = {} as Record<ScenarioId, PerScenarioState>;
     const scenarioLines = {} as Record<ScenarioId, CostLine[]>;
+    const src1 = sources[1] ?? {};
+    const params: ScenarioParams = {
+        numStandees: initialStandees,
+        printFormsPerStandee: src1.print_forms_per_standee ?? 1,
+        structureFormsPerStandee: src1.structure_forms_per_standee ?? 0,
+        overs: src1.overs ?? 0,
+    };
     for (const id of ids) {
         const src = sources[id] ?? {};
-        const params: ScenarioParams = {
-            numStandees: initialStandees,
-            printFormsPerStandee: src.print_forms_per_standee ?? 1,
-            structureFormsPerStandee: src.structure_forms_per_standee ?? 0,
-            overs: src.overs ?? 0,
-        };
         perScenario[id] = {
-            params,
-            baseline: { ...params },
             universalLines: seedLines(buildLines(Object.keys(UNIVERSAL_LINE_DEFS), UNIVERSAL_LINE_DEFS), src),
             universalSubtotalOverride: "",
         };
         scenarioLines[id] = seedLines(buildLines(SCENARIO_KEYS[id], SCENARIO_LINE_DEFS), src);
     }
-    return { perScenario, scenarioLines };
+    return { params, perScenario, scenarioLines };
 }
 
 function CostRow({
@@ -234,6 +232,14 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
         5: (quoteData["scenario_5"] as Record<string, number>) ?? {},
     };
 
+    // Shared params — same bar for all scenarios
+    const [params, setParams] = useState<ScenarioParams>(
+        () => buildScenarioState(initialSources, initialStandees).params
+    );
+    const [baseline, setBaseline] = useState<ScenarioParams>(
+        () => buildScenarioState(initialSources, initialStandees).params
+    );
+
     const [perScenario, setPerScenario] = useState<Record<ScenarioId, PerScenarioState>>(
         () => buildScenarioState(initialSources, initialStandees).perScenario
     );
@@ -244,9 +250,7 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
         1: "", 2: "", 3: "", 4: "", 5: "",
     });
 
-    // Active scenario shortcuts
-    const active = perScenario[activeScenario];
-    const { params, baseline, universalLines, universalSubtotalOverride } = active;
+    const { universalLines, universalSubtotalOverride } = perScenario[activeScenario];
     const { numStandees, printFormsPerStandee, structureFormsPerStandee, overs } = params;
 
     const isDirty =
@@ -263,17 +267,7 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
     }
 
     function patchParams(updates: Partial<ScenarioParams>) {
-        setPerScenario((prev) => ({
-            ...prev,
-            [activeScenario]: {
-                ...prev[activeScenario],
-                params: { ...prev[activeScenario].params, ...updates },
-            },
-        }));
-    }
-
-    function handleStandeesChange(value: number) {
-        patchParams({ numStandees: value });
+        setParams((prev) => ({ ...prev, ...updates }));
     }
 
     function updateUniversal(key: string, field: "qty" | "unitCost", value: number) {
@@ -298,14 +292,13 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
     function recalculate() {
         setIsRecalculating(true);
         const sid = activeScenario;
-        const { params: p, baseline: bl } = perScenario[sid];
         const body = {
             ...requestPayload,
             scenario: sid,
-            num_standees: p.numStandees,
-            ...(p.printFormsPerStandee !== bl.printFormsPerStandee && { print_forms_per_standee: p.printFormsPerStandee }),
-            ...(p.structureFormsPerStandee !== bl.structureFormsPerStandee && { structure_forms_per_standee: p.structureFormsPerStandee }),
-            ...(p.overs !== bl.overs && { num_overs: p.overs }),
+            num_standees: params.numStandees,
+            ...(params.printFormsPerStandee !== baseline.printFormsPerStandee && { print_forms_per_standee: params.printFormsPerStandee }),
+            ...(params.structureFormsPerStandee !== baseline.structureFormsPerStandee && { structure_forms_per_standee: params.structureFormsPerStandee }),
+            ...(params.overs !== baseline.overs && { num_overs: params.overs }),
         };
         fetch(`${API_BASE}/generate_quote`, {
             method: "POST",
@@ -326,16 +319,12 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
                     buildLines(Object.keys(UNIVERSAL_LINE_DEFS), UNIVERSAL_LINE_DEFS), src
                 );
                 const newScenarioLines = seedLines(buildLines(SCENARIO_KEYS[sid], SCENARIO_LINE_DEFS), src);
-                const newOvers = src.overs ?? p.overs;
-                const newParams: ScenarioParams = { ...p, overs: newOvers };
+                const newParams: ScenarioParams = { ...params, overs: src.overs ?? params.overs };
+                setParams(newParams);
+                setBaseline({ ...newParams });
                 setPerScenario((prev) => ({
                     ...prev,
-                    [sid]: {
-                        params: newParams,
-                        baseline: { ...newParams },
-                        universalLines: newUniversalLines,
-                        universalSubtotalOverride: "",
-                    },
+                    [sid]: { universalLines: newUniversalLines, universalSubtotalOverride: "" },
                 }));
                 setScenarioLines((prev) => ({ ...prev, [sid]: newScenarioLines }));
                 setScenarioSubtotalOverride((prev) => ({ ...prev, [sid]: "" }));
@@ -411,7 +400,7 @@ export default function QuoteBreakdown({ quoteData, numStandees: initialStandees
                             type="number"
                             min={0}
                             value={numStandees}
-                            onChange={(e) => handleStandeesChange(parseInt(e.target.value) || 0)}
+                            onChange={(e) => patchParams({ numStandees: parseInt(e.target.value) || 0 })}
                             disabled={isRecalculating}
                             className={`border-2 border-[#E0E0E0] rounded-sm px-3 py-1.5 text-sm font-black text-[#000005] outline-none focus:border-[#FFC843] w-[140px] text-right transition-colors disabled:opacity-50 ${numStandees !== baseline.numStandees ? "bg-[#FFC843]/20" : "bg-[#F8F8F8]"}`}
                         />
