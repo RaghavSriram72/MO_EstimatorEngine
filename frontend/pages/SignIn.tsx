@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Alert from "@/components/Alert";
+import { API_BASE } from "@/lib/config";
 
 export default function SignIn({setUser}: any) {
     const ALERT_DURATION_MS = 1500;
@@ -35,7 +36,7 @@ export default function SignIn({setUser}: any) {
             return;
         }
 
-        fetch("http://localhost:8000/create-account", {
+        fetch(`${API_BASE}/create-account`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ username: newUsername, password: newPassword }),
@@ -55,7 +56,7 @@ export default function SignIn({setUser}: any) {
             triggerAlert("Please fill fields", 1);
             return;
         }
-        fetch("http://localhost:8000/sign-in", {
+        fetch(`${API_BASE}/sign-in`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ username, password }),

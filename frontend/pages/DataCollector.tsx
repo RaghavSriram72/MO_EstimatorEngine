@@ -2,6 +2,7 @@
 import Dropdown from "@/components/Dropdown";
 import EditableValueBox from "@/components/EditableValueBox";
 import { useState, useEffect } from "react";
+import { API_BASE } from "@/lib/config";
 
 const SUPPLIER_DISPLAY: Record<string, string> = {
     pq: "Pacific Quality",
@@ -112,7 +113,7 @@ export default function DataCollector() {
         setIsLoadingUnit(true);
         setSelectedName("");
         setUnitEdits(null);
-        fetch("http://localhost:8000/unit-costs")
+        fetch(`${API_BASE}/unit-costs`)
             .then((r) => r.json())
             .then((data) => setUnitRecords(data.data ?? []))
             .catch(console.error)
@@ -158,12 +159,12 @@ export default function DataCollector() {
         if (unitEdits.display_name !== selectedUnitRecord.display_name) updates.display_name = unitEdits.display_name;
         setIsSaving(true);
         try {
-            await fetch(`http://localhost:8000/unit-costs/${selectedUnitRecord.name}`, {
+            await fetch(`${API_BASE}/unit-costs/${selectedUnitRecord.name}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(updates),
             });
-            const data = await fetch("http://localhost:8000/unit-costs").then((r) => r.json());
+            const data = await fetch(`${API_BASE}/unit-costs`).then((r) => r.json());
             const updated: UnitCostRecord[] = data.data ?? [];
             setUnitRecords(updated);
             const newRec = updated.find((r) => r.name === selectedUnitRecord.name);
@@ -183,7 +184,7 @@ export default function DataCollector() {
         setIsLoadingStandee(true);
         setStandeeRecord(null);
         setStandeeEdits(null);
-        fetch(`http://localhost:8000/standee-static-costs?standee_type=${encodeURIComponent(standeeType)}`)
+        fetch(`${API_BASE}/standee-static-costs?standee_type=${encodeURIComponent(standeeType)}`)
             .then((r) => r.json())
             .then((data) => {
                 const rec: StandeeRecord = data.data;
@@ -212,12 +213,12 @@ export default function DataCollector() {
         });
         setIsSaving(true);
         try {
-            await fetch(`http://localhost:8000/standee-static-costs?standee_type=${encodeURIComponent(standeeType)}`, {
+            await fetch(`${API_BASE}/standee-static-costs?standee_type=${encodeURIComponent(standeeType)}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ updates }),
             });
-            const data = await fetch(`http://localhost:8000/standee-static-costs?standee_type=${encodeURIComponent(standeeType)}`).then((r) => r.json());
+            const data = await fetch(`${API_BASE}/standee-static-costs?standee_type=${encodeURIComponent(standeeType)}`).then((r) => r.json());
             const updated: StandeeRecord = data.data;
             setStandeeRecord(updated);
             const edits: Record<string, number> = {};
@@ -243,7 +244,7 @@ export default function DataCollector() {
     useEffect(() => {
         if (currentModule !== 2) return;
         setIsLoadingOvers(true);
-        fetch("http://localhost:8000/overs")
+        fetch(`${API_BASE}/overs`)
             .then((r) => r.json())
             .then((data) => {
                 const records: OversRecord[] = data.data ?? [];
@@ -282,14 +283,14 @@ export default function DataCollector() {
                         return e && (e.lower_bound !== r.lower_bound || e.upper_bound !== r.upper_bound || e.overs !== r.overs);
                     })
                     .map((r) =>
-                        fetch(`http://localhost:8000/overs/${r._id}`, {
+                        fetch(`${API_BASE}/overs/${r._id}`, {
                             method: "PATCH",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify(oversEdits[r._id]),
                         })
                     )
             );
-            const data = await fetch("http://localhost:8000/overs").then((r) => r.json());
+            const data = await fetch(`${API_BASE}/overs`).then((r) => r.json());
             const updated: OversRecord[] = data.data ?? [];
             setOversRecords(updated);
             setOversEdits(buildOversEdits(updated));
@@ -314,7 +315,7 @@ export default function DataCollector() {
 
     useEffect(() => {
         if (currentModule !== 3) return;
-        fetch("http://localhost:8000/suppliers")
+        fetch(`${API_BASE}/suppliers`)
             .then((r) => r.json())
             .then((data) => setSupplierNames(data.data ?? []))
             .catch(console.error);
@@ -325,7 +326,7 @@ export default function DataCollector() {
         setSelectedMaterial("");
         setSupplierRecords([]);
         setSupplierEdits(null);
-        fetch(`http://localhost:8000/suppliers/${encodeURIComponent(selectedSupplier)}/materials`)
+        fetch(`${API_BASE}/suppliers/${encodeURIComponent(selectedSupplier)}/materials`)
             .then((r) => r.json())
             .then((data) => setSupplierMaterials(data.data ?? []))
             .catch(console.error);
@@ -334,7 +335,7 @@ export default function DataCollector() {
     useEffect(() => {
         if (!selectedSupplier || !selectedMaterial || currentModule !== 3) return;
         setIsLoadingSupplier(true);
-        fetch(`http://localhost:8000/suppliers/${encodeURIComponent(selectedSupplier)}/${encodeURIComponent(selectedMaterial)}`)
+        fetch(`${API_BASE}/suppliers/${encodeURIComponent(selectedSupplier)}/${encodeURIComponent(selectedMaterial)}`)
             .then((r) => r.json())
             .then((data) => {
                 const records: SupplierRecord[] = data.data ?? [];
@@ -369,14 +370,14 @@ export default function DataCollector() {
                         return e && (e.amount !== r.amount || e.cost !== r.cost || e.unit !== r.unit);
                     })
                     .map((r) =>
-                        fetch(`http://localhost:8000/suppliers/${r._id}`, {
+                        fetch(`${API_BASE}/suppliers/${r._id}`, {
                             method: "PATCH",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify(supplierEdits[r._id]),
                         })
                     )
             );
-            const data = await fetch(`http://localhost:8000/suppliers/${encodeURIComponent(selectedSupplier)}/${encodeURIComponent(selectedMaterial)}`).then((r) => r.json());
+            const data = await fetch(`${API_BASE}/suppliers/${encodeURIComponent(selectedSupplier)}/${encodeURIComponent(selectedMaterial)}`).then((r) => r.json());
             const updated: SupplierRecord[] = data.data ?? [];
             setSupplierRecords(updated);
             setSupplierEdits(buildSupplierEdits(updated));

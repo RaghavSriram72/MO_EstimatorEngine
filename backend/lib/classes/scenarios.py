@@ -48,6 +48,7 @@ class Scenario1[T: Scenario1Input](Project[T]):
         super()._calculate_universal_costs(input)
         # print form cost calculation
         self.corrugate_cost = self._get_corrugate_cost()
+        self.corrugate_cost = self._get_corrugate_cost()
 
         self.print_form_cost = self._print_form_cost(ROLL_BUSMARK)
         print_linear_inches = self._get_print_form_linear_inches()
