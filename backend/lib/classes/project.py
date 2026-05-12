@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from enum import Enum
 
 import numpy as np
 from scipy.optimize import curve_fit
@@ -51,6 +52,18 @@ class Project:
         """Return common project/scenario fields as a dictionary."""
         return {k: v for k, v in self.__dict__.items() if not k.startswith("_") and k != "db"}
 
+    def to_serializable_dict(self) -> dict:
+        """Subset of ``to_dict`` safe for JSON/BSON: no ``print_forms``/``Form``, enums as ints."""
+        out: dict = {}
+        for k, v in self.__dict__.items():
+            if k.startswith("_") or k in ("db", "print_forms"):
+                continue
+            if isinstance(v, Enum):
+                out[k] = v.value
+            else:
+                out[k] = v
+        return out
+
     def _calculate_universal_costs(
         self,
         *,
@@ -92,28 +105,20 @@ class Project:
     # Helpers
     def _print_form_cost(self, print_material_name: str) -> float:
         print_form_material = self.db.get_unit_cost_entry(print_material_name)
-        print_form_unit = print_form_material["unit"]  # linear_foot
-        linear_inches = 0
+        print_form_unit = print_form_material["unit"]
         if print_form_unit != "linear_foot":
-            print_form_cost = print_form_material["cost"] * UNIT_MAP[print_form_unit] * self.print_form_total
-        elif print_form_unit == "linear_foot":
-            linear_inches = self._get_print_form_linear_inches()
-        else:
-            raise ValueError(f"Unsupported unit type '{print_form_unit}' for print material '{print_material_name}'")
+            return print_form_material["cost"] * UNIT_MAP[print_form_unit] * self.print_form_total
 
+        linear_inches = self._get_print_form_linear_inches()
         if "roll" in print_material_name:
             linear_inches += BUSMARK_PADDING * self.num_standees
-            print_form_cost = print_form_material["cost"] * UNIT_MAP[print_form_unit] * linear_inches
+            return print_form_material["cost"] * UNIT_MAP[print_form_unit] * linear_inches
 
-        # ! do we need hi-tack if theyre doing mounting??
-        # add hi-tack if not busmark
-        else:
-            hi_tack_material = self.db.get_unit_cost_entry(DB_LABELS["roll_hi_tack"])
-            hi_tack_unit = hi_tack_material["unit"]
-            hi_tack_cost = hi_tack_material["cost"] * UNIT_MAP[hi_tack_unit] * linear_inches
-            print_form_cost = print_form_material["cost"] * UNIT_MAP[print_form_unit] * linear_inches
-            print_form_cost += hi_tack_cost
-        return print_form_cost
+        # Sheet / non-roll linear foot: base print material plus hi-tack (see roll path for busmark)
+        hi_tack_material = self.db.get_unit_cost_entry(DB_LABELS["roll_hi_tack"])
+        hi_tack_unit = hi_tack_material["unit"]
+        hi_tack_cost = hi_tack_material["cost"] * UNIT_MAP[hi_tack_unit] * linear_inches
+        return print_form_material["cost"] * UNIT_MAP[print_form_unit] * linear_inches + hi_tack_cost
 
     def _get_print_form_linear_inches(self) -> int:
         return int(PRINT_FORM_LENGTH) * self.print_form_total

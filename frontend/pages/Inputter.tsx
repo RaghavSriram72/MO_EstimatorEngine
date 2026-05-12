@@ -15,13 +15,51 @@ type Element = {
     linear_inches: number | "";
 };
 
-export type QuoteData = Record<string, Record<string, number>>;
+/** Persisted subtotal override strings keyed by scenario id "1" … "5". */
+export type QuoteBreakdownUi = {
+    universal_subtotal_override?: Record<string, string>;
+    scenario_subtotal_override?: Record<string, string>;
+};
+
+/** Scenario blobs (`scenario_*`) plus optional UI overrides from Mongo. */
+export type QuoteData = {
+    [key: string]: Record<string, number> | QuoteBreakdownUi | undefined;
+};
 
 export type RequestPayload = {
     elements: { name: string; height: number; width: number; complexity: string; linear_inches: number | null }[];
     num_standees: number;
     standee_type: number;
+    scenario?: number;
 };
+
+type QuoteScenarioId = 1 | 2 | 3 | 4 | 5;
+
+type PersistedQuoteListItem = {
+    _id: string;
+    quote_name?: string;
+    scenario?: number;
+    num_standees?: number;
+    updated_at?: string;
+};
+
+type ApiPersistedElement = {
+    name?: string;
+    length: number;
+    width: number;
+    linear_inches?: number | null;
+    complexity: string;
+};
+
+const BUILD_QUOTE_SCENARIO_LABELS: Record<QuoteScenarioId, string> = {
+    1: "Internal — Packed Out (1)",
+    2: "Internal — Assembled (2)",
+    3: "Hybrid — Internal Finishing (3)",
+    4: "Hybrid — External Die Cut (4)",
+    5: "External — Full Outsource (5)",
+};
+
+const QUOTE_SCENARIO_ORDER: QuoteScenarioId[] = [1, 2, 3, 4, 5];
 
 // information that gets displayed in the projects sidebar
 type PersistedProjectSummary = {
@@ -32,6 +70,77 @@ type PersistedProjectSummary = {
 };
 
 // converts the inputted elements array into a format that can be stored in the MongoDB
+function quoteDataFromGenerateResponse(data: Record<string, unknown>): QuoteData {
+    const out: QuoteData = {};
+    for (const key of Object.keys(data)) {
+        if (key.startsWith("scenario_")) {
+            out[key] = data[key] as Record<string, number>;
+        }
+    }
+    return out;
+}
+
+function quoteDataFromPersistedBreakdown(breakdown: unknown): QuoteData {
+    const out: QuoteData = {};
+    if (!breakdown || typeof breakdown !== "object" || Array.isArray(breakdown)) return out;
+    const b = breakdown as Record<string, unknown>;
+    for (const [key, val] of Object.entries(b)) {
+        if (!key.startsWith("scenario_")) continue;
+        if (val && typeof val === "object" && !Array.isArray(val)) {
+            out[key] = val as Record<string, number>;
+        }
+    }
+    const ui = b._breakdown_ui;
+    if (ui && typeof ui === "object" && !Array.isArray(ui)) {
+        out._breakdown_ui = ui as QuoteBreakdownUi;
+    }
+    return out;
+}
+
+function requestPayloadFromQuoteDoc(
+    doc: {
+        scenario?: number;
+        num_standees?: number;
+        standee_type?: string;
+        elements?: ApiPersistedElement[];
+    },
+    fallback: { elements: Element[]; standeeType: StandeeType; standeeCount: number | "" },
+): RequestPayload {
+    const standeeTypeMap: Record<StandeeType, number> = { Simple: 1, Moderate: 2, Complex: 3 };
+    const srcRows =
+        Array.isArray(doc.elements) && doc.elements.length > 0
+            ? doc.elements
+            : fallback.elements.map((el) => ({
+                  name: "",
+                  length: el.height === "" ? 0 : el.height,
+                  width: el.width === "" ? 0 : el.width,
+                  linear_inches: el.linear_inches === "" ? null : el.linear_inches,
+                  complexity: el.complexity,
+              }));
+    const num =
+        typeof doc.num_standees === "number" && doc.num_standees >= 1
+            ? doc.num_standees
+            : fallback.standeeCount === "" || fallback.standeeCount < 1
+              ? 1
+              : fallback.standeeCount;
+    const st = (doc.standee_type as StandeeType) || fallback.standeeType;
+    return {
+        elements: srcRows.map((e) => ({
+            name: e.name ?? "",
+            height: e.length,
+            width: e.width,
+            complexity: e.complexity as StandeeType,
+            linear_inches: e.linear_inches ?? null,
+        })),
+        num_standees: num,
+        standee_type: standeeTypeMap[st] ?? 1,
+        scenario:
+            typeof doc.scenario === "number" && doc.scenario >= 1 && doc.scenario <= 5
+                ? (doc.scenario as QuoteScenarioId)
+                : undefined,
+    };
+}
+
 function buildElementsForApi(elements: Element[]) {
     return elements.map((el) => ({
         name: "",
@@ -47,16 +156,28 @@ export default function Inputter() {
     const [standeeType, setStandeeType] = useState<StandeeType>("Simple");
     const [elements, setElements] = useState<Element[]>([]);
     const [resetKey, setResetKey] = useState(0);
-    const [isLoading, setIsLoading] = useState(false);
-    const [quoteData, setQuoteData] = useState<QuoteData | null>(null);
-    const [lastPayload, setLastPayload] = useState<RequestPayload | null>(null);
-
     const [projectName, setProjectName] = useState("Untitled project");
     const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
     const [projects, setProjects] = useState<PersistedProjectSummary[]>([]);
     const [projectsLoading, setProjectsLoading] = useState(false);
     const [projectsError, setProjectsError] = useState<string | null>(null);
     const [listVersion, setListVersion] = useState(0);
+    /** After Continue: same layout as quote breakdown (scenario sidebar + blank main); no API call. */
+    const [quoteFlowShellOpen, setQuoteFlowShellOpen] = useState(false);
+    const [quoteData, setQuoteData] = useState<QuoteData | null>(null);
+    const [lastPayload, setLastPayload] = useState<RequestPayload | null>(null);
+    const [quoteInitialScenario, setQuoteInitialScenario] = useState<QuoteScenarioId>(1);
+    const [breakdownQuoteName, setBreakdownQuoteName] = useState<string | null>(null);
+    const [buildQuoteModalOpen, setBuildQuoteModalOpen] = useState(false);
+    const [quoteBuildName, setQuoteBuildName] = useState("");
+    const [quoteBuildScenario, setQuoteBuildScenario] = useState<QuoteScenarioId>(1);
+    const [quoteBuildQuantity, setQuoteBuildQuantity] = useState<number | "">("");
+    const [isQuoteLoading, setIsQuoteLoading] = useState(false);
+    const [projectQuotes, setProjectQuotes] = useState<PersistedQuoteListItem[]>([]);
+    const [projectQuotesLoading, setProjectQuotesLoading] = useState(false);
+    const [projectQuotesError, setProjectQuotesError] = useState<string | null>(null);
+    const [activePersistedQuoteId, setActivePersistedQuoteId] = useState<string | null>(null);
+    const [continueBusy, setContinueBusy] = useState(false);
 
     const refreshProjects = useCallback(async () => {
         const owner = typeof window !== "undefined" ? localStorage.getItem("username") : null;
@@ -83,6 +204,43 @@ export default function Inputter() {
         }
     }, []);
 
+    const refreshProjectQuotes = useCallback(async () => {
+        const owner = typeof window !== "undefined" ? localStorage.getItem("username") : null;
+        const pid = activeProjectId;
+        if (!owner?.trim() || !pid) {
+            setProjectQuotes([]);
+            setProjectQuotesLoading(false);
+            return;
+        }
+        setProjectQuotesLoading(true);
+        setProjectQuotesError(null);
+        try {
+            const res = await fetch(
+                `${API_BASE}/projects/${encodeURIComponent(pid)}/quotes?owner=${encodeURIComponent(owner)}`,
+            );
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                setProjectQuotesError(typeof data.error === "string" ? data.error : "Could not load quotes");
+                setProjectQuotes([]);
+                return;
+            }
+            setProjectQuotes(Array.isArray(data.quotes) ? data.quotes : []);
+        } catch {
+            setProjectQuotesError("Could not load quotes");
+            setProjectQuotes([]);
+        } finally {
+            setProjectQuotesLoading(false);
+        }
+    }, [activeProjectId]);
+
+    const showQuotesWorkspace = quoteFlowShellOpen || (!!quoteData && !!lastPayload);
+
+    useEffect(() => {
+        if (showQuotesWorkspace && activeProjectId) {
+            void refreshProjectQuotes();
+        }
+    }, [showQuotesWorkspace, activeProjectId, refreshProjectQuotes]);
+
     useEffect(() => {
         void refreshProjects();
     }, [refreshProjects, listVersion]);
@@ -94,6 +252,15 @@ export default function Inputter() {
         setResetKey((k) => k + 1);
         setProjectName("Untitled project");
         setActiveProjectId(null);
+        setQuoteFlowShellOpen(false);
+        setQuoteData(null);
+        setLastPayload(null);
+        setBuildQuoteModalOpen(false);
+        setIsQuoteLoading(false);
+        setBreakdownQuoteName(null);
+        setProjectQuotes([]);
+        setProjectQuotesError(null);
+        setActivePersistedQuoteId(null);
     }
 
     // TODO: Implement blue upload
@@ -135,6 +302,13 @@ export default function Inputter() {
                 })),
             );
             setResetKey((k) => k + 1);
+            setQuoteFlowShellOpen(false);
+            setQuoteData(null);
+            setLastPayload(null);
+            setBuildQuoteModalOpen(false);
+            setBreakdownQuoteName(null);
+            setProjectQuotes([]);
+            setActivePersistedQuoteId(null);
         } catch {
             setProjectsError("Could not load project");
         } finally {
@@ -173,13 +347,17 @@ export default function Inputter() {
     const canCalculate = (standeeCount !== "" && standeeCount > 0) && elements.length > 0;
     const canPersist = canCalculate;
 
-    async function handleSave() {
-        if (!canPersist) return;
+    /** Create or update the current project on the server. Caller should bump listVersion on success. */
+    async function persistCurrentProject(): Promise<{ success: boolean; errorMessage?: string }> {
         const owner = localStorage.getItem("username");
-        if (!owner) return;
+        if (!owner?.trim()) {
+            return { success: false, errorMessage: "Not signed in" };
+        }
+        if (!canPersist) {
+            return { success: false, errorMessage: "Add standees and at least one element" };
+        }
         const num = standeeCount as number;
         const apiElements = buildElementsForApi(elements);
-
         try {
             if (activeProjectId) {
                 const body = {
@@ -199,38 +377,62 @@ export default function Inputter() {
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok) {
                     console.error(data);
-                    return;
+                    return { success: false, errorMessage: "Could not update project" };
                 }
-            } else {
-                const body = {
-                    schema_version: 1,
-                    owner,
-                    project_name: projectName.trim() || "Untitled project",
-                    num_standees: num,
-                    standee_type: standeeType,
-                    elements: apiElements,
-                };
-                const res = await fetch(`${API_BASE}/create-project`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(body),
-                });
-                const data = await res.json().catch(() => ({}));
-                if (!res.ok) {
-                    console.error(data);
-                    return;
-                }
-                if (typeof data.project_id === "string") setActiveProjectId(data.project_id);
+                return { success: true };
             }
-            setListVersion((v) => v + 1);
+            const body = {
+                schema_version: 1,
+                owner: owner.trim(),
+                project_name: projectName.trim() || "Untitled project",
+                num_standees: num,
+                standee_type: standeeType,
+                elements: apiElements,
+            };
+            const res = await fetch(`${API_BASE}/create-project`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                console.error(data);
+                return { success: false, errorMessage: "Could not save project" };
+            }
+            if (typeof data.project_id !== "string") {
+                return { success: false, errorMessage: "Could not save project" };
+            }
+            setActiveProjectId(data.project_id);
+            return { success: true };
         } catch (e) {
             console.error("Save failed:", e);
+            return { success: false, errorMessage: "Save failed" };
         }
     }
 
-    function handleQuoteGeneration() {
+    async function handleContinue() {
+        if (!canCalculate || continueBusy) return;
+        const owner = typeof window !== "undefined" ? localStorage.getItem("username")?.trim() : null;
+        if (owner && !activeProjectId) {
+            setProjectsError(null);
+            setContinueBusy(true);
+            try {
+                const r = await persistCurrentProject();
+                if (!r.success) {
+                    setProjectsError(r.errorMessage ?? "Could not save project");
+                    return;
+                }
+                setListVersion((v) => v + 1);
+            } finally {
+                setContinueBusy(false);
+            }
+        }
+        setQuoteFlowShellOpen(true);
+    }
+
+    function buildCoreQuotePayload(numStandees: number, scenarioId: QuoteScenarioId): RequestPayload {
         const standeeTypeMap: Record<StandeeType, number> = { Simple: 1, Moderate: 2, Complex: 3 };
-        const corePayload: RequestPayload = {
+        return {
             standee_type: standeeTypeMap[standeeType],
             elements: elements.map(({ height, width, complexity, linear_inches }) => ({
                 name: "",
@@ -239,19 +441,84 @@ export default function Inputter() {
                 complexity,
                 linear_inches: linear_inches === "" ? null : linear_inches,
             })),
-            num_standees: standeeCount === "" ? 0 : standeeCount,
+            num_standees: numStandees,
+            scenario: scenarioId,
         };
+    }
+
+    const canSubmitBuildQuote =
+        elements.length > 0 &&
+        quoteBuildName.trim().length > 0 &&
+        quoteBuildQuantity !== "" &&
+        quoteBuildQuantity > 0;
+
+    function handleExitQuotesWorkspace() {
+        setQuoteFlowShellOpen(false);
+        setQuoteData(null);
+        setLastPayload(null);
+        setBreakdownQuoteName(null);
+        setActivePersistedQuoteId(null);
+        setBuildQuoteModalOpen(false);
+    }
+
+    function handleClearQuoteSelection() {
+        setQuoteData(null);
+        setLastPayload(null);
+        setBreakdownQuoteName(null);
+        setActivePersistedQuoteId(null);
+        setQuoteFlowShellOpen(true);
+    }
+
+    async function openPersistedQuote(quoteId: string) {
+        if (activePersistedQuoteId === quoteId && quoteData) return;
+        const owner = localStorage.getItem("username");
+        if (!owner?.trim()) {
+            console.error("Sign in to load saved quotes");
+            return;
+        }
+        const res = await fetch(`${API_BASE}/quotes/${encodeURIComponent(quoteId)}?owner=${encodeURIComponent(owner)}`);
+        const doc = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            console.error("Load quote:", doc);
+            return;
+        }
+        const qd = quoteDataFromPersistedBreakdown(doc.breakdown);
+        if (Object.keys(qd).length === 0) {
+            console.error("Quote has no scenario breakdown");
+            return;
+        }
+        const initialScenario =
+            typeof doc.scenario === "number" && doc.scenario >= 1 && doc.scenario <= 5
+                ? (doc.scenario as QuoteScenarioId)
+                : 1;
+        setQuoteInitialScenario(initialScenario);
+        setBreakdownQuoteName(typeof doc.quote_name === "string" ? doc.quote_name : "Quote");
+        setActivePersistedQuoteId(quoteId);
+        setQuoteData(qd);
+        setLastPayload(
+            requestPayloadFromQuoteDoc(doc, {
+                elements,
+                standeeType,
+                standeeCount: standeeCount,
+            }),
+        );
+        setQuoteFlowShellOpen(false);
+    }
+
+    function runBuildQuoteFromModal() {
+        if (!canSubmitBuildQuote) return;
+        const corePayload = buildCoreQuotePayload(quoteBuildQuantity as number, quoteBuildScenario);
         const payload: Record<string, unknown> = {
             ...corePayload,
-            project_name: projectName.trim() || "Untitled project",
+            persist_project: false,
         };
-        if (typeof window !== "undefined") {
-            const owner = localStorage.getItem("username");
-            if (owner) payload.owner = owner;
-            if (activeProjectId) payload.project_id = activeProjectId;
-        }
 
-        setIsLoading(true);
+        setBuildQuoteModalOpen(false);
+        setIsQuoteLoading(true);
+        const owner = typeof window !== "undefined" ? localStorage.getItem("username") : null;
+        const pid = activeProjectId;
+        const buildName = quoteBuildName.trim() || "Untitled quote";
+
         fetch(`${API_BASE}/generate_quote`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -263,17 +530,66 @@ export default function Inputter() {
                     console.error("Quote error:", data);
                     return;
                 }
-                console.log(data);
-                if (typeof data.project_id === "string") setActiveProjectId(data.project_id);
-                setListVersion((v) => v + 1);
+                const row = data as Record<string, unknown>;
                 setLastPayload(corePayload);
-                setQuoteData(data);
+                setQuoteInitialScenario(quoteBuildScenario);
+                setBreakdownQuoteName(buildName);
+                setQuoteData(quoteDataFromGenerateResponse(row));
+                setQuoteFlowShellOpen(false);
+                setActivePersistedQuoteId(null);
+
+                if (owner?.trim() && pid) {
+                    const breakdownPayload: Record<string, unknown> = {};
+                    for (const key of Object.keys(row)) {
+                        if (key.startsWith("scenario_")) breakdownPayload[key] = row[key];
+                    }
+                    const cre = await fetch(`${API_BASE}/projects/${encodeURIComponent(pid)}/quotes`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            owner: owner.trim(),
+                            quote_name: buildName,
+                            scenario: quoteBuildScenario,
+                            num_standees: quoteBuildQuantity as number,
+                            standee_type: standeeType,
+                            elements: buildElementsForApi(elements),
+                            breakdown: breakdownPayload,
+                        }),
+                    });
+                    const cr = await cre.json().catch(() => ({}));
+                    if (cre.ok && typeof cr.quote_id === "string") {
+                        setActivePersistedQuoteId(cr.quote_id);
+                    } else {
+                        console.error("Could not persist quote:", cr);
+                    }
+                    void refreshProjectQuotes();
+                }
             })
             .catch((error) => console.error("Error generating quote:", error))
-            .finally(() => setIsLoading(false));
+            .finally(() => setIsQuoteLoading(false));
     }
 
-    if (isLoading) {
+    useEffect(() => {
+        if (!buildQuoteModalOpen) return;
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === "Escape") setBuildQuoteModalOpen(false);
+        };
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, [buildQuoteModalOpen]);
+
+    async function handleSave() {
+        if (!canPersist) return;
+        if (!localStorage.getItem("username")?.trim()) return;
+        const r = await persistCurrentProject();
+        if (r.success) setListVersion((v) => v + 1);
+        else if (r.errorMessage) console.error(r.errorMessage);
+    }
+
+    const loggedIn =
+        typeof window !== "undefined" && Boolean(localStorage.getItem("username")?.trim());
+
+    if (isQuoteLoading) {
         return (
             <div className="flex flex-col items-center justify-center w-full flex-1 bg-white">
                 <div className="text-xs font-bold text-[#FFC843] tracking-widest uppercase mb-2">// PROCESSING</div>
@@ -289,14 +605,192 @@ export default function Inputter() {
         );
     }
 
-    if (quoteData && lastPayload) {
+    if (showQuotesWorkspace) {
         return (
-            <QuoteBreakdown
-                quoteData={quoteData}
-                numStandees={standeeCount === "" ? 0 : standeeCount}
-                requestPayload={lastPayload}
-                onBack={() => setQuoteData(null)}
-            />
+            <>
+                <div className="flex flex-row w-full flex-1 min-h-0 overflow-hidden bg-[#F8F8F8]">
+                    <aside className="shrink-0 w-[220px] flex flex-col border-r-2 border-[#E0E0E0] bg-white px-3 py-5 gap-3 min-h-0">
+                        <div className="text-[10px] font-black uppercase tracking-widest text-[#000005]">
+                            <span className="text-[#FFC843]">// </span>QUOTES
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setQuoteBuildName(projectName.trim() || "Untitled quote");
+                                setQuoteBuildScenario(1);
+                                setQuoteBuildQuantity(standeeCount !== "" && standeeCount > 0 ? standeeCount : "");
+                                setBuildQuoteModalOpen(true);
+                            }}
+                            className="text-[10px] font-black text-center uppercase tracking-widest py-2.5 rounded-sm border-2 border-[#000005] bg-[#000005] text-white hover:bg-[#FFC843] hover:border-[#FFC843] hover:text-[#000005] transition-all duration-200"
+                        >
+                            + BUILD NEW QUOTE
+                        </button>
+                        {!loggedIn && (
+                            <p className="text-[10px] text-[#B1B3B6] font-semibold leading-snug px-0.5">
+                                Sign in to load saved quotes for this project.
+                            </p>
+                        )}
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-[#B1B3B6] px-0.5">
+                            Saved on this project
+                        </div>
+                        <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-1.5 -mx-0.5 px-0.5">
+                            {projectQuotesLoading && (
+                                <div className="text-[11px] text-[#B1B3B6] font-semibold px-1">Loading…</div>
+                            )}
+                            {projectQuotesError && (
+                                <div className="text-[10px] text-red-500 font-semibold px-1 leading-snug">
+                                    {projectQuotesError}
+                                </div>
+                            )}
+                            {!projectQuotesLoading &&
+                                loggedIn &&
+                                projectQuotes.length === 0 &&
+                                !projectQuotesError && (
+                                    <div className="text-[11px] text-[#B1B3B6] font-semibold px-1">No quotes yet.</div>
+                                )}
+                            {projectQuotes.map((q) => (
+                                <button
+                                    key={q._id}
+                                    type="button"
+                                    onClick={() => void openPersistedQuote(q._id)}
+                                    className={`text-left rounded-sm border-2 px-2 py-2 transition-all duration-200 outline-none focus-visible:ring-2 focus-visible:ring-[#FFC843] ${
+                                        activePersistedQuoteId === q._id
+                                            ? "border-[#FFC843] bg-[#FFFBF0]"
+                                            : "border-[#E0E0E0] bg-[#F8F8F8] hover:border-[#B1B3B6]"
+                                    }`}
+                                >
+                                    <div className="text-[11px] font-black text-[#000005] uppercase tracking-tight line-clamp-3 break-words">
+                                        {(q.quote_name || "Untitled").trim()}
+                                    </div>
+                                    <div className="text-[9px] text-[#B1B3B6] font-bold mt-0.5 uppercase tracking-wider">
+                                        {typeof q.scenario === "number" ? `Sc. ${q.scenario}` : ""}
+                                        {typeof q.num_standees === "number" ? ` · ${q.num_standees} standees` : ""}
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
+                        <button
+                            type="button"
+                            onClick={handleExitQuotesWorkspace}
+                            className="shrink-0 w-full text-xs font-black text-[#B1B3B6] border-2 border-[#E0E0E0] py-2 rounded-sm cursor-pointer hover:bg-[#000005] hover:text-white hover:border-[#000005] transition-all duration-200 uppercase tracking-widest"
+                        >
+                            ← TO ESTIMATOR
+                        </button>
+                    </aside>
+                    <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
+                        {quoteData && lastPayload ? (
+                            <QuoteBreakdown
+                                key={activePersistedQuoteId ?? "draft"}
+                                quoteData={quoteData}
+                                numStandees={lastPayload.num_standees}
+                                requestPayload={lastPayload}
+                                initialActiveScenario={quoteInitialScenario}
+                                quoteName={breakdownQuoteName}
+                                persistedQuoteId={activePersistedQuoteId}
+                                quoteOwner={
+                                    typeof window !== "undefined" ? localStorage.getItem("username") : null
+                                }
+                                onBack={handleClearQuoteSelection}
+                            />
+                        ) : (
+                            <div className="flex-1 min-h-0 bg-[#F8F8F8]" aria-hidden />
+                        )}
+                    </div>
+                </div>
+                {buildQuoteModalOpen && (
+                    <div
+                        className="fixed inset-0 z-50 flex items-center justify-center bg-[#000005]/40 px-4"
+                        role="presentation"
+                        onClick={() => setBuildQuoteModalOpen(false)}
+                    >
+                        <div
+                            role="dialog"
+                            aria-modal="true"
+                            aria-labelledby="build-quote-title"
+                            className="w-full max-w-md border-2 border-[#000005] bg-white rounded-sm shadow-[8px_8px_0_0_#FFC843] p-6 flex flex-col gap-5"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <div>
+                                <div className="text-[10px] font-black text-[#FFC843] tracking-widest uppercase mb-1">
+                                    // NEW QUOTE
+                                </div>
+                                <h2
+                                    id="build-quote-title"
+                                    className="text-xl font-black text-[#000005] uppercase tracking-tight"
+                                >
+                                    Build new quote
+                                </h2>
+                                <p className="text-[11px] text-[#B1B3B6] font-semibold mt-1">
+                                    Name the quote and run the calculator. If you are signed in and this project is
+                                    saved, the quote is stored under the project.
+                                </p>
+                            </div>
+                            <div className="flex flex-col gap-1.5">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-[#B1B3B6]">
+                                    Quote name
+                                </span>
+                                <input
+                                    type="text"
+                                    value={quoteBuildName}
+                                    onChange={(e) => setQuoteBuildName(e.target.value)}
+                                    className="border-2 border-[#E0E0E0] rounded-sm p-2 outline-none text-[#000005] text-xs w-full bg-[#F8F8F8] focus:border-[#FFC843] font-semibold transition-colors"
+                                />
+                            </div>
+                            <div className="flex flex-col gap-1.5">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-[#B1B3B6]">
+                                    Production scenario
+                                </span>
+                                <Dropdown
+                                    options={QUOTE_SCENARIO_ORDER.map((id) => BUILD_QUOTE_SCENARIO_LABELS[id])}
+                                    currOption={BUILD_QUOTE_SCENARIO_LABELS[quoteBuildScenario]}
+                                    onSelect={(label: string) => {
+                                        const id = QUOTE_SCENARIO_ORDER.find(
+                                            (sid) => BUILD_QUOTE_SCENARIO_LABELS[sid] === label,
+                                        );
+                                        if (id !== undefined) setQuoteBuildScenario(id);
+                                    }}
+                                    width="w-full"
+                                />
+                            </div>
+                            <div className="flex flex-col gap-1.5">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-[#B1B3B6]">
+                                    Standee quantity
+                                </span>
+                                <input
+                                    type="number"
+                                    min={1}
+                                    value={quoteBuildQuantity}
+                                    onChange={(e) =>
+                                        setQuoteBuildQuantity(e.target.value === "" ? "" : Number(e.target.value))
+                                    }
+                                    className="border-2 border-[#E0E0E0] rounded-sm p-2 outline-none text-[#000005] text-xs w-full max-w-[200px] bg-[#F8F8F8] focus:border-[#FFC843] font-semibold transition-colors"
+                                />
+                            </div>
+                            <div className="flex flex-row gap-3 pt-1">
+                                <button
+                                    type="button"
+                                    onClick={() => setBuildQuoteModalOpen(false)}
+                                    className="flex-1 text-xs font-black uppercase tracking-widest py-2.5 rounded-sm border-2 border-[#E0E0E0] text-[#B1B3B6] hover:bg-[#F4F4F4] hover:text-[#000005] hover:border-[#B1B3B6] transition-all duration-200"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={!canSubmitBuildQuote}
+                                    onClick={runBuildQuoteFromModal}
+                                    className={`flex-1 text-xs font-black uppercase tracking-widest py-2.5 rounded-sm border-2 transition-all duration-200 ${
+                                        canSubmitBuildQuote
+                                            ? "border-[#000005] bg-[#FFC843] text-[#000005] hover:bg-[#000005] hover:text-white hover:border-[#000005] cursor-pointer"
+                                            : "border-[#E0E0E0] bg-[#F4F4F4] text-[#B1B3B6] cursor-not-allowed"
+                                    }`}
+                                >
+                                    Build quote
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </>
         );
     }
 
@@ -454,18 +948,22 @@ export default function Inputter() {
                             SAVE
                         </div>
                         <div
-                            onClick={canCalculate ? handleQuoteGeneration : undefined}
+                            onClick={canCalculate && !continueBusy ? () => void handleContinue() : undefined}
                             className={`group flex flex-row justify-center gap-4 text-xs font-black py-3 rounded-sm flex-[2] min-w-[180px] transition-all duration-200 ease-in-out uppercase tracking-widest ${
-                                canCalculate
+                                canCalculate && !continueBusy
                                     ? "bg-[#FFC843] text-[#000005] hover:bg-[#000005] hover:text-white cursor-pointer"
                                     : "bg-[#E0E0E0] text-[#B1B3B6] cursor-not-allowed"
                             }`}
                         >
-                            CONTINUE{" "}
+                            {continueBusy ? "SAVING…" : "CONTINUE"}{" "}
                             <img
                                 src="/submitarrow.svg"
                                 alt=""
-                                className={`transition-all duration-300 ease-in-out ${canCalculate ? "group-hover:translate-x-1 group-hover:invert" : "opacity-40"}`}
+                                className={`transition-all duration-300 ease-in-out ${
+                                    canCalculate && !continueBusy
+                                        ? "group-hover:translate-x-1 group-hover:invert"
+                                        : "opacity-40"
+                                }`}
                             />
                         </div>
                     </div>
