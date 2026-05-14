@@ -2,6 +2,7 @@
 import ElementsManager from "@/components/ElementsManager";
 import Dropdown from "@/components/Dropdown";
 import QuoteBreakdown from "@/components/QuoteBreakdown";
+import BuildQuoteModal from "@/components/BuildQuoteModal";
 import { useCallback, useEffect, useState } from "react";
 import { API_BASE } from "@/lib/config";
 
@@ -52,15 +53,6 @@ type ApiPersistedElement = {
     complexity: string;
 };
 
-const BUILD_QUOTE_SCENARIO_LABELS: Record<QuoteScenarioId, string> = {
-    1: "Internal — Packed Out (1)",
-    2: "Internal — Assembled (2)",
-    3: "Hybrid — Internal Finishing (3)",
-    4: "Hybrid — External Die Cut (4)",
-    5: "External — Full Outsource (5)",
-};
-
-const QUOTE_SCENARIO_ORDER: QuoteScenarioId[] = [1, 2, 3, 4, 5];
 
 // information that gets displayed in the projects sidebar
 type PersistedProjectSummary = {
@@ -443,7 +435,7 @@ export default function Inputter() {
                 width: width === "" ? 0 : width,
                 complexity,
                 linear_inches: linear_inches === "" ? null : linear_inches,
-                description: description === "" ? null : description,
+                description: description || "",
             })),
             num_standees: numStandees,
             scenario: scenarioId,
@@ -573,15 +565,6 @@ export default function Inputter() {
             .finally(() => setIsQuoteLoading(false));
     }
 
-    useEffect(() => {
-        if (!buildQuoteModalOpen) return;
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === "Escape") setBuildQuoteModalOpen(false);
-        };
-        window.addEventListener("keydown", onKey);
-        return () => window.removeEventListener("keydown", onKey);
-    }, [buildQuoteModalOpen]);
-
     async function handleSave() {
         if (!canPersist) return;
         if (!localStorage.getItem("username")?.trim()) return;
@@ -701,99 +684,18 @@ export default function Inputter() {
                         )}
                     </div>
                 </div>
-                {buildQuoteModalOpen && (
-                    <div
-                        className="fixed inset-0 z-50 flex items-center justify-center bg-[#000005]/40 px-4"
-                        role="presentation"
-                        onClick={() => setBuildQuoteModalOpen(false)}
-                    >
-                        <div
-                            role="dialog"
-                            aria-modal="true"
-                            aria-labelledby="build-quote-title"
-                            className="w-full max-w-md border-2 border-[#000005] bg-white rounded-sm shadow-[8px_8px_0_0_#FFC843] p-6 flex flex-col gap-5"
-                            onClick={(e) => e.stopPropagation()}
-                        >
-                            <div>
-                                <div className="text-[10px] font-black text-[#FFC843] tracking-widest uppercase mb-1">
-                                    // NEW QUOTE
-                                </div>
-                                <h2
-                                    id="build-quote-title"
-                                    className="text-xl font-black text-[#000005] uppercase tracking-tight"
-                                >
-                                    Build new quote
-                                </h2>
-                                <p className="text-[11px] text-[#B1B3B6] font-semibold mt-1">
-                                    Name the quote and run the calculator. If you are signed in and this project is
-                                    saved, the quote is stored under the project.
-                                </p>
-                            </div>
-                            <div className="flex flex-col gap-1.5">
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-[#B1B3B6]">
-                                    Quote name
-                                </span>
-                                <input
-                                    type="text"
-                                    value={quoteBuildName}
-                                    onChange={(e) => setQuoteBuildName(e.target.value)}
-                                    className="border-2 border-[#E0E0E0] rounded-sm p-2 outline-none text-[#000005] text-xs w-full bg-[#F8F8F8] focus:border-[#FFC843] font-semibold transition-colors"
-                                />
-                            </div>
-                            <div className="flex flex-col gap-1.5">
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-[#B1B3B6]">
-                                    Production scenario
-                                </span>
-                                <Dropdown
-                                    options={QUOTE_SCENARIO_ORDER.map((id) => BUILD_QUOTE_SCENARIO_LABELS[id])}
-                                    currOption={BUILD_QUOTE_SCENARIO_LABELS[quoteBuildScenario]}
-                                    onSelect={(label: string) => {
-                                        const id = QUOTE_SCENARIO_ORDER.find(
-                                            (sid) => BUILD_QUOTE_SCENARIO_LABELS[sid] === label,
-                                        );
-                                        if (id !== undefined) setQuoteBuildScenario(id);
-                                    }}
-                                    width="w-full"
-                                />
-                            </div>
-                            <div className="flex flex-col gap-1.5">
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-[#B1B3B6]">
-                                    Standee quantity
-                                </span>
-                                <input
-                                    type="number"
-                                    min={1}
-                                    value={quoteBuildQuantity}
-                                    onChange={(e) =>
-                                        setQuoteBuildQuantity(e.target.value === "" ? "" : Number(e.target.value))
-                                    }
-                                    className="border-2 border-[#E0E0E0] rounded-sm p-2 outline-none text-[#000005] text-xs w-full max-w-[200px] bg-[#F8F8F8] focus:border-[#FFC843] font-semibold transition-colors"
-                                />
-                            </div>
-                            <div className="flex flex-row gap-3 pt-1">
-                                <button
-                                    type="button"
-                                    onClick={() => setBuildQuoteModalOpen(false)}
-                                    className="flex-1 text-xs font-black uppercase tracking-widest py-2.5 rounded-sm border-2 border-[#E0E0E0] text-[#B1B3B6] hover:bg-[#F4F4F4] hover:text-[#000005] hover:border-[#B1B3B6] transition-all duration-200"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="button"
-                                    disabled={!canSubmitBuildQuote}
-                                    onClick={runBuildQuoteFromModal}
-                                    className={`flex-1 text-xs font-black uppercase tracking-widest py-2.5 rounded-sm border-2 transition-all duration-200 ${
-                                        canSubmitBuildQuote
-                                            ? "border-[#000005] bg-[#FFC843] text-[#000005] hover:bg-[#000005] hover:text-white hover:border-[#000005] cursor-pointer"
-                                            : "border-[#E0E0E0] bg-[#F4F4F4] text-[#B1B3B6] cursor-not-allowed"
-                                    }`}
-                                >
-                                    Build quote
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
+                <BuildQuoteModal
+                    open={buildQuoteModalOpen}
+                    onClose={() => setBuildQuoteModalOpen(false)}
+                    quoteName={quoteBuildName}
+                    onQuoteNameChange={setQuoteBuildName}
+                    scenario={quoteBuildScenario}
+                    onScenarioChange={setQuoteBuildScenario}
+                    quantity={quoteBuildQuantity}
+                    onQuantityChange={setQuoteBuildQuantity}
+                    canSubmit={canSubmitBuildQuote}
+                    onSubmit={runBuildQuoteFromModal}
+                />
             </>
         );
     }
@@ -860,7 +762,7 @@ export default function Inputter() {
             </aside>
 
             {/* Main estimator */}
-            <div className="flex flex-col items-center flex-1 min-w-0 overflow-y-auto px-8 py-6">
+            <div className="flex flex-col items-center flex-1 min-w-0 min-h-0 overflow-hidden px-8 py-6">
                 <div className="w-full max-w-2xl mb-4 shrink-0">
                     <div className="text-xs font-bold text-[#FFC843] tracking-widest uppercase mb-1">// ESTIMATOR</div>
                     <div className="text-3xl font-black text-[#000005] uppercase tracking-tight">Quote Estimate</div>
@@ -874,8 +776,8 @@ export default function Inputter() {
                         <div className="text-[10px] font-black mb-3 uppercase tracking-widest text-[#000005]">
                             <span className="text-[#FFC843]">// </span>01 — COUNTS
                         </div>
-                        <div className="flex flex-col gap-4 w-full">
-                            <div className="w-full">
+                        <div className="flex flex-row gap-4 w-full">
+                            <div className="flex-1 min-w-0">
                                 <div className="text-[10px] font-bold mb-2 uppercase tracking-wider text-[#B1B3B6]">
                                     Project name
                                 </div>
@@ -884,36 +786,35 @@ export default function Inputter() {
                                     value={projectName}
                                     onChange={(e) => setProjectName(e.target.value)}
                                     placeholder="Untitled project"
-                                    className="border-2 border-[#E0E0E0] rounded-sm p-1.5 outline-none text-[#000005] text-xs w-full max-w-md bg-[#F8F8F8] focus:border-[#FFC843] font-semibold transition-colors"
+                                    className="border-2 border-[#E0E0E0] rounded-sm p-1.5 outline-none text-[#000005] text-xs w-full bg-[#F8F8F8] focus:border-[#FFC843] font-semibold transition-colors"
                                 />
                             </div>
-                            <div className="flex flex-row gap-8 w-full flex-wrap">
-                                <div>
-                                    <div className="text-[10px] font-bold mb-2 uppercase tracking-wider text-[#B1B3B6]">
-                                        Standee Type
-                                    </div>
-                                    <Dropdown
-                                        key={resetKey}
-                                        options={["Simple", "Moderate", "Complex"]}
-                                        currOption={standeeType}
-                                        onSelect={(val: StandeeType) => setStandeeType(val)}
-                                    />
+                            <div className="flex-1 min-w-0">
+                                <div className="text-[10px] font-bold mb-2 uppercase tracking-wider text-[#B1B3B6]">
+                                    Standee Type
                                 </div>
-                                <div>
-                                    <div className="text-[10px] font-bold mb-2 uppercase tracking-wider text-[#B1B3B6]">
-                                        Standee Count
-                                    </div>
-                                    <input
-                                        type="number"
-                                        min={0}
-                                        value={standeeCount}
-                                        onChange={(e) =>
-                                            setStandeeCount(e.target.value === "" ? "" : Number(e.target.value))
-                                        }
-                                        placeholder="0"
-                                        className="border-2 border-[#E0E0E0] rounded-sm p-1.5 outline-none text-[#000005] text-xs w-[200px] bg-[#F8F8F8] focus:border-[#FFC843] font-semibold transition-colors"
-                                    />
+                                <Dropdown
+                                    key={resetKey}
+                                    options={["Simple", "Moderate", "Complex"]}
+                                    currOption={standeeType}
+                                    onSelect={(val: StandeeType) => setStandeeType(val)}
+                                    width="w-full"
+                                />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <div className="text-[10px] font-bold mb-2 uppercase tracking-wider text-[#B1B3B6]">
+                                    Standee Count
                                 </div>
+                                <input
+                                    type="number"
+                                    min={0}
+                                    value={standeeCount}
+                                    onChange={(e) =>
+                                        setStandeeCount(e.target.value === "" ? "" : Number(e.target.value))
+                                    }
+                                    placeholder="0"
+                                    className="border-2 border-[#E0E0E0] rounded-sm p-1.5 outline-none text-[#000005] text-xs w-full bg-[#F8F8F8] focus:border-[#FFC843] font-semibold transition-colors"
+                                />
                             </div>
                         </div>
                     </div>
