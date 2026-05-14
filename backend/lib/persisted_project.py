@@ -46,6 +46,7 @@ def elements_to_persisted(rows: list[Element]) -> list[PersistedElement]:
             width=float(el.width),
             linear_inches=None if el.linear_inches is None else float(el.linear_inches),
             complexity=complexity_to_str(el.complexity),
+            description= "" if el.description is None else el.description
         )
         for el in rows
     ]
@@ -58,6 +59,7 @@ class PersistedElement(BaseModel):
     width: float = Field(..., gt=0)
     linear_inches: float | None = None
     complexity: ComplexityStr
+    description: str = Field(default="")
 
 
 class PersistedProjectCreate(BaseModel):
@@ -96,6 +98,7 @@ def elements_from_persisted_project(rows: list[PersistedElement]) -> list[Elemen
             width=e.width,
             linear_inches=e.linear_inches,
             complexity=_COMPLEXITY_PARSE[e.complexity],
+            description = "" if e.description is None else e.description
         )
         for e in rows
     ]
@@ -118,6 +121,7 @@ EXAMPLE_PROJECT_DOCUMENT: dict[str, Any] = {
             "width": 74.9667,
             "linear_inches": None,
             "complexity": "Complex",
+            "description": "Monkey cutout on front of standee",
         },
     ],
 }

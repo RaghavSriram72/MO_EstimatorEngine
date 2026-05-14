@@ -18,9 +18,11 @@ class Element:
         length: float,
         width: float,
         linear_inches: float = 0,
+        description: str = "",
         complexity: Complexity = Complexity.SIMPLE,
     ):
         self.name = name
+        self.description = description
         self.length = length
         self.width = width
         self.complexity = complexity

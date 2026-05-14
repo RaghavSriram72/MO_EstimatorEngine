@@ -13,6 +13,7 @@ type Element = {
     width: number | "";
     complexity: string;
     linear_inches: number | "";
+    description: string | "";
 };
 
 /** Persisted subtotal override strings keyed by scenario id "1" … "5". */
@@ -27,7 +28,7 @@ export type QuoteData = {
 };
 
 export type RequestPayload = {
-    elements: { name: string; height: number; width: number; complexity: string; linear_inches: number | null }[];
+    elements: { name: string; height: number; width: number; complexity: string; linear_inches: number | null; description: string | null}[];
     num_standees: number;
     standee_type: number;
     scenario?: number;
@@ -148,6 +149,7 @@ function buildElementsForApi(elements: Element[]) {
         width: el.width === "" ? 0 : el.width,
         linear_inches: el.linear_inches === "" ? null : el.linear_inches,
         complexity: el.complexity as StandeeType,
+        description: el.description === "" ? null : el.description,
     }));
 }
 
@@ -292,11 +294,12 @@ export default function Inputter() {
             setStandeeCount(typeof doc.num_standees === "number" ? doc.num_standees : "");
             const rows = Array.isArray(doc.elements) ? doc.elements : [];
             setElements(
-                rows.map((row: { length: number; width: number; complexity: string; linear_inches: number | null }, i: number) => ({
+                rows.map((row: { length: number; width: number; complexity: string; linear_inches: number | null; description: string | null}, i: number) => ({
                     id: Date.now() + i,
                     height: row.length,
                     width: row.width,
                     complexity: row.complexity || "Simple",
+                    description: row.description || "",
                     linear_inches:
                         row.linear_inches === null || row.linear_inches === undefined ? "" : row.linear_inches,
                 })),
@@ -434,12 +437,13 @@ export default function Inputter() {
         const standeeTypeMap: Record<StandeeType, number> = { Simple: 1, Moderate: 2, Complex: 3 };
         return {
             standee_type: standeeTypeMap[standeeType],
-            elements: elements.map(({ height, width, complexity, linear_inches }) => ({
+            elements: elements.map(({ height, width, complexity, linear_inches, description}) => ({
                 name: "",
                 height: height === "" ? 0 : height,
                 width: width === "" ? 0 : width,
                 complexity,
                 linear_inches: linear_inches === "" ? null : linear_inches,
+                description: description === "" ? null : description,
             })),
             num_standees: numStandees,
             scenario: scenarioId,

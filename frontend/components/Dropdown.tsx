@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default function Dropdown({ options, currOption, onSelect, width = "w-[200px]" }: any) {
+export default function Dropdown({ options, currOption, onSelect, width = "w-full" }: any) {
     const [isOpen, setIsOpen] = React.useState(false);
     const [search, setSearch] = React.useState("");
 
@@ -20,15 +20,15 @@ export default function Dropdown({ options, currOption, onSelect, width = "w-[20
     };
 
     return (
-        <div className="dropdown relative">
-            <div onClick={handleOpen} className={`text-xs flex justify-between ${width} dropdown-button bg-white text-[#000005] px-4 py-1.5 rounded-sm flex items-center cursor-pointer border-2 border-[#E0E0E0] font-semibold hover:border-[#B1B3B6] transition-colors`}>
-                <div className={currOption ? "text-[#000005]" : "text-[#B1B3B6]"}>
+        <div className="dropdown relative w-full min-w-0">
+            <div onClick={handleOpen} className={`text-xs flex justify-between items-center gap-2 min-w-0 ${width} dropdown-button bg-white text-[#000005] px-3 py-1.5 rounded-sm cursor-pointer border-2 border-[#E0E0E0] font-semibold hover:border-[#B1B3B6] transition-colors`}>
+                <div className={`min-w-0 flex-1 truncate ${currOption ? "text-[#000005]" : "text-[#B1B3B6]"}`}>
                     {currOption || "Select Option"}
                 </div>
-                <img src="/dropdown.svg" className="ml-2 w-4 h-4 block" style={{ filter: 'brightness(0)' }}></img>
+                <img src="/dropdown.svg" className="ml-2 w-4 h-4 shrink-0 block" style={{ filter: 'brightness(0)' }}></img>
             </div>
             {isOpen && (
-                <div className={`text-xs dropdown-menu absolute mt-1 ${width} bg-white border border-[#E0E0E0] rounded-sm shadow-lg z-10`}>
+                <div className={`text-xs dropdown-menu absolute left-0 mt-1 z-20 ${width} bg-white border border-[#E0E0E0] rounded-sm shadow-lg`}>
                     <div className="px-2 py-1.5 border-b border-[#E0E0E0]">
                         <input
                             autoFocus

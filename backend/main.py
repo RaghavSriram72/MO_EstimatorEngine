@@ -94,6 +94,7 @@ def _elements_from_element_types(types: list["ElementType"]) -> list[Element]:
             length=e.height,
             width=e.width,
             linear_inches=e.linear_inches or 0,
+            description=e.description or "",
             complexity=_COMPLEXITY_MAP.get(e.complexity, Complexity.SIMPLE),
         )
         for e in types
@@ -131,6 +132,7 @@ class ElementType(BaseModel):
     width: float
     linear_inches: float | None = None
     complexity: str = "Simple"
+    description: str = ""
 
 
 class QuoteRequest(BaseModel):
