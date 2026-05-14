@@ -3,7 +3,7 @@ import ElementsManager from "@/components/ElementsManager";
 import Dropdown from "@/components/Dropdown";
 import QuoteBreakdown from "@/components/QuoteBreakdown";
 import BuildQuoteModal from "@/components/BuildQuoteModal";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { API_BASE } from "@/lib/config";
 
 type StandeeType = "Simple" | "Moderate" | "Complex";
@@ -141,8 +141,38 @@ function buildElementsForApi(elements: Element[]) {
         width: el.width === "" ? 0 : el.width,
         linear_inches: el.linear_inches === "" ? null : el.linear_inches,
         complexity: el.complexity as StandeeType,
-        description: el.description === "" ? null : el.description,
+        description: el.description || "",
     }));
+}
+
+function sidebarSearchMatches(query: string, haystack: string): boolean {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    const blob = haystack.toLowerCase();
+    for (const term of q.split(/\s+/)) {
+        if (!term) continue;
+        if (!blob.includes(term)) return false;
+    }
+    return true;
+}
+
+const SIDEBAR_SEARCH_INPUT_CLASS =
+    "w-full text-[11px] font-semibold text-[#000005] placeholder:text-[#B1B3B6] border-2 border-[#E0E0E0] rounded-sm px-2 py-2 outline-none focus-visible:border-[#FFC843] focus-visible:ring-2 focus-visible:ring-[#FFC843]";
+
+function persistApiFailureMessage(data: unknown): string | null {
+    if (!data || typeof data !== "object") return null;
+    const o = data as Record<string, unknown>;
+    if (typeof o.error === "string") return o.error;
+    const d = o.detail;
+    if (typeof d === "string") return d;
+    if (Array.isArray(d)) {
+        for (const item of d) {
+            if (item && typeof item === "object" && typeof (item as { msg?: unknown }).msg === "string") {
+                return (item as { msg: string }).msg;
+            }
+        }
+    }
+    return null;
 }
 
 export default function Inputter() {
@@ -170,6 +200,9 @@ export default function Inputter() {
     const [projectQuotes, setProjectQuotes] = useState<PersistedQuoteListItem[]>([]);
     const [projectQuotesLoading, setProjectQuotesLoading] = useState(false);
     const [projectQuotesError, setProjectQuotesError] = useState<string | null>(null);
+    const [quoteDeletingId, setQuoteDeletingId] = useState<string | null>(null);
+    const [sidebarProjectSearch, setSidebarProjectSearch] = useState("");
+    const [sidebarQuoteSearch, setSidebarQuoteSearch] = useState("");
     const [activePersistedQuoteId, setActivePersistedQuoteId] = useState<string | null>(null);
     const [continueBusy, setContinueBusy] = useState(false);
 
@@ -239,6 +272,28 @@ export default function Inputter() {
         void refreshProjects();
     }, [refreshProjects, listVersion]);
 
+    const filteredProjects = useMemo(() => {
+        const q = sidebarProjectSearch;
+        return projects.filter((p) =>
+            sidebarSearchMatches(
+                q,
+                `${p.project_name || ""} ${p.num_standees} ${p.standee_type} ${p._id}`,
+            ),
+        );
+    }, [projects, sidebarProjectSearch]);
+
+    const filteredProjectQuotes = useMemo(() => {
+        const q = sidebarQuoteSearch;
+        return projectQuotes.filter((quote) => {
+            const name = (quote.quote_name || "Untitled").trim();
+            const scen =
+                typeof quote.scenario === "number" ? `scenario ${quote.scenario} sc ${quote.scenario}` : "";
+            const ns =
+                typeof quote.num_standees === "number" ? `${quote.num_standees} standees` : "";
+            return sidebarSearchMatches(q, `${name} ${scen} ${ns} ${quote._id}`);
+        });
+    }, [projectQuotes, sidebarQuoteSearch]);
+
     function handleClear() {
         setStandeeCount("");
         setStandeeType("Simple");
@@ -254,6 +309,9 @@ export default function Inputter() {
         setBreakdownQuoteName(null);
         setProjectQuotes([]);
         setProjectQuotesError(null);
+        setQuoteDeletingId(null);
+        setSidebarProjectSearch("");
+        setSidebarQuoteSearch("");
         setActivePersistedQuoteId(null);
     }
 
@@ -308,6 +366,35 @@ export default function Inputter() {
             setProjectsError("Could not load project");
         } finally {
             setProjectsLoading(false);
+        }
+    }
+
+    async function deletePersistedQuote(quoteId: string, quoteLabel: string) {
+        if (!window.confirm(`Are you sure you want to delete "${quoteLabel}"? This action cannot be undone.`)) {
+            return;
+        }
+        const owner = localStorage.getItem("username")?.trim();
+        if (!owner) return;
+        setProjectQuotesError(null);
+        setQuoteDeletingId(quoteId);
+        try {
+            const res = await fetch(
+                `${API_BASE}/quotes/${encodeURIComponent(quoteId)}?owner=${encodeURIComponent(owner)}`,
+                { method: "DELETE" },
+            );
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                setProjectQuotesError(persistApiFailureMessage(data) ?? "Could not delete quote");
+                return;
+            }
+            if (activePersistedQuoteId === quoteId) {
+                handleClearQuoteSelection();
+            }
+            await refreshProjectQuotes();
+        } catch {
+            setProjectQuotesError("Could not delete quote");
+        } finally {
+            setQuoteDeletingId(null);
         }
     }
 
@@ -371,8 +458,10 @@ export default function Inputter() {
                 );
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok) {
-                    console.error(data);
-                    return { success: false, errorMessage: "Could not update project" };
+                    return {
+                        success: false,
+                        errorMessage: persistApiFailureMessage(data) ?? "Could not update project",
+                    };
                 }
                 return { success: true };
             }
@@ -391,8 +480,10 @@ export default function Inputter() {
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) {
-                console.error(data);
-                return { success: false, errorMessage: "Could not save project" };
+                return {
+                    success: false,
+                    errorMessage: persistApiFailureMessage(data) ?? "Could not save project",
+                };
             }
             if (typeof data.project_id !== "string") {
                 return { success: false, errorMessage: "Could not save project" };
@@ -455,6 +546,7 @@ export default function Inputter() {
         setBreakdownQuoteName(null);
         setActivePersistedQuoteId(null);
         setBuildQuoteModalOpen(false);
+        setSidebarQuoteSearch("");
     }
 
     function handleClearQuoteSelection() {
@@ -612,6 +704,20 @@ export default function Inputter() {
                         >
                             + BUILD NEW QUOTE
                         </button>
+                        <div className="flex flex-col gap-1 shrink-0">
+                            <label htmlFor="sidebar-quote-search" className="sr-only">
+                                Search quotes
+                            </label>
+                            <input
+                                id="sidebar-quote-search"
+                                type="search"
+                                value={sidebarQuoteSearch}
+                                onChange={(e) => setSidebarQuoteSearch(e.target.value)}
+                                placeholder="Search quotes…"
+                                className={SIDEBAR_SEARCH_INPUT_CLASS}
+                                autoComplete="off"
+                            />
+                        </div>
                         {!loggedIn && (
                             <p className="text-[10px] text-[#B1B3B6] font-semibold leading-snug px-0.5">
                                 Sign in to load saved quotes for this project.
@@ -635,26 +741,58 @@ export default function Inputter() {
                                 !projectQuotesError && (
                                     <div className="text-[11px] text-[#B1B3B6] font-semibold px-1">No quotes yet.</div>
                                 )}
-                            {projectQuotes.map((q) => (
-                                <button
-                                    key={q._id}
-                                    type="button"
-                                    onClick={() => void openPersistedQuote(q._id)}
-                                    className={`text-left rounded-sm border-2 px-2 py-2 transition-all duration-200 outline-none focus-visible:ring-2 focus-visible:ring-[#FFC843] ${
-                                        activePersistedQuoteId === q._id
-                                            ? "border-[#FFC843] bg-[#FFFBF0]"
-                                            : "border-[#E0E0E0] bg-[#F8F8F8] hover:border-[#B1B3B6]"
-                                    }`}
-                                >
-                                    <div className="text-[11px] font-black text-[#000005] uppercase tracking-tight line-clamp-3 break-words">
-                                        {(q.quote_name || "Untitled").trim()}
+                            {!projectQuotesLoading &&
+                                loggedIn &&
+                                projectQuotes.length > 0 &&
+                                filteredProjectQuotes.length === 0 &&
+                                sidebarQuoteSearch.trim() &&
+                                !projectQuotesError && (
+                                    <div className="text-[11px] text-[#B1B3B6] font-semibold px-1">
+                                        No quotes match your search.
                                     </div>
-                                    <div className="text-[9px] text-[#B1B3B6] font-bold mt-0.5 uppercase tracking-wider">
-                                        {typeof q.scenario === "number" ? `Sc. ${q.scenario}` : ""}
-                                        {typeof q.num_standees === "number" ? ` · ${q.num_standees} standees` : ""}
+                                )}
+                            {filteredProjectQuotes.map((q) => {
+                                const label = (q.quote_name || "Untitled").trim();
+                                return (
+                                    <div
+                                        key={q._id}
+                                        className={`flex items-stretch gap-1 rounded-sm border-2 transition-all duration-200 ${
+                                            activePersistedQuoteId === q._id
+                                                ? "border-[#FFC843] bg-[#FFFBF0]"
+                                                : "border-[#E0E0E0] bg-[#F8F8F8] hover:border-[#B1B3B6]"
+                                        }`}
+                                    >
+                                        <button
+                                            type="button"
+                                            onClick={() => void openPersistedQuote(q._id)}
+                                            disabled={quoteDeletingId !== null}
+                                            className="min-w-0 flex-1 text-left px-2 py-2 outline-none focus-visible:ring-2 focus-visible:ring-[#FFC843] disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            <div className="text-[11px] font-black text-[#000005] uppercase tracking-tight line-clamp-3 break-words">
+                                                {label}
+                                            </div>
+                                            <div className="text-[9px] text-[#B1B3B6] font-bold mt-0.5 uppercase tracking-wider">
+                                                {typeof q.scenario === "number" ? `Sc. ${q.scenario}` : ""}
+                                                {typeof q.num_standees === "number"
+                                                    ? ` · ${q.num_standees} standees`
+                                                    : ""}
+                                            </div>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            aria-label={`Delete quote ${label}`}
+                                            disabled={quoteDeletingId !== null}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                void deletePersistedQuote(q._id, label);
+                                            }}
+                                            className="shrink-0 w-8 flex items-center justify-center text-[12px] font-bold text-[#B1B3B6] hover:text-red-600 hover:bg-red-50 border-l-2 border-[#E0E0E0] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                        >
+                                            ✕
+                                        </button>
                                     </div>
-                                </button>
-                            ))}
+                                );
+                            })}
                         </div>
                         <button
                             type="button"
@@ -714,6 +852,20 @@ export default function Inputter() {
                 >
                     + NEW PROJECT
                 </button>
+                <div className="flex flex-col gap-1 shrink-0">
+                    <label htmlFor="sidebar-project-search" className="sr-only">
+                        Search projects
+                    </label>
+                    <input
+                        id="sidebar-project-search"
+                        type="search"
+                        value={sidebarProjectSearch}
+                        onChange={(e) => setSidebarProjectSearch(e.target.value)}
+                        placeholder="Search projects…"
+                        className={SIDEBAR_SEARCH_INPUT_CLASS}
+                        autoComplete="off"
+                    />
+                </div>
                 <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-1.5">
                     {projectsLoading && projects.length === 0 && (
                         <div className="text-[11px] text-[#B1B3B6] font-semibold px-1">Loading…</div>
@@ -724,7 +876,16 @@ export default function Inputter() {
                     {!projectsLoading && projects.length === 0 && !projectsError && (
                         <div className="text-[11px] text-[#B1B3B6] font-semibold px-1">No saved projects yet.</div>
                     )}
-                    {projects.map((p) => (
+                    {!projectsLoading &&
+                        projects.length > 0 &&
+                        filteredProjects.length === 0 &&
+                        sidebarProjectSearch.trim() &&
+                        !projectsError && (
+                            <div className="text-[11px] text-[#B1B3B6] font-semibold px-1">
+                                No projects match your search.
+                            </div>
+                        )}
+                    {filteredProjects.map((p) => (
                         <div
                             key={p._id}
                             className={`flex items-stretch gap-1 rounded-sm border-2 transition-all duration-200 ${
