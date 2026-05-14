@@ -60,7 +60,7 @@ export default function BuildQuoteModal({
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="build-quote-title"
-                className="w-full max-w-md border-2 border-[#000005] bg-white rounded-sm shadow-[8px_8px_0_0_#FFC843] p-6 flex flex-col gap-5"
+                className="w-full max-w-md border-2 border-[#000005] bg-white rounded-sm p-6 flex flex-col gap-5"
                 onClick={(e) => e.stopPropagation()}
             >
                 <div>
