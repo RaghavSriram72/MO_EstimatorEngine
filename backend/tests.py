@@ -227,6 +227,15 @@ if __name__ == "__main__":
         )
         for scenario in [Scenario1, Scenario2, Scenario3, Scenario4, Scenario5]
     ]
-    for scenario in scenarios:
-        scenario.calculate_cost(color_comp_count=0)
+    from lib.classes.cost_inputs import (
+        Scenario1Input,
+        Scenario2Input,
+        Scenario3Input,
+        Scenario4Input,
+        Scenario5Input,
+    )
+
+    inputs = [Scenario1Input, Scenario2Input, Scenario3Input, Scenario4Input, Scenario5Input]
+    for scenario, InputCls in zip(scenarios, inputs):
+        scenario.calculate_cost(InputCls(color_comp_count=0))
     db.close()

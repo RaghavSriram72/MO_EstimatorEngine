@@ -15,6 +15,13 @@ from lib.classes.db import MidnightOilDB as MOADB
 
 # from lib.globals import
 from lib.classes.form import Element, Complexity
+from lib.classes.cost_inputs import (
+    Scenario1Input,
+    Scenario2Input,
+    Scenario3Input,
+    Scenario4Input,
+    Scenario5Input,
+)
 from lib.classes.scenarios import Scenario1, Scenario2, Scenario3, Scenario4, Scenario5
 from lib.persisted_project import (
     PersistedProjectCreate,
@@ -101,15 +108,30 @@ def _elements_from_element_types(types: list["ElementType"]) -> list[Element]:
     ]
 
 
+def _scenario_cost_input(sid: int, payload: QuoteRequest):
+    """Build the typed input dataclass each scenario's ``calculate_cost`` expects."""
+    common = dict(
+        num_standees=payload.num_standees,
+        print_forms_per_standee=payload.print_forms_per_standee,
+        structure_forms_per_standee=payload.structure_forms_per_standee,
+        num_overs=payload.num_overs,
+    )
+    if sid == 1:
+        return Scenario1Input(**common)
+    if sid == 2:
+        return Scenario2Input(**common)
+    if sid == 3:
+        return Scenario3Input(**common)
+    if sid == 4:
+        return Scenario4Input(**common)
+    if sid == 5:
+        return Scenario5Input(**common)
+    raise ValueError(f"Unknown scenario id: {sid}")
+
+
 def _compute_quote_scenarios(db: MOADB, elements: list[Element], payload: QuoteRequest) -> dict[str, Any]:
     _, bin_dict = print_form_calculator(elements, payload.num_standees)
     print_forms = list(bin_dict.values())
-
-    form_overrides = {
-        "print_forms_per_standee": payload.print_forms_per_standee or 0,
-        "structure_forms_per_standee": payload.structure_forms_per_standee or 0,
-        "num_overs": payload.num_overs or 0,
-    }
 
     scenarios_to_run = [payload.scenario] if payload.scenario is not None else [1, 2, 3, 4, 5]
     out: dict[str, Any] = {}
@@ -121,7 +143,8 @@ def _compute_quote_scenarios(db: MOADB, elements: list[Element], payload: QuoteR
             num_standees=payload.num_standees,
             standee_type=Complexity(payload.standee_type),
         )
-        s.calculate_cost(**form_overrides)
+        cost_input = _scenario_cost_input(sid, payload)
+        s.calculate_cost(cost_input)
         out[f"scenario_{sid}"] = s.to_serializable_dict()
     return out
 
@@ -132,7 +155,7 @@ class ElementType(BaseModel):
     width: float
     linear_inches: float | None = None
     complexity: str = "Simple"
-    description: str= ""
+    description: str = ""
 
 
 class QuoteRequest(BaseModel):
@@ -161,29 +184,8 @@ _SCENARIO_CLASSES = {
 
 @app.post("/generate_quote")
 async def generate_quote(payload: QuoteRequest):
-    elements = [
-        Element(
-            name=e.name,
-            length=e.height,
-            width=e.width,
-            linear_inches=e.linear_inches or 0,
-            complexity=_COMPLEXITY_MAP.get(e.complexity, Complexity.SIMPLE),
-            description=e.description or "",
-        )
-        for e in payload.elements
-    ]
-
-    _, bin_dict = print_form_calculator(elements, payload.num_standees)
-    print_forms = list(bin_dict.values())
-
-    form_overrides = {
-        "print_forms_per_standee": payload.print_forms_per_standee or 0,
-        "structure_forms_per_standee": payload.structure_forms_per_standee or 0,
-        "num_overs": payload.num_overs or 0,
-    }
-
-    scenarios_to_run = [payload.scenario] if payload.scenario is not None else [1, 2, 3, 4, 5]
-    out: dict = {}
+    elements = _elements_from_element_types(payload.elements)
+    out: dict[str, Any] = {}
     with MOADB() as db:
         out = _compute_quote_scenarios(db, elements, payload)
 
