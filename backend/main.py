@@ -1,6 +1,11 @@
+from __future__ import annotations
+
 import hashlib
 import hmac
+from datetime import UTC, datetime
+from typing import Any
 
+from bson import ObjectId
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -9,8 +14,7 @@ from pydantic import BaseModel
 from lib.classes.db import MidnightOilDB as MOADB
 
 # from lib.globals import
-from lib.classes.form import Element, Form, Complexity
-from lib.classes.project import Project
+from lib.classes.form import Element, Complexity
 from lib.classes.scenarios import Scenario1, Scenario2, Scenario3, Scenario4, Scenario5
 from lib.persisted_project import (
     PersistedProjectCreate,
@@ -19,6 +23,13 @@ from lib.persisted_project import (
     elements_to_persisted,
     persisted_create_to_mongo_document,
     persisted_update_to_mongo_set,
+)
+from lib.persisted_quote import (
+    PersistedQuoteCreateBody,
+    PersistedQuoteUpdateBody,
+    persisted_quote_create_from_path,
+    persisted_quote_insert_document,
+    persisted_quote_update_to_mongo_set,
 )
 
 from lib.print_form_calculator import print_form_calculator
@@ -76,6 +87,44 @@ _COMPLEXITY_MAP = {
 }
 
 
+def _elements_from_element_types(types: list["ElementType"]) -> list[Element]:
+    return [
+        Element(
+            name=e.name,
+            length=e.height,
+            width=e.width,
+            linear_inches=e.linear_inches or 0,
+            complexity=_COMPLEXITY_MAP.get(e.complexity, Complexity.SIMPLE),
+        )
+        for e in types
+    ]
+
+
+def _compute_quote_scenarios(db: MOADB, elements: list[Element], payload: QuoteRequest) -> dict[str, Any]:
+    _, bin_dict = print_form_calculator(elements, payload.num_standees)
+    print_forms = list(bin_dict.values())
+
+    form_overrides = {
+        "print_forms_per_standee": payload.print_forms_per_standee or 0,
+        "structure_forms_per_standee": payload.structure_forms_per_standee or 0,
+        "num_overs": payload.num_overs or 0,
+    }
+
+    scenarios_to_run = [payload.scenario] if payload.scenario is not None else [1, 2, 3, 4, 5]
+    out: dict[str, Any] = {}
+    for sid in scenarios_to_run:
+        s = _SCENARIO_CLASSES[sid](
+            db=db,
+            name="API quote",
+            print_forms=print_forms,
+            num_standees=payload.num_standees,
+            standee_type=Complexity(payload.standee_type),
+        )
+        s.calculate_cost(**form_overrides)
+        out[f"scenario_{sid}"] = s.to_serializable_dict()
+    return out
+
+
 class ElementType(BaseModel):
     name: str = ""
     height: float
@@ -95,6 +144,8 @@ class QuoteRequest(BaseModel):
     print_forms_per_standee: int | None = None
     structure_forms_per_standee: int | None = None
     num_overs: int | None = None
+    # When True, persist/update Mongo project from this request. Quote preview uses False.
+    persist_project: bool = False
 
 
 _SCENARIO_CLASSES = {
@@ -108,46 +159,17 @@ _SCENARIO_CLASSES = {
 
 @app.post("/generate_quote")
 async def generate_quote(payload: QuoteRequest):
-    elements = [
-        Element(
-            name=e.name,
-            length=e.height,
-            width=e.width,
-            linear_inches=e.linear_inches or 0,
-            complexity=_COMPLEXITY_MAP.get(e.complexity, Complexity.SIMPLE),
-        )
-        for e in payload.elements
-    ]
-
-    _, bin_dict = print_form_calculator(elements, payload.num_standees)
-    print_forms = list(bin_dict.values())
-
-    form_overrides = {
-        "print_forms_per_standee": payload.print_forms_per_standee or 0,
-        "structure_forms_per_standee": payload.structure_forms_per_standee or 0,
-        "num_overs": payload.num_overs or 0,
-    }
-
-    scenarios_to_run = [payload.scenario] if payload.scenario is not None else [1, 2, 3, 4, 5]
-    out: dict = {}
+    elements = _elements_from_element_types(payload.elements)
+    out: dict[str, Any] = {}
     with MOADB() as db:
-        for sid in scenarios_to_run:
-            s = _SCENARIO_CLASSES[sid](
-                db=db,
-                name="API quote",
-                print_forms=print_forms,
-                num_standees=payload.num_standees,
-                standee_type=Complexity(payload.standee_type),
-            )
-            s.calculate_cost(**form_overrides)
-            out[f"scenario_{sid}"] = s.to_dict()
+        out = _compute_quote_scenarios(db, elements, payload)
 
     # Persist the project if an authenticated owner is provided.
     owner = None
     if payload.owner:
         owner = payload.owner.strip()
 
-    if owner and payload.num_standees >= 1 and payload.elements:
+    if payload.persist_project and owner and payload.num_standees >= 1 and payload.elements:
         with MOADB() as db:
             if db.check_username_exists(owner):
                 pname = (payload.project_name or "").strip() or "Untitled project"
@@ -339,6 +361,81 @@ async def get_project(
     if row is None:
         return JSONResponse(status_code=404, content={"error": "Project not found"})
     return row
+
+
+@app.get("/projects/{project_id}/quotes")
+async def list_project_quotes(
+    project_id: str,
+    owner: str = Query(..., description="Must match the document's owner field"),
+):
+    """Return all persisted quotes for a project (sidebar list)."""
+    with MOADB() as db:
+        if not db.check_username_exists(owner):
+            return JSONResponse(status_code=404, content={"error": "Unknown owner"})
+        if db.get_project_by_owner(project_id, owner) is None:
+            return JSONResponse(status_code=404, content={"error": "Project not found"})
+        quotes = db.list_quotes_for_project(project_id, owner)
+    return {"quotes": quotes}
+
+
+@app.post("/projects/{project_id}/quotes")
+async def create_project_quote(project_id: str, payload: PersistedQuoteCreateBody):
+    """Insert a quote under an existing project owned by ``payload.owner``."""
+    with MOADB() as db:
+        if not db.check_username_exists(payload.owner):
+            return JSONResponse(status_code=404, content={"error": "Unknown owner"})
+        if db.get_project_by_owner(project_id, payload.owner) is None:
+            return JSONResponse(status_code=404, content={"error": "Project not found"})
+        create = persisted_quote_create_from_path(project_id, payload)
+        doc = persisted_quote_insert_document(create, created_at=datetime.now(UTC), updated_at=datetime.now(UTC))
+        doc["project_id"] = ObjectId(doc["project_id"])
+        quote_id = db.insert_persisted_quote(doc)
+    return JSONResponse(
+        status_code=201,
+        content={"quote_id": quote_id, "message": "Quote created successfully"},
+    )
+
+
+@app.get("/quotes/{quote_id}")
+async def get_quote(
+    quote_id: str,
+    owner: str = Query(..., description="Must match the document's owner field"),
+):
+    with MOADB() as db:
+        if not db.check_username_exists(owner):
+            return JSONResponse(status_code=404, content={"error": "Unknown owner"})
+        row = db.get_quote_by_owner(quote_id, owner)
+    if row is None:
+        return JSONResponse(status_code=404, content={"error": "Quote not found"})
+    return row
+
+
+@app.patch("/quotes/{quote_id}")
+async def update_quote(
+    quote_id: str,
+    payload: PersistedQuoteUpdateBody,
+    owner: str = Query(..., description="Must match the document's owner field"),
+):
+    with MOADB() as db:
+        if not db.check_username_exists(owner):
+            return JSONResponse(status_code=404, content={"error": "Unknown owner"})
+        fields = persisted_quote_update_to_mongo_set(payload)
+        if not db.update_persisted_quote(quote_id, owner, fields):
+            return JSONResponse(status_code=404, content={"error": "Quote not found"})
+    return {"message": "Quote updated successfully", "quote_id": quote_id}
+
+
+@app.delete("/quotes/{quote_id}")
+async def delete_quote(
+    quote_id: str,
+    owner: str = Query(..., description="Owner must match quote document's owner field"),
+):
+    with MOADB() as db:
+        if not db.check_username_exists(owner):
+            return JSONResponse(status_code=404, content={"error": "Unknown owner"})
+        if not db.delete_persisted_quote(quote_id, owner):
+            return JSONResponse(status_code=404, content={"error": "Quote not found"})
+    return {"message": "Quote deleted", "quote_id": quote_id}
 
 
 @app.patch("/projects/{project_id}")

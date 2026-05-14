@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from enum import Enum
 from typing import TypeVar
 
 import numpy as np
@@ -53,6 +54,18 @@ class Project[T: BaseInput]:
     def to_dict(self) -> dict:
         """Return common project/scenario fields as a dictionary."""
         return {k: v for k, v in self.__dict__.items() if not k.startswith("_") and k != "db"}
+
+    def to_serializable_dict(self) -> dict:
+        """Subset of ``to_dict`` safe for JSON/BSON: no ``print_forms``/``Form``, enums as ints."""
+        out: dict = {}
+        for k, v in self.__dict__.items():
+            if k.startswith("_") or k in ("db", "print_forms"):
+                continue
+            if isinstance(v, Enum):
+                out[k] = v.value
+            else:
+                out[k] = v
+        return out
 
     def _calculate_universal_costs(self, input: BaseInput) -> float:
         self.num_standees = input.num_standees or self.num_standees

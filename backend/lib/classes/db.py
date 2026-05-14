@@ -33,6 +33,8 @@ class MidnightOilDB:
         self.users_collection = self.db["users"]
         self.projects_collection = self.db["projects"]
         self.projects_collection.create_index([("owner", 1), ("_id", -1)])
+        self.quotes_collection = self.db["quotes"]
+        self.quotes_collection.create_index([("owner", 1), ("project_id", 1), ("_id", -1)])
         self._load_cache()
         return self
 
@@ -124,10 +126,83 @@ class MidnightOilDB:
             return False
         result = self.projects_collection.delete_one({"_id": oid, "owner": owner})
         if result.deleted_count > 0:
+            self.delete_quotes_for_project(project_id, owner)
             self._load_cache()
             return True
         else:
             return False
+
+    def insert_persisted_quote(self, doc: dict[str, Any]) -> str:
+        """Insert a quote document. Caller must supply a BSON-safe ``doc`` (no ``Form`` objects). Returns new ``_id`` as str."""
+        result = self.quotes_collection.insert_one(doc)
+        return str(result.inserted_id)
+
+    def get_quote_by_owner(self, quote_id: str, owner: str) -> dict[str, Any] | None:
+        """Return one quote document if it exists and belongs to ``owner``."""
+        try:
+            qid = ObjectId(quote_id)
+        except (InvalidId, TypeError):
+            return None
+        row = self.quotes_collection.find_one({"_id": qid, "owner": owner})
+        if row is None:
+            return None
+        doc = dict(row)
+        doc["_id"] = str(doc["_id"])
+        doc["project_id"] = str(doc["project_id"])
+        for key in ("created_at", "updated_at"):
+            if key in doc and hasattr(doc[key], "isoformat"):
+                doc[key] = doc[key].isoformat()
+        return doc
+
+    def list_quotes_for_project(self, project_id: str, owner: str) -> list[dict[str, Any]]:
+        """Return all quote documents for ``project_id`` that belong to ``owner``, newest ``_id`` first."""
+        try:
+            pid = ObjectId(project_id)
+        except (InvalidId, TypeError):
+            return []
+        cursor = self.quotes_collection.find({"project_id": pid, "owner": owner}).sort("_id", -1)
+        out: list[dict[str, Any]] = []
+        for row in cursor:
+            doc = dict(row)
+            doc["_id"] = str(doc["_id"])
+            doc["project_id"] = str(doc["project_id"])
+            for key in ("created_at", "updated_at"):
+                if key in doc and hasattr(doc[key], "isoformat"):
+                    doc[key] = doc[key].isoformat()
+            out.append(doc)
+        return out
+
+    def update_persisted_quote(self, quote_id: str, owner: str, fields: dict[str, Any]) -> bool:
+        """Update allowed fields on a quote owned by ``owner``."""
+        try:
+            qid = ObjectId(quote_id)
+        except (InvalidId, TypeError):
+            return False
+        allowed = {"quote_name", "breakdown", "num_standees", "scenario", "standee_type", "elements"}
+        update_doc_final = {k: v for k, v in fields.items() if k in allowed}
+        if not update_doc_final:
+            return False
+        update_doc_final["updated_at"] = datetime.now(UTC)
+        result = self.quotes_collection.update_one({"_id": qid, "owner": owner}, {"$set": update_doc_final})
+        return result.matched_count > 0
+
+    def delete_persisted_quote(self, quote_id: str, owner: str) -> bool:
+        """Delete one quote if it exists and belongs to ``owner``."""
+        try:
+            qid = ObjectId(quote_id)
+        except (InvalidId, TypeError):
+            return False
+        result = self.quotes_collection.delete_one({"_id": qid, "owner": owner})
+        return result.deleted_count > 0
+
+    def delete_quotes_for_project(self, project_id: str, owner: str) -> int:
+        """Remove all quotes linked to ``project_id`` for ``owner``. Returns deleted count."""
+        try:
+            oid = ObjectId(project_id)
+        except (InvalidId, TypeError):
+            return 0
+        result = self.quotes_collection.delete_many({"project_id": oid, "owner": owner})
+        return result.deleted_count
 
     def get_unit_cost_entry(self, cost_name: str) -> dict:
         """Return the entire unit cost entry for a given cost name."""
@@ -327,3 +402,5 @@ def _hash_password(password: str) -> str:
     salt = secrets.token_bytes(16)
     digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
     return f"pbkdf2_sha256${iterations}${salt.hex()}${digest.hex()}"
+
+

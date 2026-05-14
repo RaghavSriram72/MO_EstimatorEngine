@@ -113,7 +113,7 @@ class TestStaticCostCalculator(unittest.TestCase):
         print(f"  Zund cut cost:            ${project.zund_cut_cost or 0:.2f} (hours: {project.zund_hours:.2f})")
         print(f"  Shipping box cost:        ${project.shipping_box_cost or 0:.2f}")
         print(f"  Label cost:               ${project.label_cost or 0:.2f}")
-        print(f"  {'─' * 38}")
+        print(f"  {'-' * 38}")
         print(f"  Total static cost:        ${total_cost:.2f}\n")
 
         substrate_cost = project.corrugate_cost + project.print_form_cost
@@ -169,7 +169,7 @@ class TestStaticCostCalculator(unittest.TestCase):
         print(f"  Label cost:               ${project.label_cost or 0:.2f}")
         print(f"  Instruction sheet cost:   ${project.instruction_sheet_cost or 0:.2f}")
         print(f"  Freight cost:             ${project.freight_cost or 0:.2f}")
-        print(f"  {'─' * 38}")
+        print(f"  {'-' * 38}")
         print(f"  Total static cost:        ${total_cost:.2f}\n")
         self.assertAlmostEqual(total_cost, 307270.99, delta=1.0)
 
@@ -205,7 +205,7 @@ class TestStaticCostCalculator(unittest.TestCase):
         print(f"  Shipping box cost:        ${project.shipping_box_cost or 0:.2f}")
         print(f"  Label cost:               ${project.label_cost or 0:.2f}")
         print(f"  Instruction sheet cost:   ${project.instruction_sheet_cost or 0:.2f}")
-        print(f"  {'─' * 38}")
+        print(f"  {'-' * 38}")
         print(f"  Total static cost:        ${total_cost:.2f}\n")
         self.assertAlmostEqual(total_cost, 8884.20, delta=1.0)
 
