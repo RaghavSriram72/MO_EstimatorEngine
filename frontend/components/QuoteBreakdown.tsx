@@ -425,6 +425,8 @@ export default function QuoteBreakdown({
     const [manualDirty, setManualDirty] = useState(false);
     const [isSavingQuote, setIsSavingQuote] = useState(false);
     const [saveQuoteError, setSaveQuoteError] = useState<string | null>(null);
+    const [universalCostsExpanded, setUniversalCostsExpanded] = useState(false);
+    const [scenarioCostsExpanded, setScenarioCostsExpanded] = useState(false);
 
     const { universalLines, universalSubtotalOverride } = perScenario[activeScenario];
     const { numStandees, printFormsPerStandee, structureFormsPerStandee, overs } = params;
@@ -779,87 +781,162 @@ export default function QuoteBreakdown({
 
                     {/* Universal costs */}
                     <div className="border-2 border-[#E0E0E0] rounded-sm bg-white p-4">
-                        <p className="text-[10px] font-black text-[#000005] uppercase tracking-widest mb-3">
-                            <span className="text-[#FFC843]">// </span>Universal Costs
-                        </p>
-                        {universalLines.map((line) => (
-                            <CostRow key={line.key} line={line} onChange={updateUniversal} />
-                        ))}
-                        <div className="flex justify-between items-center pt-3 mt-1 border-t-2 border-[#F0F0F0]">
-                            <span className="text-xs font-black text-[#B1B3B6] uppercase tracking-wider">Subtotal</span>
-                            <span className="text-sm font-black text-[#000005]">${fmt(universalLinesSum)}</span>
-                        </div>
-                        <div className="flex flex-wrap items-end justify-between gap-3 pt-2">
-                            <div className="flex flex-col gap-1 min-w-[200px] flex-1">
-                                <span className="text-[9px] font-black text-[#B1B3B6] uppercase tracking-widest">
-                                    Override universal subtotal ($)
+                        <button
+                            type="button"
+                            className={`group w-full flex items-center justify-between gap-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-[#FFC843] rounded-sm hover:bg-[#F8F8F8] transition-colors ${
+                                universalCostsExpanded ? "mb-3" : ""
+                            }`}
+                            onClick={() => setUniversalCostsExpanded((v) => !v)}
+                            aria-expanded={universalCostsExpanded}
+                            aria-label={
+                                universalCostsExpanded ? "Collapse universal costs" : "Expand universal costs"
+                            }
+                        >
+                            <span className="min-w-0">
+                                <span className="block text-[10px] font-black text-[#000005] uppercase tracking-widest">
+                                    <span className="text-[#FFC843]">// </span>Universal Costs
                                 </span>
-                                <input
-                                    type="number"
-                                    min={0}
-                                    step={0.01}
-                                    value={universalSubtotalOverride}
-                                    onChange={(e) => patchActive({ universalSubtotalOverride: e.target.value })}
-                                    placeholder={`e.g. 5000 — default ${fmt(universalLinesSum)}`}
-                                    className="border border-[#E0E0E0] rounded-sm px-2 py-1.5 text-xs text-[#000005] outline-none bg-[#F8F8F8] focus:border-[#FFC843] w-full font-semibold"
-                                />
-                            </div>
-                            <div className="flex flex-col items-end gap-0.5 pb-0.5">
-                                <span className="text-[9px] text-[#B1B3B6] uppercase font-bold tracking-wider">Used in total</span>
-                                <span className="text-sm font-black text-[#000005]">
-                                    ${fmt(universalTotal)}
-                                    {universalSubtotalOverride.trim() !== "" && Number.isFinite(parsedUniversalOv) && (
-                                        <span className="text-[10px] font-bold text-[#F57F17] ml-1">override</span>
-                                    )}
-                                </span>
-                            </div>
-                        </div>
+                                {!universalCostsExpanded ? (
+                                    <span className="block text-sm font-black text-[#000005] mt-1 tabular-nums">
+                                        ${fmt(universalTotal)}
+                                    </span>
+                                ) : null}
+                            </span>
+                            <span
+                                className="shrink-0 text-2xl font-black leading-none text-[#000005] tabular-nums select-none group-hover:text-[#FFC843] transition-colors min-w-[1.25rem] text-center"
+                                aria-hidden
+                            >
+                                {universalCostsExpanded ? "−" : "+"}
+                            </span>
+                        </button>
+                        {universalCostsExpanded ? (
+                            <>
+                                {universalLines.map((line) => (
+                                    <CostRow key={line.key} line={line} onChange={updateUniversal} />
+                                ))}
+                                <div className="flex justify-between items-center pt-3 mt-1 border-t-2 border-[#F0F0F0]">
+                                    <span className="text-xs font-black text-[#B1B3B6] uppercase tracking-wider">
+                                        Subtotal
+                                    </span>
+                                    <span className="text-sm font-black text-[#000005]">${fmt(universalLinesSum)}</span>
+                                </div>
+                                <div className="flex flex-wrap items-end justify-between gap-3 pt-2">
+                                    <div className="flex flex-col gap-1 min-w-[200px] flex-1">
+                                        <span className="text-[9px] font-black text-[#B1B3B6] uppercase tracking-widest">
+                                            Override universal subtotal ($)
+                                        </span>
+                                        <input
+                                            type="number"
+                                            min={0}
+                                            step={0.01}
+                                            value={universalSubtotalOverride}
+                                            onChange={(e) =>
+                                                patchActive({ universalSubtotalOverride: e.target.value })
+                                            }
+                                            placeholder={`e.g. 5000 — default ${fmt(universalLinesSum)}`}
+                                            className="border border-[#E0E0E0] rounded-sm px-2 py-1.5 text-xs text-[#000005] outline-none bg-[#F8F8F8] focus:border-[#FFC843] w-full font-semibold"
+                                        />
+                                    </div>
+                                    <div className="flex flex-col items-end gap-0.5 pb-0.5">
+                                        <span className="text-[9px] text-[#B1B3B6] uppercase font-bold tracking-wider">
+                                            Used in total
+                                        </span>
+                                        <span className="text-sm font-black text-[#000005]">
+                                            ${fmt(universalTotal)}
+                                            {universalSubtotalOverride.trim() !== "" &&
+                                                Number.isFinite(parsedUniversalOv) && (
+                                                    <span className="text-[10px] font-bold text-[#F57F17] ml-1">
+                                                        override
+                                                    </span>
+                                                )}
+                                        </span>
+                                    </div>
+                                </div>
+                            </>
+                        ) : null}
                     </div>
 
                     {/* Scenario costs */}
                     <div className="border-2 border-[#E0E0E0] rounded-sm bg-white p-4">
-                        <p className="text-[10px] font-black text-[#000005] uppercase tracking-widest mb-3">
-                            <span className="text-[#FFC843]">// </span>Scenario {activeScenario} Costs
-                        </p>
-                        {scenarioLines[activeScenario].map((line) => (
-                            <CostRow key={line.key} line={line} onChange={updateScenario} />
-                        ))}
-                        <div className="flex justify-between items-center pt-3 mt-1 border-t-2 border-[#F0F0F0]">
-                            <span className="text-xs font-black text-[#B1B3B6] uppercase tracking-wider">Subtotal</span>
-                            <span className="text-sm font-black text-[#000005]">${fmt(scenarioLinesSum)}</span>
-                        </div>
-                        <div className="flex flex-wrap items-end justify-between gap-3 pt-2">
-                            <div className="flex flex-col gap-1 min-w-[200px] flex-1">
-                                <span className="text-[9px] font-black text-[#B1B3B6] uppercase tracking-widest">
-                                    Override scenario subtotal ($)
+                        <button
+                            type="button"
+                            className={`group w-full flex items-center justify-between gap-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-[#FFC843] rounded-sm hover:bg-[#F8F8F8] transition-colors ${
+                                scenarioCostsExpanded ? "mb-3" : ""
+                            }`}
+                            onClick={() => setScenarioCostsExpanded((v) => !v)}
+                            aria-expanded={scenarioCostsExpanded}
+                            aria-label={
+                                scenarioCostsExpanded
+                                    ? `Collapse scenario ${activeScenario} costs`
+                                    : `Expand scenario ${activeScenario} costs`
+                            }
+                        >
+                            <span className="min-w-0">
+                                <span className="block text-[10px] font-black text-[#000005] uppercase tracking-widest">
+                                    <span className="text-[#FFC843]">// </span>Scenario {activeScenario} Costs
                                 </span>
-                                <input
-                                    type="number"
-                                    min={0}
-                                    step={0.01}
-                                    value={scenarioSubtotalOverride[activeScenario]}
-                                    onChange={(e) => {
-                                        setManualDirty(true);
-                                        setScenarioSubtotalOverride((prev) => ({
-                                            ...prev,
-                                            [activeScenario]: e.target.value,
-                                        }));
-                                    }}
-                                    placeholder={`default ${fmt(scenarioLinesSum)}`}
-                                    className="border border-[#E0E0E0] rounded-sm px-2 py-1.5 text-xs text-[#000005] outline-none bg-[#F8F8F8] focus:border-[#FFC843] w-full font-semibold"
-                                />
-                            </div>
-                            <div className="flex flex-col items-end gap-0.5 pb-0.5">
-                                <span className="text-[9px] text-[#B1B3B6] uppercase font-bold tracking-wider">Used in total</span>
-                                <span className="text-sm font-black text-[#000005]">
-                                    ${fmt(scenarioTotal)}
-                                    {(scenarioSubtotalOverride[activeScenario] ?? "").trim() !== "" &&
-                                        Number.isFinite(parsedScenarioOv) && (
-                                            <span className="text-[10px] font-bold text-[#F57F17] ml-1">override</span>
-                                        )}
-                                </span>
-                            </div>
-                        </div>
+                                {!scenarioCostsExpanded ? (
+                                    <span className="block text-sm font-black text-[#000005] mt-1 tabular-nums">
+                                        ${fmt(scenarioTotal)}
+                                    </span>
+                                ) : null}
+                            </span>
+                            <span
+                                className="shrink-0 text-2xl font-black leading-none text-[#000005] tabular-nums select-none group-hover:text-[#FFC843] transition-colors min-w-[1.25rem] text-center"
+                                aria-hidden
+                            >
+                                {scenarioCostsExpanded ? "−" : "+"}
+                            </span>
+                        </button>
+                        {scenarioCostsExpanded ? (
+                            <>
+                                {scenarioLines[activeScenario].map((line) => (
+                                    <CostRow key={line.key} line={line} onChange={updateScenario} />
+                                ))}
+                                <div className="flex justify-between items-center pt-3 mt-1 border-t-2 border-[#F0F0F0]">
+                                    <span className="text-xs font-black text-[#B1B3B6] uppercase tracking-wider">
+                                        Subtotal
+                                    </span>
+                                    <span className="text-sm font-black text-[#000005]">${fmt(scenarioLinesSum)}</span>
+                                </div>
+                                <div className="flex flex-wrap items-end justify-between gap-3 pt-2">
+                                    <div className="flex flex-col gap-1 min-w-[200px] flex-1">
+                                        <span className="text-[9px] font-black text-[#B1B3B6] uppercase tracking-widest">
+                                            Override scenario subtotal ($)
+                                        </span>
+                                        <input
+                                            type="number"
+                                            min={0}
+                                            step={0.01}
+                                            value={scenarioSubtotalOverride[activeScenario]}
+                                            onChange={(e) => {
+                                                setManualDirty(true);
+                                                setScenarioSubtotalOverride((prev) => ({
+                                                    ...prev,
+                                                    [activeScenario]: e.target.value,
+                                                }));
+                                            }}
+                                            placeholder={`default ${fmt(scenarioLinesSum)}`}
+                                            className="border border-[#E0E0E0] rounded-sm px-2 py-1.5 text-xs text-[#000005] outline-none bg-[#F8F8F8] focus:border-[#FFC843] w-full font-semibold"
+                                        />
+                                    </div>
+                                    <div className="flex flex-col items-end gap-0.5 pb-0.5">
+                                        <span className="text-[9px] text-[#B1B3B6] uppercase font-bold tracking-wider">
+                                            Used in total
+                                        </span>
+                                        <span className="text-sm font-black text-[#000005]">
+                                            ${fmt(scenarioTotal)}
+                                            {(scenarioSubtotalOverride[activeScenario] ?? "").trim() !== "" &&
+                                                Number.isFinite(parsedScenarioOv) && (
+                                                    <span className="text-[10px] font-bold text-[#F57F17] ml-1">
+                                                        override
+                                                    </span>
+                                                )}
+                                        </span>
+                                    </div>
+                                </div>
+                            </>
+                        ) : null}
                     </div>
 
                     {/* Grand total */}

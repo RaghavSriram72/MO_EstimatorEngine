@@ -692,6 +692,9 @@ export default function Inputter() {
                         <div className="text-[10px] font-black uppercase tracking-widest text-[#000005]">
                             <span className="text-[#FFC843]">// </span>QUOTES
                         </div>
+                        <div className="text-[11px] font-black text-[#000005] uppercase tracking-tight line-clamp-3 break-words px-0.5">
+                            {projectName.trim() || "Untitled project"}
+                        </div>
                         <button
                             type="button"
                             onClick={() => {
