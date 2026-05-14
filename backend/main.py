@@ -94,8 +94,8 @@ def _elements_from_element_types(types: list["ElementType"]) -> list[Element]:
             length=e.height,
             width=e.width,
             linear_inches=e.linear_inches or 0,
-            description=e.description or "",
             complexity=_COMPLEXITY_MAP.get(e.complexity, Complexity.SIMPLE),
+            description=e.description or "",
         )
         for e in types
     ]
@@ -132,7 +132,7 @@ class ElementType(BaseModel):
     width: float
     linear_inches: float | None = None
     complexity: str = "Simple"
-    description: str = ""
+    description: str= ""
 
 
 class QuoteRequest(BaseModel):
@@ -161,8 +161,29 @@ _SCENARIO_CLASSES = {
 
 @app.post("/generate_quote")
 async def generate_quote(payload: QuoteRequest):
-    elements = _elements_from_element_types(payload.elements)
-    out: dict[str, Any] = {}
+    elements = [
+        Element(
+            name=e.name,
+            length=e.height,
+            width=e.width,
+            linear_inches=e.linear_inches or 0,
+            complexity=_COMPLEXITY_MAP.get(e.complexity, Complexity.SIMPLE),
+            description=e.description or "",
+        )
+        for e in payload.elements
+    ]
+
+    _, bin_dict = print_form_calculator(elements, payload.num_standees)
+    print_forms = list(bin_dict.values())
+
+    form_overrides = {
+        "print_forms_per_standee": payload.print_forms_per_standee or 0,
+        "structure_forms_per_standee": payload.structure_forms_per_standee or 0,
+        "num_overs": payload.num_overs or 0,
+    }
+
+    scenarios_to_run = [payload.scenario] if payload.scenario is not None else [1, 2, 3, 4, 5]
+    out: dict = {}
     with MOADB() as db:
         out = _compute_quote_scenarios(db, elements, payload)
 
