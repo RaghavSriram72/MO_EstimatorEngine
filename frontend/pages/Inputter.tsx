@@ -265,7 +265,7 @@ export default function Inputter() {
 
     // TODO: Implement blue upload
     function handleBlueUpload() {
-        console.log("Uploading blue...");
+        console.log("Uploading anduuuuuuu...");
     }
 
     function handleNewProject() {

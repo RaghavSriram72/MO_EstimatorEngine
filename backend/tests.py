@@ -1,6 +1,20 @@
 import unittest
 
-from lib.classes import Complexity, Element, MidnightOilDB, Scenario1, Scenario2, Scenario3, Scenario4, Scenario5
+from lib.classes import (
+    Complexity,
+    Element,
+    MidnightOilDB,
+    Scenario1,
+    Scenario1Input,
+    Scenario2,
+    Scenario2Input,
+    Scenario3,
+    Scenario3Input,
+    Scenario4,
+    Scenario4Input,
+    Scenario5,
+    Scenario5Input,
+)
 from lib.print_form_calculator import print_form_calculator
 
 complexity_map = {
@@ -8,6 +22,7 @@ complexity_map = {
     Complexity.MODERATE: "Moderate",
     Complexity.COMPLEX: "Complex",
 }
+
 
 class TestPrintFormCalculator(unittest.TestCase):
     """Tests for print form calculation of standee projects."""
@@ -75,7 +90,7 @@ class TestStaticCostCalculator(unittest.TestCase):
             Element(name="monkey", length=80.1012, width=74.9667, complexity=Complexity.SIMPLE),
         ]
         _, bin_dict = print_form_calculator(elements, 1)
-        project = Scenario2(
+        project = Scenario1(
             TestStaticCostCalculator.db,
             name="Primate standee (test)",
             print_forms=list(bin_dict.values()),
@@ -83,7 +98,7 @@ class TestStaticCostCalculator(unittest.TestCase):
             num_standees=1,
             standee_type=Complexity.SIMPLE,
         )
-        total_cost = project.calculate_cost(color_comp_count=0, blank_comp_count=0)
+        total_cost = project.calculate_cost(Scenario1Input())
 
         print(f"\nPrimate standee static cost breakdown ({project.num_standees} standees):")
         print(f"  Imposition cost:          ${project.imposition_cost or 0:.2f}")
@@ -138,7 +153,7 @@ class TestStaticCostCalculator(unittest.TestCase):
             num_standees=1,
             standee_type=Complexity.MODERATE,
         )
-        total_cost = project.calculate_cost()
+        total_cost = project.calculate_cost(Scenario4Input())
         print(f"\nSonic standee static cost breakdown ({project.num_standees} standees):")
         print(f"  Imposition cost:          ${project.imposition_cost or 0:.2f}")
         print(f"  Corrugate cost:           ${project.corrugate_cost or 0:.2f}")
@@ -175,7 +190,7 @@ class TestStaticCostCalculator(unittest.TestCase):
             num_standees=1,
             standee_type=Complexity.MODERATE,
         )
-        total_cost = project.calculate_cost()
+        total_cost = project.calculate_cost(Scenario1Input())
         print(f"\nSinner standee static cost breakdown ({project.num_standees} standees):")
         print(f"  Imposition cost:          ${project.imposition_cost or 0:.2f}")
         print(f"  Corrugate cost:           ${project.corrugate_cost or 0:.2f}")
@@ -194,6 +209,7 @@ class TestStaticCostCalculator(unittest.TestCase):
         print(f"  Total static cost:        ${total_cost:.2f}\n")
         self.assertAlmostEqual(total_cost, 8884.20, delta=1.0)
 
+
 if __name__ == "__main__":
     elements = [
         Element(name="monkey", length=80.1012, width=74.9667, complexity=Complexity.SIMPLE),
@@ -208,7 +224,8 @@ if __name__ == "__main__":
             # iQuote project qty; spreadsheet "STANDEE PRINT-NLANK FORMS DATA" says quantity of standeess is only 2
             num_standees=1,
             standee_type=Complexity.SIMPLE,
-        ) for scenario in [Scenario1, Scenario2, Scenario3, Scenario4, Scenario5]
+        )
+        for scenario in [Scenario1, Scenario2, Scenario3, Scenario4, Scenario5]
     ]
     for scenario in scenarios:
         scenario.calculate_cost(color_comp_count=0)

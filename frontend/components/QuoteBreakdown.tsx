@@ -21,8 +21,6 @@ type ScenarioParams = {
 };
 
 type PerScenarioState = {
-    params: ScenarioParams;
-    baseline: ScenarioParams;
     universalLines: CostLine[];
     universalSubtotalOverride: string;
 };
@@ -149,29 +147,29 @@ function buildScenarioState(
     sources: Record<ScenarioId, Record<string, number>>,
     initialStandees: number,
 ): {
+    params: ScenarioParams;
     perScenario: Record<ScenarioId, PerScenarioState>;
     scenarioLines: Record<ScenarioId, CostLine[]>;
 } {
     const ids: ScenarioId[] = [1, 2, 3, 4, 5];
     const perScenario = {} as Record<ScenarioId, PerScenarioState>;
     const scenarioLines = {} as Record<ScenarioId, CostLine[]>;
+    const src1 = sources[1] ?? {};
+    const params: ScenarioParams = {
+        numStandees: initialStandees,
+        printFormsPerStandee: src1.print_forms_per_standee ?? 1,
+        structureFormsPerStandee: src1.structure_forms_per_standee ?? 0,
+        overs: src1.overs ?? 0,
+    };
     for (const id of ids) {
         const src = sources[id] ?? {};
-        const params: ScenarioParams = {
-            numStandees: initialStandees,
-            printFormsPerStandee: src.print_forms_per_standee ?? 1,
-            structureFormsPerStandee: src.structure_forms_per_standee ?? 0,
-            overs: src.overs ?? 0,
-        };
         perScenario[id] = {
-            params,
-            baseline: { ...params },
             universalLines: seedLines(buildLines(Object.keys(UNIVERSAL_LINE_DEFS), UNIVERSAL_LINE_DEFS), src),
             universalSubtotalOverride: "",
         };
         scenarioLines[id] = seedLines(buildLines(SCENARIO_KEYS[id], SCENARIO_LINE_DEFS), src);
     }
-    return { perScenario, scenarioLines };
+    return { params, perScenario, scenarioLines };
 }
 
 function breakdownUiFromQuoteData(q: QuoteData): QuoteBreakdownUi | undefined {
@@ -210,6 +208,7 @@ function scenarioSubtotalOverridesFromUi(ui: QuoteBreakdownUi | undefined): Reco
 
 function serializeScenarioToSource(
     id: ScenarioId,
+    sharedParams: ScenarioParams,
     perScenario: Record<ScenarioId, PerScenarioState>,
     scenarioLines: Record<ScenarioId, CostLine[]>,
     initialSources: Record<ScenarioId, Record<string, number>>,
@@ -222,7 +221,7 @@ function serializeScenarioToSource(
             base[k] = v;
         }
     }
-    const p = perScenario[id].params;
+    const p = sharedParams;
     base.num_standees = p.numStandees;
     base.print_forms_per_standee = p.printFormsPerStandee;
     base.structure_forms_per_standee = p.structureFormsPerStandee;
@@ -411,10 +410,12 @@ export default function QuoteBreakdown({
         5: (quoteData["scenario_5"] as Record<string, number>) ?? {},
     };
 
-    const [perScenario, setPerScenario] = useState<Record<ScenarioId, PerScenarioState>>(() => {
-        const base = buildScenarioState(initialSources, initialStandees).perScenario;
-        return mergeBreakdownUiIntoPerScenario(base, breakdownUiFromQuoteData(quoteData));
-    });
+    const builtInitial = buildScenarioState(initialSources, initialStandees);
+    const [params, setParams] = useState<ScenarioParams>(() => builtInitial.params);
+    const [baseline, setBaseline] = useState<ScenarioParams>(() => builtInitial.params);
+    const [perScenario, setPerScenario] = useState<Record<ScenarioId, PerScenarioState>>(() =>
+        mergeBreakdownUiIntoPerScenario(builtInitial.perScenario, breakdownUiFromQuoteData(quoteData)),
+    );
     const [scenarioLines, setScenarioLines] = useState<Record<ScenarioId, CostLine[]>>(
         () => buildScenarioState(initialSources, initialStandees).scenarioLines
     );
@@ -425,9 +426,7 @@ export default function QuoteBreakdown({
     const [isSavingQuote, setIsSavingQuote] = useState(false);
     const [saveQuoteError, setSaveQuoteError] = useState<string | null>(null);
 
-    // Active scenario shortcuts
-    const active = perScenario[activeScenario];
-    const { params, baseline, universalLines, universalSubtotalOverride } = active;
+    const { universalLines, universalSubtotalOverride } = perScenario[activeScenario];
     const { numStandees, printFormsPerStandee, structureFormsPerStandee, overs } = params;
 
     const isDirty =
@@ -440,6 +439,7 @@ export default function QuoteBreakdown({
     const needsSave = canPersistQuote && (manualDirty || isDirty);
 
     async function persistQuoteSnapshots(
+        sharedParams: ScenarioParams,
         ps: Record<ScenarioId, PerScenarioState>,
         sl: Record<ScenarioId, CostLine[]>,
         sso: Record<ScenarioId, string>,
@@ -451,13 +451,13 @@ export default function QuoteBreakdown({
         const breakdown: Record<string, unknown> = {};
         for (const id of [1, 2, 3, 4, 5] as ScenarioId[]) {
             if (quoteData[`scenario_${id}`] === undefined) continue;
-            breakdown[`scenario_${id}`] = serializeScenarioToSource(id, ps, sl, initialSources);
+            breakdown[`scenario_${id}`] = serializeScenarioToSource(id, sharedParams, ps, sl, initialSources);
         }
         const ui = buildBreakdownUiPayloadFromState(ps, sso);
         if (ui) breakdown._breakdown_ui = ui;
         const body = {
             quote_name: (quoteName ?? "").trim() || "Untitled quote",
-            num_standees: ps[scenarioForMeta].params.numStandees,
+            num_standees: sharedParams.numStandees,
             scenario: scenarioForMeta,
             standee_type: standeeTypeToPersistLabel(requestPayload.standee_type),
             elements: requestPayload.elements.map((e) => ({
@@ -487,18 +487,16 @@ export default function QuoteBreakdown({
         setIsSavingQuote(true);
         setSaveQuoteError(null);
         try {
-            const ok = await persistQuoteSnapshots(perScenario, scenarioLines, scenarioSubtotalOverride, activeScenario);
+            const ok = await persistQuoteSnapshots(
+                params,
+                perScenario,
+                scenarioLines,
+                scenarioSubtotalOverride,
+                activeScenario,
+            );
             if (ok) {
                 setManualDirty(false);
-                setPerScenario((prev) => {
-                    const next = { ...prev };
-                    for (const i of [1, 2, 3, 4, 5] as ScenarioId[]) {
-                        if (next[i]) {
-                            next[i] = { ...next[i], baseline: { ...next[i].params } };
-                        }
-                    }
-                    return next;
-                });
+                setBaseline({ ...params });
             } else {
                 setSaveQuoteError("Could not save quote");
             }
@@ -518,17 +516,8 @@ export default function QuoteBreakdown({
     }
 
     function patchParams(updates: Partial<ScenarioParams>) {
-        setPerScenario((prev) => ({
-            ...prev,
-            [activeScenario]: {
-                ...prev[activeScenario],
-                params: { ...prev[activeScenario].params, ...updates },
-            },
-        }));
-    }
-
-    function handleStandeesChange(value: number) {
-        patchParams({ numStandees: value });
+        setManualDirty(true);
+        setParams((prev) => ({ ...prev, ...updates }));
     }
 
     function updateUniversal(key: string, field: "qty" | "unitCost", value: number) {
@@ -556,15 +545,18 @@ export default function QuoteBreakdown({
         setIsRecalculating(true);
         setSaveQuoteError(null);
         const sid = activeScenario;
-        const { params: p, baseline: bl } = perScenario[sid];
         const body = {
             ...requestPayload,
             scenario: sid,
-            num_standees: p.numStandees,
+            num_standees: params.numStandees,
             persist_project: false,
-            ...(p.printFormsPerStandee !== bl.printFormsPerStandee && { print_forms_per_standee: p.printFormsPerStandee }),
-            ...(p.structureFormsPerStandee !== bl.structureFormsPerStandee && { structure_forms_per_standee: p.structureFormsPerStandee }),
-            ...(p.overs !== bl.overs && { num_overs: p.overs }),
+            ...(params.printFormsPerStandee !== baseline.printFormsPerStandee && {
+                print_forms_per_standee: params.printFormsPerStandee,
+            }),
+            ...(params.structureFormsPerStandee !== baseline.structureFormsPerStandee && {
+                structure_forms_per_standee: params.structureFormsPerStandee,
+            }),
+            ...(params.overs !== baseline.overs && { num_overs: params.overs }),
         };
         fetch(`${API_BASE}/generate_quote`, {
             method: "POST",
@@ -585,16 +577,10 @@ export default function QuoteBreakdown({
                     buildLines(Object.keys(UNIVERSAL_LINE_DEFS), UNIVERSAL_LINE_DEFS), src
                 );
                 const newScenarioLines = seedLines(buildLines(SCENARIO_KEYS[sid], SCENARIO_LINE_DEFS), src);
-                const newOvers = src.overs ?? p.overs;
-                const newParams: ScenarioParams = { ...p, overs: newOvers };
+                const newParams: ScenarioParams = { ...params, overs: src.overs ?? params.overs };
                 const mergedPs: Record<ScenarioId, PerScenarioState> = {
                     ...perScenario,
-                    [sid]: {
-                        params: newParams,
-                        baseline: { ...newParams },
-                        universalLines: newUniversalLines,
-                        universalSubtotalOverride: "",
-                    },
+                    [sid]: { universalLines: newUniversalLines, universalSubtotalOverride: "" },
                 };
                 const mergedSl: Record<ScenarioId, CostLine[]> = {
                     ...scenarioLines,
@@ -604,6 +590,8 @@ export default function QuoteBreakdown({
                     ...scenarioSubtotalOverride,
                     [sid]: "",
                 };
+                setParams(newParams);
+                setBaseline({ ...newParams });
                 setPerScenario(mergedPs);
                 setScenarioLines(mergedSl);
                 setScenarioSubtotalOverride(mergedSso);
@@ -611,7 +599,7 @@ export default function QuoteBreakdown({
                 if (canPersistQuote) {
                     setIsSavingQuote(true);
                     try {
-                        const ok = await persistQuoteSnapshots(mergedPs, mergedSl, mergedSso, sid);
+                        const ok = await persistQuoteSnapshots(newParams, mergedPs, mergedSl, mergedSso, sid);
                         if (!ok) setSaveQuoteError("Could not save quote after recalculate");
                     } catch {
                         setSaveQuoteError("Could not save quote after recalculate");
@@ -728,7 +716,7 @@ export default function QuoteBreakdown({
                             type="number"
                             min={0}
                             value={numStandees}
-                            onChange={(e) => handleStandeesChange(parseInt(e.target.value) || 0)}
+                            onChange={(e) => patchParams({ numStandees: parseInt(e.target.value) || 0 })}
                             disabled={isRecalculating}
                             className={`border-2 border-[#E0E0E0] rounded-sm px-3 py-1.5 text-sm font-black text-[#000005] outline-none focus:border-[#FFC843] w-[140px] text-right transition-colors disabled:opacity-50 ${numStandees !== baseline.numStandees ? "bg-[#FFC843]/20" : "bg-[#F8F8F8]"}`}
                         />
