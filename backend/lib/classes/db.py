@@ -133,7 +133,11 @@ class MidnightOilDB:
             return False
 
     def insert_persisted_quote(self, doc: dict[str, Any]) -> str:
-        """Insert a quote document. Caller must supply a BSON-safe ``doc`` (no ``Form`` objects). Returns new ``_id`` as str."""
+        """Insert a quote document.
+
+        Caller must supply a BSON-safe ``doc`` (no ``Form`` objects).
+        Returns the new ``_id`` as a string.
+        """
         result = self.quotes_collection.insert_one(doc)
         return str(result.inserted_id)
 
@@ -402,5 +406,3 @@ def _hash_password(password: str) -> str:
     salt = secrets.token_bytes(16)
     digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
     return f"pbkdf2_sha256${iterations}${salt.hex()}${digest.hex()}"
-
-

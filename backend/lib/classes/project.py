@@ -1,21 +1,20 @@
 from dataclasses import dataclass
 from enum import Enum
-from typing import TypeVar
+from typing import override
 
 import numpy as np
 from scipy.optimize import curve_fit
 
 from lib.classes import Complexity, Form, MidnightOilDB
-from lib.classes.cost_inputs import BaseInput
-from lib.globals import BUSMARK_PADDING, DB_LABELS, PRINT_FORM_LENGTH, UNIT_MAP
+from lib.classes.cost_inputs import BaseInput, InHouseInput, OutsourceInput
+from lib.classes.db_keys import StandeeKey, SupplierKey, UnitCostKey
+from lib.globals import BUSMARK_PADDING, PRINT_FORM_LENGTH, UNIT_MAP
 
 STANDEE_MAP = {
-    Complexity.SIMPLE: "Simple Standee",
-    Complexity.MODERATE: "Moderate Standee",
-    Complexity.COMPLEX: "Complex Standee",
+    Complexity.SIMPLE: StandeeKey.SIMPLE,
+    Complexity.MODERATE: StandeeKey.MODERATE,
+    Complexity.COMPLEX: StandeeKey.COMPLEX,
 }
-
-T = TypeVar("T", bound=BaseInput)
 
 
 @dataclass
@@ -34,22 +33,12 @@ class Project[T: BaseInput]:
     @property
     def total_universal_cost(self) -> float:
         """Calculate the total universal cost for the project."""
-        return (
-            +self.imposition_cost
-            + self.blank_comp_cost
-            + self.color_comp_cost
-            + self.engineering_design_cost
-            + self.hardware_cost
-        )
+        return self.blank_comp_cost + self.color_comp_cost + self.engineering_design_cost + self.hardware_cost
 
     @property
     def total_cost(self) -> float:
         """Calculate the total cost of the project, including both universal and scenario-specific costs."""
         raise NotImplementedError("Subclasses must implement total_cost property")
-
-    def calculate_cost(self, input: T, **kwargs) -> float:
-        """Calculate the total cost of the project, including both universal and scenario-specific costs."""
-        raise NotImplementedError("Subclasses must implement calculate_cost method")
 
     def to_dict(self) -> dict:
         """Return common project/scenario fields as a dictionary."""
@@ -67,7 +56,8 @@ class Project[T: BaseInput]:
                 out[k] = v
         return out
 
-    def _calculate_universal_costs(self, input: BaseInput) -> float:
+    def calculate_cost(self, input: T) -> float:
+        """Calculate the total cost of the project, including both universal and scenario-specific costs."""
         self.num_standees = input.num_standees or self.num_standees
         db = self.db
         # corrugate cost calculation
@@ -76,23 +66,18 @@ class Project[T: BaseInput]:
             self.print_forms_per_standee
         )
         self.blank_forms_per_standee = self.print_forms_per_standee + self.structure_forms_per_standee
-        # imposition cost
-        self.imposition_hours = input.imposition_hours or self.print_forms_per_standee
-        # imposition_rate = db.get_standee_data(self.standee_key, "imposition_cost_per_hour")
-        imposition_rate = db.get_unit_cost(DB_LABELS["imposition_labor"])
-        self.imposition_cost = imposition_rate * self.imposition_hours
 
         # hardware cost calculation
         self.hardware_cost = db.get_standee_data(self.standee_key, "hardware_cost") * self.num_standees
 
         # misc costs and project vars
         self.overs = input.num_overs or db.get_overs(self.num_standees)
-        self.print_form_total = self._get_num_print_forms()
+        self.print_form_total = self._get_net_print_forms()
         self.engineering_design_cost = db.get_standee_data(self.standee_key, "engineering_design_cost_per_project")
         self.blank_comp_count = input.blank_comp_count or 1
-        self.blank_comp_cost = db.get_unit_cost(DB_LABELS["blank_comp"]) * self.blank_comp_count
+        self.blank_comp_cost = db.get_unit_cost(UnitCostKey.BLANK_COMP) * self.blank_comp_count
         self.color_comp_count = input.color_comp_count or 1
-        self.color_comp_cost = db.get_unit_cost(DB_LABELS["color_comp"]) * self.color_comp_count
+        self.color_comp_cost = db.get_unit_cost(UnitCostKey.COLOR_COMP) * self.color_comp_count
         return self.total_universal_cost
 
     # Helpers
@@ -114,7 +99,7 @@ class Project[T: BaseInput]:
         # ! do we need hi-tack if theyre doing mounting??
         # add hi-tack if not busmark
         else:
-            hi_tack_material = self.db.get_unit_cost_entry(DB_LABELS["roll_hi_tack"])
+            hi_tack_material = self.db.get_unit_cost_entry(UnitCostKey.ROLL_HI_TACK)
             hi_tack_unit = hi_tack_material["unit"]
             hi_tack_cost = hi_tack_material["cost"] * UNIT_MAP[hi_tack_unit] * linear_inches
             print_form_cost = print_form_material["cost"] * UNIT_MAP[print_form_unit] * linear_inches
@@ -144,7 +129,7 @@ class Project[T: BaseInput]:
     def _zund_hours(self) -> float:
         # combination of linear inches and provided minute estimates
         zund_linear_inches = sum(form.get_linear_inches() for form in self.print_forms)
-        print_zund_hours = self._machine_time(DB_LABELS["zund_cutter"], zund_linear_inches)
+        print_zund_hours = self._machine_time(UnitCostKey.ZUND_CUTTER, zund_linear_inches)
         structure_zund_hours = (
             self.db.get_standee_data(self.standee_key, "zund_blank_form_minutes")
             * self.structure_forms_per_standee
@@ -154,13 +139,13 @@ class Project[T: BaseInput]:
         return (
             print_zund_hours
             + structure_zund_hours
-            + self._setup_time(self.db.get_unit_cost_entry(DB_LABELS["zund_cutter"]), self.blank_forms_per_standee)
+            + self._setup_time(self.db.get_unit_cost_entry(UnitCostKey.ZUND_CUTTER), self.blank_forms_per_standee)
         )
 
     def _shipping_box_and_label_cost(self) -> tuple[float, float]:
-        shipping_box_cost = self.db.get_unit_cost(DB_LABELS["shipping_box"]) * self.num_standees
-        desc_label_cost = self.db.get_unit_cost(DB_LABELS["desc_label"])
-        shipping_label_cost = self.db.get_unit_cost(DB_LABELS["shipping_label"])
+        shipping_box_cost = self.db.get_unit_cost(UnitCostKey.SHIPPING_BOX) * self.num_standees
+        desc_label_cost = self.db.get_unit_cost(UnitCostKey.DESCRIPTION_LABEL)
+        shipping_label_cost = self.db.get_unit_cost(UnitCostKey.SHIPPING_LABEL)
         label_cost = (2 * desc_label_cost + shipping_label_cost) * self.num_standees
         return shipping_box_cost, label_cost
 
@@ -171,7 +156,7 @@ class Project[T: BaseInput]:
         return instruction_sheet_cost
 
     def _die_cost(self) -> float:
-        die_unit_cost = self.db.get_unit_cost(DB_LABELS["die_cost"])
+        die_unit_cost = self.db.get_unit_cost(UnitCostKey.DIE_COST)
         die_complexity_map = {
             complexity: self.db.get_standee_data(term, "cutting_die_inches_multiplier")
             for complexity, term in STANDEE_MAP.items()
@@ -192,15 +177,85 @@ class Project[T: BaseInput]:
         scale, power, floor = params
         cost_per_unit = scale * num_forms**power + floor
         return cost_per_unit * num_forms
+    
+    def _get_supplier_litho_buyout_cost(self, supplier: str, material: str) -> float:
+        sheets_per_form = self._get_net_print_forms() // self.print_forms_per_standee
+        return self._get_supplier_cost(supplier, material, sheets_per_form) * self.print_forms_per_standee
+    
+    def _get_supplier_mount_die_buyout_cost(self, supplier: str, material: str, forms: int | None = None) -> float:
+        if forms is None:
+            forms = self.print_forms_per_standee
+        return self._get_supplier_cost(supplier, material, self.num_standees) * forms
 
-    def _get_num_corrugate_forms(self) -> int:
-        return (self.print_forms_per_standee + self.structure_forms_per_standee) * self.num_standees + (
-            self.print_forms_per_standee * self.overs
-        )
+    def _get_base_corrugate_forms(self) -> int:
+        return self.blank_forms_per_standee * self.num_standees
+
+    def _get_net_corrugate_forms(self) -> int:
+        return self._get_base_corrugate_forms() + self.print_forms_per_standee * self.overs
 
     def _get_corrugate_cost(self) -> float:
-        corrugate_cost = self.db.get_unit_cost(DB_LABELS["corrugate"])
-        return self._get_num_corrugate_forms() * corrugate_cost
+        corrugate_cost = self.db.get_unit_cost(UnitCostKey.CORRUGATE)
+        return self._get_net_corrugate_forms() * corrugate_cost
 
-    def _get_num_print_forms(self) -> int:
-        return self.print_forms_per_standee * self.num_standees + self.overs * self.print_forms_per_standee
+    def _get_base_print_forms(self) -> int:
+        return self.print_forms_per_standee * self.num_standees
+
+    def _get_net_print_forms(self) -> int:
+        return self._get_base_print_forms() + self.overs * self.print_forms_per_standee
+
+
+class InHouseProject[T: InHouseInput](Project[T]):
+    """Base class for in-house production scenarios."""
+
+    @property
+    def total_cost(self) -> float:
+        """Calculate the total cost of the project, including both universal and scenario-specific costs."""
+        return self.total_universal_cost + self.imposition_cost + self.zund_cost + self.print_cost + self.rollx_cost
+
+    @override
+    def calculate_cost(self, input: T) -> float:
+        super().calculate_cost(input)
+        self.imposition_hours = input.imposition_hours or self.print_forms_per_standee
+        imposition_rate = self.db.get_unit_cost(UnitCostKey.IMPOSITION_LABOR)
+        self.imposition_cost = imposition_rate * self.imposition_hours
+
+        self.zund_hours = input.zund_hours or self._zund_hours()
+        self.zund_cost = self._machine_cost(UnitCostKey.ZUND_CUTTER, self.zund_hours)
+
+        self.print_hours = input.print_hours or (
+            self._machine_time(input.print_machine, self._get_print_form_linear_inches())
+        )
+        self.print_cost = self._machine_cost(input.print_machine, self.print_hours)
+
+        self.rollx_hours = input.rollx_hours or (
+            self._machine_time(UnitCostKey.ROLLX, self._get_print_form_linear_inches())
+        )
+        self.rollx_cost = self._machine_cost(UnitCostKey.ROLLX, self.rollx_hours)
+
+        return self.total_cost
+
+
+class OutsourceProject[T: OutsourceInput](Project[T]):
+    """Base class for outsourced production scenarios."""
+
+    @property
+    def total_cost(self) -> float:
+        """Calculate the total cost of the project, including both universal and scenario-specific costs."""
+        return (
+            self.total_universal_cost
+            + self.mount_die_buyout_cost
+            + self.die_cost
+            + self.shipping_box_cost
+            + self.label_cost
+            + self.instruction_sheet_cost
+        )
+
+    @override
+    def calculate_cost(self, input: T) -> float:
+        super().calculate_cost(input)
+        self.mount_die_buyout_cost = self._get_supplier_mount_die_buyout_cost(input.corrugate_supplier, input.corrugate_material)
+        self.die_cost = self._die_cost()
+        self.shipping_box_cost = self._get_supplier_mount_die_buyout_cost(input.corrugate_supplier, SupplierKey.BLANK)
+        _, self.label_cost = self._shipping_box_and_label_cost()
+        self.instruction_sheet_cost = self._instruction_sheet_cost()
+        return self.total_cost
