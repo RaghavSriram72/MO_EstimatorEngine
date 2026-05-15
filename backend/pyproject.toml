@@ -64,6 +64,7 @@ ignore = [
     "D212",
     # Incompatible with D212 (multi-line summary second line)
     "D213",
+    "UP034",
 ]
 
 [tool.ruff.lint.pydocstyle]
