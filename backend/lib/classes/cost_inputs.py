@@ -50,6 +50,7 @@ class Scenario3Input(InHouseInput):
     freight_cost: float | None = None
 
 
+@dataclass
 class OutsourceInput(BaseInput):
     """Inputs used by outsourced production scenarios."""
 
