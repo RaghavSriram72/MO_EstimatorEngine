@@ -66,8 +66,8 @@ const UNIVERSAL_LINE_DEFS: Record<string, LineDef> = {
 const SCENARIO_LINE_DEFS: Record<string, LineDef> = {
     corrugate_cost:         { label: "Corrugate",            unit: "forms"    },
     print_form_cost:        { label: "Print Form Material",  unit: "forms"    },
-    print_cost:             { label: "Rho Print",            unit: "flat"     },
-    rollx_cost:             { label: "Roll-X",               unit: "flat"     },
+    print_cost:             { label: "Rho Print",            unit: "hrs"      },
+    rollx_cost:             { label: "Roll-X",               unit: "hrs"      },
     zund_cut_cost:          { label: "Zund Cutting",          unit: "hrs"      },
     die_cost:               { label: "Die Cost",             unit: "dies"     },
     pallet_material_cost:   { label: "Pallets",              unit: "pallets"  },
@@ -102,7 +102,9 @@ const QTY_FROM_SOURCE: Partial<Record<string, (s: Record<string, number>) => num
     hardware_cost:          (s) => s.num_standees         ?? 1,
     corrugate_cost:         (s) => (s.blank_forms_per_standee ?? 1) * (s.num_standees ?? 1),
     print_form_cost:        (s) => (s.print_forms_per_standee ?? 1) * (s.num_standees ?? 1),
-    zund_cut_cost:          (s) => s.zund_hours           ?? 1,
+    print_cost:             (s) => s.print_hours           ?? 1,
+    rollx_cost:             (s) => s.rollx_hours           ?? 1,
+    zund_cut_cost:          (s) => s.zund_hours            ?? 1,
     shipping_box_cost:      (s) => s.num_standees         ?? 1,
     label_cost:             (s) => s.num_standees         ?? 1,
     instruction_sheet_cost: (s) => s.num_standees         ?? 1,
@@ -115,6 +117,8 @@ const LINE_KEY_TO_QTY_SOURCE: Partial<Record<string, string>> = {
     imposition_cost: "imposition_hours",
     blank_comp_cost: "blank_comp_count",
     color_comp_cost: "color_comp_count",
+    print_cost: "print_hours",
+    rollx_cost: "rollx_hours",
     zund_cut_cost: "zund_hours",
     pallet_material_cost: "pallet_count",
     pallet_labor_cost: "pallet_count",
@@ -422,9 +426,9 @@ export default function QuoteBreakdown({
     const [scenarioSubtotalOverride, setScenarioSubtotalOverride] = useState<Record<ScenarioId, string>>(() =>
         scenarioSubtotalOverridesFromUi(breakdownUiFromQuoteData(quoteData))
     );
-    const [manualDirty, setManualDirty] = useState(false);
     const [isSavingQuote, setIsSavingQuote] = useState(false);
     const [saveQuoteError, setSaveQuoteError] = useState<string | null>(null);
+    const [recalculateError, setRecalculateError] = useState<string | null>(null);
     const [universalCostsExpanded, setUniversalCostsExpanded] = useState(false);
     const [scenarioCostsExpanded, setScenarioCostsExpanded] = useState(false);
 
@@ -438,7 +442,7 @@ export default function QuoteBreakdown({
         overs !== baseline.overs;
 
     const canPersistQuote = Boolean(persistedQuoteId?.trim() && quoteOwner?.trim());
-    const needsSave = canPersistQuote && (manualDirty || isDirty);
+    const needsSave = canPersistQuote && isDirty;
 
     async function persistQuoteSnapshots(
         sharedParams: ScenarioParams,
@@ -497,7 +501,6 @@ export default function QuoteBreakdown({
                 activeScenario,
             );
             if (ok) {
-                setManualDirty(false);
                 setBaseline({ ...params });
             } else {
                 setSaveQuoteError("Could not save quote");
@@ -510,7 +513,6 @@ export default function QuoteBreakdown({
     }
 
     function patchActive(patch: Partial<PerScenarioState>) {
-        setManualDirty(true);
         setPerScenario((prev) => ({
             ...prev,
             [activeScenario]: { ...prev[activeScenario], ...patch },
@@ -518,12 +520,10 @@ export default function QuoteBreakdown({
     }
 
     function patchParams(updates: Partial<ScenarioParams>) {
-        setManualDirty(true);
         setParams((prev) => ({ ...prev, ...updates }));
     }
 
     function updateUniversal(key: string, field: "qty" | "unitCost", value: number) {
-        setManualDirty(true);
         setPerScenario((prev) => ({
             ...prev,
             [activeScenario]: {
@@ -536,7 +536,6 @@ export default function QuoteBreakdown({
     }
 
     function updateScenario(key: string, field: "qty" | "unitCost", value: number) {
-        setManualDirty(true);
         setScenarioLines((prev) => ({
             ...prev,
             [activeScenario]: prev[activeScenario].map((l) => (l.key === key ? { ...l, [field]: value } : l)),
@@ -546,6 +545,7 @@ export default function QuoteBreakdown({
     function recalculate() {
         setIsRecalculating(true);
         setSaveQuoteError(null);
+        setRecalculateError(null);
         const sid = activeScenario;
         const body = {
             ...requestPayload,
@@ -565,12 +565,15 @@ export default function QuoteBreakdown({
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
         })
-            .then((res) => {
+            .then(async (res) => {
+                const data = await res.json().catch(() => null);
                 if (!res.ok) {
-                    res.json().then((err) => console.error("Recalculate 422 details:", err));
+                    console.error("Recalculate failed:", data);
+                    setRecalculateError("Recalculate failed — check console for details");
                     return null;
                 }
-                return res.json();
+                console.log("Recalculate response:", data);
+                return data;
             })
             .then(async (data) => {
                 if (!data) return;
@@ -597,7 +600,6 @@ export default function QuoteBreakdown({
                 setPerScenario(mergedPs);
                 setScenarioLines(mergedSl);
                 setScenarioSubtotalOverride(mergedSso);
-                setManualDirty(false);
                 if (canPersistQuote) {
                     setIsSavingQuote(true);
                     try {
@@ -610,7 +612,10 @@ export default function QuoteBreakdown({
                     }
                 }
             })
-            .catch((err) => console.error("Recalculate error:", err))
+            .catch((err) => {
+                console.error("Recalculate error:", err);
+                setRecalculateError("Recalculate failed — network error");
+            })
             .finally(() => setIsRecalculating(false));
     }
 
@@ -687,29 +692,6 @@ export default function QuoteBreakdown({
                     </p>
                 </div>
 
-                {needsSave ? (
-                    <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 rounded-sm border-2 border-[#FFC843] bg-[#FFFBF0] px-4 py-3">
-                        <span className="text-xs font-bold text-[#000005]">
-                            Unsaved changes — save to keep them on this quote.
-                        </span>
-                        <div className="flex flex-wrap items-center gap-2 justify-end">
-                            {saveQuoteError ? (
-                                <span className="text-[10px] text-red-600 font-semibold max-w-[220px] leading-snug text-right">
-                                    {saveQuoteError}
-                                </span>
-                            ) : null}
-                            <button
-                                type="button"
-                                disabled={isSavingQuote || isRecalculating}
-                                onClick={() => void handleSaveQuoteToDb()}
-                                className="text-xs font-black uppercase tracking-widest px-4 py-2 rounded-sm bg-[#000005] text-white hover:bg-[#FFC843] hover:text-[#000005] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                {isSavingQuote ? "Saving…" : "Save changes"}
-                            </button>
-                        </div>
-                    </div>
-                ) : null}
-
                 {/* Parameters card */}
                 <div className="shrink-0 flex items-center gap-6 bg-white border-2 border-[#E0E0E0] rounded-sm px-5 py-4 flex-wrap">
                     <div className="flex flex-col gap-1">
@@ -767,13 +749,32 @@ export default function QuoteBreakdown({
                         />
                     </div>
                     <div className="h-10 w-px bg-[#E0E0E0]" />
-                    <button
-                        onClick={recalculate}
-                        disabled={isRecalculating || !isDirty}
-                        className="text-xs font-black uppercase tracking-widest px-4 py-2 rounded-sm bg-[#FFC843] text-[#000005] hover:bg-[#000005] hover:text-white transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                    >
-                        {isRecalculating ? "Recalculating…" : "↻ Recalculate"}
-                    </button>
+                    <div className="flex flex-col items-start gap-1.5">
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={recalculate}
+                                disabled={isRecalculating || !isDirty}
+                                className="text-xs font-black uppercase tracking-widest px-4 py-2 rounded-sm bg-[#FFC843] text-[#000005] hover:bg-[#000005] hover:text-white transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                            >
+                                {isRecalculating ? "Recalculating…" : "↻ Recalculate"}
+                            </button>
+                            {needsSave && (
+                                <button
+                                    type="button"
+                                    disabled={isSavingQuote || isRecalculating}
+                                    onClick={() => void handleSaveQuoteToDb()}
+                                    className="text-xs font-black uppercase tracking-widest px-4 py-2 rounded-sm border-2 border-[#000005] bg-white text-[#000005] hover:bg-[#000005] hover:text-white transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                                >
+                                    {isSavingQuote ? "Saving…" : "↑ Save"}
+                                </button>
+                            )}
+                        </div>
+                        {(recalculateError || saveQuoteError) && (
+                            <span className="text-[10px] text-red-600 font-semibold leading-snug">
+                                {recalculateError ?? saveQuoteError}
+                            </span>
+                        )}
+                    </div>
                 </div>
 
                 {/* Scrollable cost sections */}
@@ -783,41 +784,35 @@ export default function QuoteBreakdown({
                     <div className="border-2 border-[#E0E0E0] rounded-sm bg-white p-4">
                         <button
                             type="button"
-                            className={`group w-full flex items-center justify-between gap-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-[#FFC843] rounded-sm hover:bg-[#F8F8F8] transition-colors ${
-                                universalCostsExpanded ? "mb-3" : ""
-                            }`}
+                            className="group w-full flex items-center justify-between gap-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-[#FFC843] rounded-sm hover:bg-[#F8F8F8] transition-colors"
                             onClick={() => setUniversalCostsExpanded((v) => !v)}
                             aria-expanded={universalCostsExpanded}
-                            aria-label={
-                                universalCostsExpanded ? "Collapse universal costs" : "Expand universal costs"
-                            }
                         >
-                            <span className="min-w-0">
-                                <span className="block text-[10px] font-black text-[#000005] uppercase tracking-widest">
-                                    <span className="text-[#FFC843]">// </span>Universal Costs
-                                </span>
-                                {!universalCostsExpanded ? (
-                                    <span className="block text-sm font-black text-[#000005] mt-1 tabular-nums">
-                                        ${fmt(universalTotal)}
-                                    </span>
-                                ) : null}
+                            <span className="text-[10px] font-black text-[#000005] uppercase tracking-widest">
+                                <span className="text-[#FFC843]">// </span>Universal Costs
                             </span>
-                            <span
-                                className="shrink-0 text-2xl font-black leading-none text-[#000005] tabular-nums select-none group-hover:text-[#FFC843] transition-colors min-w-[1.25rem] text-center"
-                                aria-hidden
-                            >
-                                {universalCostsExpanded ? "−" : "+"}
+                            <span className="flex items-center gap-3 shrink-0">
+                                <span className="text-sm font-black text-[#000005] tabular-nums">
+                                    ${fmt(universalTotal)}
+                                    {universalSubtotalOverride.trim() !== "" && Number.isFinite(parsedUniversalOv) && (
+                                        <span className="text-[10px] font-bold text-[#F57F17] ml-1">override</span>
+                                    )}
+                                </span>
+                                <span
+                                    className={`text-[#000005] group-hover:text-[#FFC843] transition-all duration-300 select-none ${universalCostsExpanded ? "rotate-180" : "rotate-0"}`}
+                                    aria-hidden
+                                >
+                                    ▾
+                                </span>
                             </span>
                         </button>
-                        {universalCostsExpanded ? (
-                            <>
+                        <div className={`grid transition-all duration-300 ease-in-out ${universalCostsExpanded ? "grid-rows-[1fr] mt-3" : "grid-rows-[0fr]"}`}>
+                            <div className="overflow-hidden">
                                 {universalLines.map((line) => (
                                     <CostRow key={line.key} line={line} onChange={updateUniversal} />
                                 ))}
                                 <div className="flex justify-between items-center pt-3 mt-1 border-t-2 border-[#F0F0F0]">
-                                    <span className="text-xs font-black text-[#B1B3B6] uppercase tracking-wider">
-                                        Subtotal
-                                    </span>
+                                    <span className="text-xs font-black text-[#B1B3B6] uppercase tracking-wider">Subtotal</span>
                                     <span className="text-sm font-black text-[#000005]">${fmt(universalLinesSum)}</span>
                                 </div>
                                 <div className="flex flex-wrap items-end justify-between gap-3 pt-2">
@@ -830,73 +825,53 @@ export default function QuoteBreakdown({
                                             min={0}
                                             step={0.01}
                                             value={universalSubtotalOverride}
-                                            onChange={(e) =>
-                                                patchActive({ universalSubtotalOverride: e.target.value })
-                                            }
+                                            onChange={(e) => patchActive({ universalSubtotalOverride: e.target.value })}
                                             placeholder={`e.g. 5000 — default ${fmt(universalLinesSum)}`}
                                             className="border border-[#E0E0E0] rounded-sm px-2 py-1.5 text-xs text-[#000005] outline-none bg-[#F8F8F8] focus:border-[#FFC843] w-full font-semibold"
                                         />
                                     </div>
                                     <div className="flex flex-col items-end gap-0.5 pb-0.5">
-                                        <span className="text-[9px] text-[#B1B3B6] uppercase font-bold tracking-wider">
-                                            Used in total
-                                        </span>
-                                        <span className="text-sm font-black text-[#000005]">
-                                            ${fmt(universalTotal)}
-                                            {universalSubtotalOverride.trim() !== "" &&
-                                                Number.isFinite(parsedUniversalOv) && (
-                                                    <span className="text-[10px] font-bold text-[#F57F17] ml-1">
-                                                        override
-                                                    </span>
-                                                )}
-                                        </span>
+                                        <span className="text-[9px] text-[#B1B3B6] uppercase font-bold tracking-wider">Used in total</span>
+                                        <span className="text-sm font-black text-[#000005]">${fmt(universalTotal)}</span>
                                     </div>
                                 </div>
-                            </>
-                        ) : null}
+                            </div>
+                        </div>
                     </div>
 
                     {/* Scenario costs */}
                     <div className="border-2 border-[#E0E0E0] rounded-sm bg-white p-4">
                         <button
                             type="button"
-                            className={`group w-full flex items-center justify-between gap-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-[#FFC843] rounded-sm hover:bg-[#F8F8F8] transition-colors ${
-                                scenarioCostsExpanded ? "mb-3" : ""
-                            }`}
+                            className="group w-full flex items-center justify-between gap-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-[#FFC843] rounded-sm hover:bg-[#F8F8F8] transition-colors"
                             onClick={() => setScenarioCostsExpanded((v) => !v)}
                             aria-expanded={scenarioCostsExpanded}
-                            aria-label={
-                                scenarioCostsExpanded
-                                    ? `Collapse scenario ${activeScenario} costs`
-                                    : `Expand scenario ${activeScenario} costs`
-                            }
                         >
-                            <span className="min-w-0">
-                                <span className="block text-[10px] font-black text-[#000005] uppercase tracking-widest">
-                                    <span className="text-[#FFC843]">// </span>Scenario {activeScenario} Costs
-                                </span>
-                                {!scenarioCostsExpanded ? (
-                                    <span className="block text-sm font-black text-[#000005] mt-1 tabular-nums">
-                                        ${fmt(scenarioTotal)}
-                                    </span>
-                                ) : null}
+                            <span className="text-[10px] font-black text-[#000005] uppercase tracking-widest">
+                                <span className="text-[#FFC843]">// </span>Scenario {activeScenario} Costs
                             </span>
-                            <span
-                                className="shrink-0 text-2xl font-black leading-none text-[#000005] tabular-nums select-none group-hover:text-[#FFC843] transition-colors min-w-[1.25rem] text-center"
-                                aria-hidden
-                            >
-                                {scenarioCostsExpanded ? "−" : "+"}
+                            <span className="flex items-center gap-3 shrink-0">
+                                <span className="text-sm font-black text-[#000005] tabular-nums">
+                                    ${fmt(scenarioTotal)}
+                                    {(scenarioSubtotalOverride[activeScenario] ?? "").trim() !== "" && Number.isFinite(parsedScenarioOv) && (
+                                        <span className="text-[10px] font-bold text-[#F57F17] ml-1">override</span>
+                                    )}
+                                </span>
+                                <span
+                                    className={`text-[#000005] group-hover:text-[#FFC843] transition-all duration-300 select-none ${scenarioCostsExpanded ? "rotate-180" : "rotate-0"}`}
+                                    aria-hidden
+                                >
+                                    ▾
+                                </span>
                             </span>
                         </button>
-                        {scenarioCostsExpanded ? (
-                            <>
+                        <div className={`grid transition-all duration-300 ease-in-out ${scenarioCostsExpanded ? "grid-rows-[1fr] mt-3" : "grid-rows-[0fr]"}`}>
+                            <div className="overflow-hidden">
                                 {scenarioLines[activeScenario].map((line) => (
                                     <CostRow key={line.key} line={line} onChange={updateScenario} />
                                 ))}
                                 <div className="flex justify-between items-center pt-3 mt-1 border-t-2 border-[#F0F0F0]">
-                                    <span className="text-xs font-black text-[#B1B3B6] uppercase tracking-wider">
-                                        Subtotal
-                                    </span>
+                                    <span className="text-xs font-black text-[#B1B3B6] uppercase tracking-wider">Subtotal</span>
                                     <span className="text-sm font-black text-[#000005]">${fmt(scenarioLinesSum)}</span>
                                 </div>
                                 <div className="flex flex-wrap items-end justify-between gap-3 pt-2">
@@ -910,7 +885,6 @@ export default function QuoteBreakdown({
                                             step={0.01}
                                             value={scenarioSubtotalOverride[activeScenario]}
                                             onChange={(e) => {
-                                                setManualDirty(true);
                                                 setScenarioSubtotalOverride((prev) => ({
                                                     ...prev,
                                                     [activeScenario]: e.target.value,
@@ -921,22 +895,12 @@ export default function QuoteBreakdown({
                                         />
                                     </div>
                                     <div className="flex flex-col items-end gap-0.5 pb-0.5">
-                                        <span className="text-[9px] text-[#B1B3B6] uppercase font-bold tracking-wider">
-                                            Used in total
-                                        </span>
-                                        <span className="text-sm font-black text-[#000005]">
-                                            ${fmt(scenarioTotal)}
-                                            {(scenarioSubtotalOverride[activeScenario] ?? "").trim() !== "" &&
-                                                Number.isFinite(parsedScenarioOv) && (
-                                                    <span className="text-[10px] font-bold text-[#F57F17] ml-1">
-                                                        override
-                                                    </span>
-                                                )}
-                                        </span>
+                                        <span className="text-[9px] text-[#B1B3B6] uppercase font-bold tracking-wider">Used in total</span>
+                                        <span className="text-sm font-black text-[#000005]">${fmt(scenarioTotal)}</span>
                                     </div>
                                 </div>
-                            </>
-                        ) : null}
+                            </div>
+                        </div>
                     </div>
 
                     {/* Grand total */}

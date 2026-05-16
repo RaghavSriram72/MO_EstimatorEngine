@@ -17,28 +17,32 @@ class BaseInput:  # project
     color_comp_count: float | None = None
 
 
+@dataclass
 class InHouseInput(BaseInput):
     """Inputs used by in-house production scenarios."""
 
     imposition_hours: float | None = None
-    zund_hours: float | None = None
     print_machine: str = UnitCostKey.RHO_512R
     print_hours: float | None = None
     rollx_hours: float | None = None
+    zund_hours: float | None = None
 
 
+@dataclass
 class Scenario1Input(InHouseInput):
     """Inputs for scenario 1."""
 
     pass
 
 
+@dataclass
 class Scenario2Input(InHouseInput):
     """Inputs for scenario 2."""
 
     pass
 
 
+@dataclass
 class Scenario3Input(InHouseInput):
     """Inputs for scenario 3."""
 
@@ -57,12 +61,14 @@ class OutsourceInput(BaseInput):
     die_cost: float | None = None
 
 
+@dataclass
 class Scenario4Input(OutsourceInput):
     """Inputs for scenario 4."""
 
     imposition_hours: float | None = None
 
 
+@dataclass
 class Scenario5Input(OutsourceInput):
     """Inputs for scenario 5."""
 

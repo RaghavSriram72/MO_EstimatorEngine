@@ -110,22 +110,32 @@ def _elements_from_element_types(types: list["ElementType"]) -> list[Element]:
 
 def _scenario_cost_input(sid: int, payload: QuoteRequest):
     """Build the typed input dataclass each scenario's ``calculate_cost`` expects."""
-    common = dict(
-        num_standees=payload.num_standees,
-        print_forms_per_standee=payload.print_forms_per_standee,
-        structure_forms_per_standee=payload.structure_forms_per_standee,
-        num_overs=payload.num_overs,
-    )
+    ns   = payload.num_standees
+    pfps = payload.print_forms_per_standee
+    sfps = payload.structure_forms_per_standee
+    no   = payload.num_overs
+    ph   = payload.print_hours
+    rh   = payload.rollx_hours
+    zh   = payload.zund_hours
+    kw = dict(num_standees=ns, print_forms_per_standee=pfps,
+              structure_forms_per_standee=sfps, num_overs=no)
     if sid == 1:
-        return Scenario1Input(**common)
+        return Scenario1Input(**kw, print_hours=ph, rollx_hours=rh, zund_hours=zh)
     if sid == 2:
-        return Scenario2Input(**common)
+        return Scenario2Input(**kw, print_hours=ph, rollx_hours=rh, zund_hours=zh)
     if sid == 3:
-        return Scenario3Input(**common)
+        return Scenario3Input(**kw, print_hours=ph, rollx_hours=rh, zund_hours=zh)
     if sid == 4:
-        return Scenario4Input(**common)
+        return Scenario4Input(
+            num_standees=ns, print_forms_per_standee=pfps,
+            structure_forms_per_standee=sfps, num_overs=no,
+            print_hours=ph,
+        )
     if sid == 5:
-        return Scenario5Input(**common)
+        return Scenario5Input(
+            num_standees=ns, print_forms_per_standee=pfps,
+            structure_forms_per_standee=sfps, num_overs=no,
+        )
     raise ValueError(f"Unknown scenario id: {sid}")
 
 
@@ -169,6 +179,9 @@ class QuoteRequest(BaseModel):
     print_forms_per_standee: int | None = None
     structure_forms_per_standee: int | None = None
     num_overs: int | None = None
+    print_hours: float | None = None
+    rollx_hours: float | None = None
+    zund_hours: float | None = None
     # When True, persist/update Mongo project from this request. Quote preview uses False.
     persist_project: bool = False
 
