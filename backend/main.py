@@ -119,7 +119,7 @@ def _elements_from_element_types(types: list[ElementType]) -> list[Element]:
 
 def _scenario_cost_input(sid: int, payload: QuoteRequest):
     """Build the typed input dataclass each scenario's ``calculate_cost`` expects."""
-    ns = payload.num_standees
+    ns   = payload.num_standees
     pfps = payload.print_forms_per_standee
     sfps = payload.structure_forms_per_standee
     no = payload.num_overs
