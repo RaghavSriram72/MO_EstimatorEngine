@@ -42,7 +42,6 @@ class Scenario2Input(InHouseInput):
     pass
 
 
-@dataclass
 class Scenario3Input(InHouseInput):
     """Inputs for scenario 3."""
 
