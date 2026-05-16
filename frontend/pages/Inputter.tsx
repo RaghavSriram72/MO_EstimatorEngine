@@ -618,6 +618,7 @@ export default function Inputter() {
                     console.error("Quote error:", data);
                     return;
                 }
+                console.log(data);
                 const row = data as Record<string, unknown>;
                 setLastPayload(corePayload);
                 setQuoteInitialScenario(quoteBuildScenario);
