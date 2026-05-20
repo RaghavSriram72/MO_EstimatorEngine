@@ -124,6 +124,7 @@ function requestPayloadFromQuoteDoc(
             width: e.width,
             complexity: e.complexity as StandeeType,
             linear_inches: e.linear_inches ?? null,
+            description: "",
         })),
         num_standees: num,
         standee_type: standeeTypeMap[st] ?? 1,
