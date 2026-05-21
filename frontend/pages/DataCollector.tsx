@@ -2,7 +2,7 @@
 import Dropdown from "@/components/Dropdown";
 import EditableValueBox from "@/components/EditableValueBox";
 import ConfirmAlert from "@/components/ConfirmAlert";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { API_BASE } from "@/lib/config";
 
 const SUPPLIER_DISPLAY: Record<string, string> = {
@@ -345,6 +345,9 @@ export default function DataCollector() {
     const [supplierEdits, setSupplierEdits]         = useState<Record<string, SupplierEditFields> | null>(null);
     const [isLoadingSupplier, setIsLoadingSupplier] = useState(false);
 
+    const supplierOptions  = useMemo(() => supplierNames.map(supplierLabel), [supplierNames]);
+    const materialOptions  = useMemo(() => supplierMaterials.map((m) => m.display_name), [supplierMaterials]);
+
     function buildSupplierEdits(records: SupplierRecord[]): Record<string, SupplierEditFields> {
         const edits: Record<string, SupplierEditFields> = {};
         records.forEach((r) => { edits[r._id] = { amount: r.amount, cost: r.cost, unit: r.unit }; });
@@ -360,18 +363,19 @@ export default function DataCollector() {
     }, [currentModule]);
 
     useEffect(() => {
-        if (!selectedSupplier || currentModule !== 3) return;
+        if (!selectedSupplier) return;
         setSelectedMaterial("");
+        setSupplierMaterials([]);
         setSupplierRecords([]);
         setSupplierEdits(null);
         fetch(`${API_BASE}/suppliers/${encodeURIComponent(selectedSupplier)}/materials`)
             .then((r) => r.json())
             .then((data) => setSupplierMaterials(data.data ?? []))
             .catch(console.error);
-    }, [selectedSupplier, currentModule]);
+    }, [selectedSupplier]); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
-        if (!selectedSupplier || !selectedMaterial || currentModule !== 3) return;
+        if (!selectedSupplier || !selectedMaterial) return;
         setIsLoadingSupplier(true);
         fetch(`${API_BASE}/suppliers/${encodeURIComponent(selectedSupplier)}/${encodeURIComponent(selectedMaterial)}`)
             .then((r) => r.json())
@@ -382,7 +386,7 @@ export default function DataCollector() {
             })
             .catch(console.error)
             .finally(() => setIsLoadingSupplier(false));
-    }, [selectedSupplier, selectedMaterial, currentModule]);
+    }, [selectedSupplier, selectedMaterial]); // eslint-disable-line react-hooks/exhaustive-deps
 
     function handleSupplierEdit(id: string, field: keyof SupplierEditFields, value: string) {
         setSupplierEdits((prev) => {
@@ -783,7 +787,7 @@ export default function DataCollector() {
                                 <div className="flex flex-col gap-1 flex-1">
                                     <div className="text-[10px] ml-1">Supplier</div>
                                     <Dropdown
-                                        options={supplierNames.map(supplierLabel)}
+                                        options={supplierOptions}
                                         currOption={supplierLabel(selectedSupplier)}
                                         onSelect={(displayName: string) => {
                                             const raw = supplierNames.find((s) => supplierLabel(s) === displayName) ?? displayName;
@@ -795,7 +799,7 @@ export default function DataCollector() {
                                 <div className="flex flex-col gap-1 flex-[2]">
                                     <div className="text-[10px] ml-1">Material</div>
                                     <Dropdown
-                                        options={supplierMaterials.map((m) => m.display_name)}
+                                        options={materialOptions}
                                         currOption={supplierMaterials.find((m) => m.material === selectedMaterial)?.display_name ?? ""}
                                         onSelect={(displayName: string) => {
                                             const match = supplierMaterials.find((m) => m.display_name === displayName);
