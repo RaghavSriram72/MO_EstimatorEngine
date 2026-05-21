@@ -309,7 +309,7 @@ function CostRow({
             <div className="flex items-center gap-3">
                 {!isFlat && (
                     <div className="flex flex-col items-end gap-0.5">
-                        <span className="text-[9px] text-[#B1B3B6] uppercase font-bold tracking-wider">qty</span>
+                        <span className="text-[9px] text-[#B1B3B6] uppercase font-bold tracking-wider">{line.unit}</span>
                         {isStandees ? (
                             <span className="w-[68px] px-2 py-1 text-xs font-semibold text-[#000005] text-right">
                                 {line.qty}
