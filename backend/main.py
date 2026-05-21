@@ -316,12 +316,31 @@ class UpdateOversRequest(BaseModel):
     overs: int
 
 
-@app.patch("/overs/{record_id}")
-async def update_overs(record_id: str, payload: UpdateOversRequest):
-    """Update lower_bound, upper_bound, and overs percentage for a tier."""
+@app.post("/overs")
+async def add_overs(payload: UpdateOversRequest):
+    """Insert a new overs tier record."""
+    with MOADB() as db:
+        new_id = db.upsert_overs(None, payload.lower_bound, payload.upper_bound, payload.overs)
+        return {"message": "Created successfully", "id": new_id}
+
+
+@app.delete("/overs/{record_id}")
+async def delete_overs(record_id: str):
+    """Delete an overs tier record by id."""
     with MOADB() as db:
         try:
-            db.update_overs(record_id, payload.lower_bound, payload.upper_bound, payload.overs)
+            db.delete_overs(record_id)
+            return {"message": "Deleted successfully"}
+        except ValueError as e:
+            return JSONResponse(status_code=404, content={"error": str(e)})
+
+
+@app.patch("/overs/{record_id}")
+async def update_overs(record_id: str, payload: UpdateOversRequest):
+    """Upsert lower_bound, upper_bound, and overs percentage for a tier."""
+    with MOADB() as db:
+        try:
+            db.upsert_overs(record_id, payload.lower_bound, payload.upper_bound, payload.overs)
             return {"message": "Updated successfully"}
         except ValueError as e:
             return JSONResponse(status_code=404, content={"error": str(e)})

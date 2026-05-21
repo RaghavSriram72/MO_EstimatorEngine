@@ -1,6 +1,7 @@
 "use client";
 import Dropdown from "@/components/Dropdown";
 import EditableValueBox from "@/components/EditableValueBox";
+import ConfirmAlert from "@/components/ConfirmAlert";
 import { useState, useEffect } from "react";
 import { API_BASE } from "@/lib/config";
 
@@ -234,6 +235,9 @@ export default function DataCollector() {
     const [oversRecords, setOversRecords]     = useState<OversRecord[]>([]);
     const [oversEdits, setOversEdits]         = useState<Record<string, OversEditFields> | null>(null);
     const [isLoadingOvers, setIsLoadingOvers] = useState(false);
+    const [newOversTier, setNewOversTier]     = useState<{ lower_bound: string; upper_bound: string; overs: string }>({ lower_bound: "", upper_bound: "", overs: "" });
+    const [isAddingTier, setIsAddingTier]     = useState(false);
+    const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
     function buildOversEdits(records: OversRecord[]): Record<string, OversEditFields> {
         const edits: Record<string, OversEditFields> = {};
@@ -296,6 +300,40 @@ export default function DataCollector() {
             setOversEdits(buildOversEdits(updated));
         } catch (e) { console.error(e); }
         finally { setIsSaving(false); }
+    }
+
+    async function confirmDeleteOversTier() {
+        if (!pendingDeleteId) return;
+        const id = pendingDeleteId;
+        setPendingDeleteId(null);
+        try {
+            await fetch(`${API_BASE}/overs/${id}`, { method: "DELETE" });
+            const data = await fetch(`${API_BASE}/overs`).then((r) => r.json());
+            const updated: OversRecord[] = data.data ?? [];
+            setOversRecords(updated);
+            setOversEdits(buildOversEdits(updated));
+        } catch (e) { console.error(e); }
+    }
+
+    async function handleAddOversTier() {
+        const lb = parseInt(newOversTier.lower_bound);
+        const ub = newOversTier.upper_bound === "" ? null : parseInt(newOversTier.upper_bound);
+        const ov = parseInt(newOversTier.overs);
+        if (isNaN(lb) || isNaN(ov)) return;
+        setIsAddingTier(true);
+        try {
+            await fetch(`${API_BASE}/overs`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ lower_bound: lb, upper_bound: ub, overs: ov }),
+            });
+            const data = await fetch(`${API_BASE}/overs`).then((r) => r.json());
+            const updated: OversRecord[] = data.data ?? [];
+            setOversRecords(updated);
+            setOversEdits(buildOversEdits(updated));
+            setNewOversTier({ lower_bound: "", upper_bound: "", overs: "" });
+        } catch (e) { console.error(e); }
+        finally { setIsAddingTier(false); }
     }
 
     // ── Module 3: Suppliers ───────────────────────────────────────────────
@@ -413,6 +451,12 @@ export default function DataCollector() {
     // ── Render ─────────────────────────────────────────────────────────────
     return (
         <div className="grid grid-cols-[2fr_5fr_1fr] text-black w-full flex-1 overflow-hidden">
+            <ConfirmAlert
+                visible={pendingDeleteId !== null}
+                message="Delete this overs tier? This cannot be undone."
+                onConfirm={confirmDeleteOversTier}
+                onCancel={() => setPendingDeleteId(null)}
+            />
 
             {/* Sidebar */}
             <div className="flex flex-col items-start justify-start pl-10 p-5 gap-3">
@@ -598,9 +642,57 @@ export default function DataCollector() {
                         </div>
 
                         {/* Section 02 */}
+                        <div className="flex flex-col items-start w-full p-5 border-b-2 border-[#EDEAEA]">
+                            <div className="text-[10px] m-2">02 — ADD NEW TIER</div>
+                            <div className="flex flex-row items-end gap-3 w-full">
+                                <div className="flex flex-col flex-1">
+                                    <div className="text-xs font-bold m-1">Lower Bound</div>
+                                    <input
+                                        type="number"
+                                        min={0}
+                                        step={1}
+                                        value={newOversTier.lower_bound}
+                                        onChange={(ev) => setNewOversTier((p) => ({ ...p, lower_bound: ev.target.value }))}
+                                        className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
+                                    />
+                                </div>
+                                <div className="flex flex-col flex-1">
+                                    <div className="text-xs font-bold m-1">Upper Bound</div>
+                                    <input
+                                        type="number"
+                                        min={0}
+                                        step={1}
+                                        placeholder="∞ (open-ended)"
+                                        value={newOversTier.upper_bound}
+                                        onChange={(ev) => setNewOversTier((p) => ({ ...p, upper_bound: ev.target.value }))}
+                                        className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
+                                    />
+                                </div>
+                                <div className="flex flex-col flex-1">
+                                    <div className="text-xs font-bold m-1">Overs (%)</div>
+                                    <input
+                                        type="number"
+                                        min={0}
+                                        step={1}
+                                        value={newOversTier.overs}
+                                        onChange={(ev) => setNewOversTier((p) => ({ ...p, overs: ev.target.value }))}
+                                        className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
+                                    />
+                                </div>
+                                <button
+                                    onClick={handleAddOversTier}
+                                    disabled={isAddingTier || newOversTier.lower_bound === "" || newOversTier.overs === ""}
+                                    className="shrink-0 h-[34px] px-4 text-xs font-bold bg-[#000005] text-[#FFC843] rounded-md disabled:opacity-40 transition-opacity"
+                                >
+                                    {isAddingTier ? "ADDING..." : "+ ADD TIER"}
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Section 03 */}
                         <div className="flex flex-col items-start w-full flex-1 p-5 overflow-y-auto">
                             <div className="flex items-center gap-2 m-2">
-                                <span className="text-[10px]">02 — TIER VALUES</span>
+                                <span className="text-[10px]">03 — TIER VALUES</span>
                                 {isOversDirty && (
                                     <span className="text-[10px] font-bold text-[#FFB604] px-1.5 py-0.5 tracking-wide">
                                         Unsaved Changes
@@ -666,6 +758,12 @@ export default function DataCollector() {
                                                     <div className="text-[9px]">LAST UPDATED</div>
                                                     <div className="text-[0.8em] font-instrument text-black">{formatDate(rec.last_updated)}</div>
                                                 </div>
+                                                <button
+                                                    onClick={() => setPendingDeleteId(rec._id)}
+                                                    className="shrink-0 h-[46px] px-3 text-xs font-bold border-2 border-[#EDEAEA] rounded-md text-[#ABABAB] hover:border-red-300 hover:text-red-400 transition-colors"
+                                                >
+                                                    ✕
+                                                </button>
                                             </div>
                                         );
                                     })}
