@@ -374,13 +374,16 @@ class MidnightOilDB:
             records.append(r)
         return records
 
-    def update_overs(self, record_id: str, lower_bound: int, upper_bound: int | None, overs: int) -> None:
-        """Update lower_bound, upper_bound, and overs on an overs tier record."""
-        try:
-            oid = ObjectId(record_id)
-        except Exception:
-            raise ValueError(f"Invalid overs record id '{record_id}'")
-        result = self.overs_collection.update_one(
+    def upsert_overs(self, record_id: str | None, lower_bound: int, upper_bound: int | None, overs: int) -> str:
+        """Upsert an overs tier record. Generates a new _id when record_id is None."""
+        if record_id is not None:
+            try:
+                oid = ObjectId(record_id)
+            except Exception:
+                raise ValueError(f"Invalid overs record id '{record_id}'")
+        else:
+            oid = ObjectId()
+        self.overs_collection.update_one(
             {"_id": oid},
             {
                 "$set": {
@@ -390,8 +393,19 @@ class MidnightOilDB:
                     "last_updated": datetime.now(UTC),
                 }
             },
+            upsert=True,
         )
-        if result.matched_count == 0:
+        self._load_cache()
+        return str(oid)
+
+    def delete_overs(self, record_id: str) -> None:
+        """Delete an overs tier record by _id."""
+        try:
+            oid = ObjectId(record_id)
+        except Exception:
+            raise ValueError(f"Invalid overs record id '{record_id}'")
+        result = self.overs_collection.delete_one({"_id": oid})
+        if result.deleted_count == 0:
             raise ValueError(f"Overs record not found for id '{record_id}'")
         self._load_cache()
 
