@@ -11,10 +11,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from lib.classes.db import MidnightOilDB as MOADB
-
-# from lib.globals import
-from lib.classes.form import Element, Complexity
 from lib.classes.cost_inputs import (
     Scenario1Input,
     Scenario2Input,
@@ -22,6 +18,10 @@ from lib.classes.cost_inputs import (
     Scenario4Input,
     Scenario5Input,
 )
+from lib.classes.db import MidnightOilDB
+
+# from lib.globals import
+from lib.classes.form import Complexity, Element
 from lib.classes.scenarios import Scenario1, Scenario2, Scenario3, Scenario4, Scenario5
 from lib.persisted_project import (
     PersistedProjectCreate,
@@ -38,11 +38,16 @@ from lib.persisted_quote import (
     persisted_quote_insert_document,
     persisted_quote_update_to_mongo_set,
 )
-
 from lib.print_form_calculator import print_form_calculator
 
-
 app = FastAPI()
+db = None
+
+def _ensure_db():
+    global db
+    if not db:
+        db = MidnightOilDB().connect()
+    return db
 
 # Configure CORS for Next.js frontend
 app.add_middleware(
@@ -139,7 +144,7 @@ def _scenario_cost_input(sid: int, payload: QuoteRequest):
     raise ValueError(f"Unknown scenario id: {sid}")
 
 
-def _compute_quote_scenarios(db: MOADB, elements: list[Element], payload: QuoteRequest) -> dict[str, Any]:
+def _compute_quote_scenarios(db: MidnightOilDB, elements: list[Element], payload: QuoteRequest) -> dict[str, Any]:
     _, bin_dict = print_form_calculator(elements, payload.num_standees)
     print_forms = list(bin_dict.values())
 
@@ -199,8 +204,8 @@ _SCENARIO_CLASSES = {
 async def generate_quote(payload: QuoteRequest):
     elements = _elements_from_element_types(payload.elements)
     out: dict[str, Any] = {}
-    with MOADB() as db:
-        out = _compute_quote_scenarios(db, elements, payload)
+    db = _ensure_db()
+    out = _compute_quote_scenarios(db, elements, payload)
 
     # Persist the project if an authenticated owner is provided.
     owner = None
@@ -208,33 +213,32 @@ async def generate_quote(payload: QuoteRequest):
         owner = payload.owner.strip()
 
     if payload.persist_project and owner and payload.num_standees >= 1 and payload.elements:
-        with MOADB() as db:
-            if db.check_username_exists(owner):
-                pname = (payload.project_name or "").strip() or "Untitled project"
-                persisted = PersistedProjectCreate(
-                    owner=owner,
-                    project_name=pname,
-                    num_standees=payload.num_standees,
-                    standee_type=complexity_to_str(Complexity(payload.standee_type)),
-                    elements=elements_to_persisted(elements),
-                )
-                full_doc = persisted_create_to_mongo_document(persisted)
+        if db.check_username_exists(owner):
+            pname = (payload.project_name or "").strip() or "Untitled project"
+            persisted = PersistedProjectCreate(
+                owner=owner,
+                project_name=pname,
+                num_standees=payload.num_standees,
+                standee_type=complexity_to_str(Complexity(payload.standee_type)),
+                elements=elements_to_persisted(elements),
+            )
+            full_doc = persisted_create_to_mongo_document(persisted)
 
-                persisted_project_id = (payload.project_id or "").strip()
-                updatable_keys = ("project_name", "num_standees", "standee_type", "elements")
+            persisted_project_id = (payload.project_id or "").strip()
+            updatable_keys = ("project_name", "num_standees", "standee_type", "elements")
 
-                if persisted_project_id:
-                    update_fields = {}
-                    for key, value in full_doc.items():
-                        if key in updatable_keys:
-                            update_fields[key] = value
+            if persisted_project_id:
+                update_fields = {}
+                for key, value in full_doc.items():
+                    if key in updatable_keys:
+                        update_fields[key] = value
 
-                    updated = db.update_persisted_project(persisted_project_id, owner, update_fields)
-                    if updated:
-                        out["project_id"] = persisted_project_id
-                else:
-                    inserted_id = db.insert_persisted_project(full_doc)
-                    out["project_id"] = inserted_id
+                updated = db.update_persisted_project(persisted_project_id, owner, update_fields)
+                if updated:
+                    out["project_id"] = persisted_project_id
+            else:
+                inserted_id = db.insert_persisted_project(full_doc)
+                out["project_id"] = inserted_id
 
     return out
 
@@ -242,16 +246,16 @@ async def generate_quote(payload: QuoteRequest):
 @app.get("/standee-data")
 async def get_standee_data(standee_type: int, data_type: str):
     type_mapping = {0: "Simple Standee", 1: "Moderate Standee", 2: "Complex Standee"}
-    with MOADB() as db:
-        standee_data = db.get_standee_data(type_mapping[standee_type], data_type.strip())
+    db = _ensure_db()
+    standee_data = db.get_standee_data(type_mapping[standee_type], data_type.strip())
     print(f"Retrieved standee data for type {type_mapping[standee_type]} and field '{data_type}': {standee_data}")
     return {"data": standee_data}
 
 
 @app.get("/unit-costs")
 async def get_unit_costs():
-    with MOADB() as db:
-        return {"data": db.get_all_unit_costs()}
+    db = _ensure_db()
+    return {"data": db.get_all_unit_costs()}
 
 
 class UpdateCostRequest(BaseModel):
@@ -266,11 +270,11 @@ class UpdateCostRequest(BaseModel):
 @app.get("/standee-static-costs")
 async def get_standee_static_costs(standee_type: str):
     """Return the full static cost record for a given standee type."""
-    with MOADB() as db:
-        try:
-            return {"data": db.get_standee_record(standee_type)}
-        except ValueError as e:
-            return JSONResponse(status_code=404, content={"error": str(e)})
+    try:
+        db = _ensure_db()
+        return {"data": db.get_standee_record(standee_type)}
+    except ValueError as e:
+        return JSONResponse(status_code=404, content={"error": str(e)})
 
 
 class UpdateStandeeRequest(BaseModel):
@@ -282,30 +286,30 @@ class UpdateStandeeRequest(BaseModel):
 @app.patch("/standee-static-costs")
 async def update_standee_static_costs(standee_type: str, payload: UpdateStandeeRequest):
     """Update numeric fields on a standee static cost record."""
-    with MOADB() as db:
-        try:
-            db.update_standee_record(standee_type, payload.updates)
-            return {"message": "Updated successfully"}
-        except ValueError as e:
-            return JSONResponse(status_code=404, content={"error": str(e)})
+    db = _ensure_db()
+    try:
+        db.update_standee_record(standee_type, payload.updates)
+        return {"message": "Updated successfully"}
+    except ValueError as e:
+        return JSONResponse(status_code=404, content={"error": str(e)})
 
 
 @app.patch("/unit-costs/{name}")
 async def update_unit_cost(name: str, payload: UpdateCostRequest):
-    with MOADB() as db:
-        updates = {k: v for k, v in payload.model_dump().items() if v is not None}
-        try:
-            db.update_unit_cost_entry(name, updates)
-            return {"message": "Updated successfully"}
-        except ValueError as e:
-            return JSONResponse(status_code=404, content={"error": str(e)})
+    db = _ensure_db()
+    updates = {k: v for k, v in payload.model_dump().items() if v is not None}
+    try:
+        db.update_unit_cost_entry(name, updates)
+        return {"message": "Updated successfully"}
+    except ValueError as e:
+        return JSONResponse(status_code=404, content={"error": str(e)})
 
 
 @app.get("/overs")
 async def get_overs():
     """Return all overs tier records sorted by lower_bound."""
-    with MOADB() as db:
-        return {"data": db.get_all_overs()}
+    db = _ensure_db()
+    return {"data": db.get_all_overs()}
 
 
 class UpdateOversRequest(BaseModel):
@@ -338,33 +342,33 @@ async def delete_overs(record_id: str):
 @app.patch("/overs/{record_id}")
 async def update_overs(record_id: str, payload: UpdateOversRequest):
     """Upsert lower_bound, upper_bound, and overs percentage for a tier."""
-    with MOADB() as db:
-        try:
-            db.upsert_overs(record_id, payload.lower_bound, payload.upper_bound, payload.overs)
-            return {"message": "Updated successfully"}
-        except ValueError as e:
-            return JSONResponse(status_code=404, content={"error": str(e)})
+    db = _ensure_db()
+    try:
+        db.upsert_overs(record_id, payload.lower_bound, payload.upper_bound, payload.overs)
+        return {"message": "Updated successfully"}
+    except ValueError as e:
+        return JSONResponse(status_code=404, content={"error": str(e)})
 
 
 @app.get("/suppliers")
 async def get_suppliers():
     """Return all distinct supplier names."""
-    with MOADB() as db:
-        return {"data": db.get_distinct_suppliers()}
+    db = _ensure_db()
+    return {"data": db.get_distinct_suppliers()}
 
 
 @app.get("/suppliers/{supplier}/materials")
 async def get_supplier_materials(supplier: str):
     """Return distinct materials for a supplier with display names."""
-    with MOADB() as db:
-        return {"data": db.get_distinct_materials(supplier)}
+    db = _ensure_db()
+    return {"data": db.get_distinct_materials(supplier)}
 
 
 @app.get("/suppliers/{supplier}/{material}")
 async def get_supplier_material_records(supplier: str, material: str):
     """Return all cost records for a supplier+material pair sorted by amount."""
-    with MOADB() as db:
-        return {"data": db.get_supplier_material_records(supplier, material)}
+    db = _ensure_db()
+    return {"data": db.get_supplier_material_records(supplier, material)}
 
 
 class UpdateSupplierRequest(BaseModel):
@@ -378,33 +382,33 @@ class UpdateSupplierRequest(BaseModel):
 @app.patch("/suppliers/{record_id}")
 async def update_supplier_record(record_id: str, payload: UpdateSupplierRequest):
     """Update amount, cost, and unit on a supplier cost record."""
-    with MOADB() as db:
-        try:
-            db.update_supplier_record(record_id, payload.amount, payload.cost, payload.unit)
-            return {"message": "Updated successfully"}
-        except ValueError as e:
-            return JSONResponse(status_code=404, content={"error": str(e)})
+    db = _ensure_db()
+    try:
+        db.update_supplier_record(record_id, payload.amount, payload.cost, payload.unit)
+        return {"message": "Updated successfully"}
+    except ValueError as e:
+        return JSONResponse(status_code=404, content={"error": str(e)})
 
 
 @app.post("/create-project")
 async def create_project(payload: PersistedProjectCreate):
-    with MOADB() as db:
-        if not db.check_username_exists(payload.owner):
-            return JSONResponse(status_code=404, content={"error": "Unknown owner"})
-        doc = persisted_create_to_mongo_document(payload)
-        project_id = db.insert_persisted_project(doc)
-        return JSONResponse(
-            status_code=201,
-            content={"project_id": project_id, "message": "Project created successfully"},
-        )
+    db = _ensure_db()
+    if not db.check_username_exists(payload.owner):
+        return JSONResponse(status_code=404, content={"error": "Unknown owner"})
+    doc = persisted_create_to_mongo_document(payload)
+    project_id = db.insert_persisted_project(doc)
+    return JSONResponse(
+        status_code=201,
+        content={"project_id": project_id, "message": "Project created successfully"},
+    )
 
 
 @app.get("/projects")
 async def list_projects(owner: str = Query(..., description="Username of the account that owns the projects")):
-    with MOADB() as db:
-        if not db.check_username_exists(owner):
-            return JSONResponse(status_code=404, content={"error": "Unknown owner"})
-        projects = db.list_projects_by_owner(owner)
+    db = _ensure_db()
+    if not db.check_username_exists(owner):
+        return JSONResponse(status_code=404, content={"error": "Unknown owner"})
+    projects = db.list_projects_by_owner(owner)
     return {"projects": projects}
 
 
@@ -413,8 +417,8 @@ async def get_project(
     project_id: str,
     owner: str = Query(..., description="Must match the document's owner field"),
 ):
-    with MOADB() as db:
-        row = db.get_project_by_owner(project_id, owner)
+    db = _ensure_db()
+    row = db.get_project_by_owner(project_id, owner)
     if row is None:
         return JSONResponse(status_code=404, content={"error": "Project not found"})
     return row
@@ -426,27 +430,27 @@ async def list_project_quotes(
     owner: str = Query(..., description="Must match the document's owner field"),
 ):
     """Return all persisted quotes for a project (sidebar list)."""
-    with MOADB() as db:
-        if not db.check_username_exists(owner):
-            return JSONResponse(status_code=404, content={"error": "Unknown owner"})
-        if db.get_project_by_owner(project_id, owner) is None:
-            return JSONResponse(status_code=404, content={"error": "Project not found"})
-        quotes = db.list_quotes_for_project(project_id, owner)
+    db = _ensure_db()
+    if not db.check_username_exists(owner):
+        return JSONResponse(status_code=404, content={"error": "Unknown owner"})
+    if db.get_project_by_owner(project_id, owner) is None:
+        return JSONResponse(status_code=404, content={"error": "Project not found"})
+    quotes = db.list_quotes_for_project(project_id, owner)
     return {"quotes": quotes}
 
 
 @app.post("/projects/{project_id}/quotes")
 async def create_project_quote(project_id: str, payload: PersistedQuoteCreateBody):
     """Insert a quote under an existing project owned by ``payload.owner``."""
-    with MOADB() as db:
-        if not db.check_username_exists(payload.owner):
-            return JSONResponse(status_code=404, content={"error": "Unknown owner"})
-        if db.get_project_by_owner(project_id, payload.owner) is None:
-            return JSONResponse(status_code=404, content={"error": "Project not found"})
-        create = persisted_quote_create_from_path(project_id, payload)
-        doc = persisted_quote_insert_document(create, created_at=datetime.now(UTC), updated_at=datetime.now(UTC))
-        doc["project_id"] = ObjectId(doc["project_id"])
-        quote_id = db.insert_persisted_quote(doc)
+    db = _ensure_db()
+    if not db.check_username_exists(payload.owner):
+        return JSONResponse(status_code=404, content={"error": "Unknown owner"})
+    if db.get_project_by_owner(project_id, payload.owner) is None:
+        return JSONResponse(status_code=404, content={"error": "Project not found"})
+    create = persisted_quote_create_from_path(project_id, payload)
+    doc = persisted_quote_insert_document(create, created_at=datetime.now(UTC), updated_at=datetime.now(UTC))
+    doc["project_id"] = ObjectId(doc["project_id"])
+    quote_id = db.insert_persisted_quote(doc)
     return JSONResponse(
         status_code=201,
         content={"quote_id": quote_id, "message": "Quote created successfully"},
@@ -458,10 +462,10 @@ async def get_quote(
     quote_id: str,
     owner: str = Query(..., description="Must match the document's owner field"),
 ):
-    with MOADB() as db:
-        if not db.check_username_exists(owner):
-            return JSONResponse(status_code=404, content={"error": "Unknown owner"})
-        row = db.get_quote_by_owner(quote_id, owner)
+    db = _ensure_db()
+    if not db.check_username_exists(owner):
+        return JSONResponse(status_code=404, content={"error": "Unknown owner"})
+    row = db.get_quote_by_owner(quote_id, owner)
     if row is None:
         return JSONResponse(status_code=404, content={"error": "Quote not found"})
     return row
@@ -473,12 +477,12 @@ async def update_quote(
     payload: PersistedQuoteUpdateBody,
     owner: str = Query(..., description="Must match the document's owner field"),
 ):
-    with MOADB() as db:
-        if not db.check_username_exists(owner):
-            return JSONResponse(status_code=404, content={"error": "Unknown owner"})
-        fields = persisted_quote_update_to_mongo_set(payload)
-        if not db.update_persisted_quote(quote_id, owner, fields):
-            return JSONResponse(status_code=404, content={"error": "Quote not found"})
+    db = _ensure_db()
+    if not db.check_username_exists(owner):
+        return JSONResponse(status_code=404, content={"error": "Unknown owner"})
+    fields = persisted_quote_update_to_mongo_set(payload)
+    if not db.update_persisted_quote(quote_id, owner, fields):
+        return JSONResponse(status_code=404, content={"error": "Quote not found"})
     return {"message": "Quote updated successfully", "quote_id": quote_id}
 
 
@@ -487,11 +491,11 @@ async def delete_quote(
     quote_id: str,
     owner: str = Query(..., description="Owner must match quote document's owner field"),
 ):
-    with MOADB() as db:
-        if not db.check_username_exists(owner):
-            return JSONResponse(status_code=404, content={"error": "Unknown owner"})
-        if not db.delete_persisted_quote(quote_id, owner):
-            return JSONResponse(status_code=404, content={"error": "Quote not found"})
+    db = _ensure_db()
+    if not db.check_username_exists(owner):
+        return JSONResponse(status_code=404, content={"error": "Unknown owner"})
+    if not db.delete_persisted_quote(quote_id, owner):
+        return JSONResponse(status_code=404, content={"error": "Quote not found"})
     return {"message": "Quote deleted", "quote_id": quote_id}
 
 
@@ -501,12 +505,12 @@ async def update_project(
     payload: PersistedProjectUpdateBody,
     owner: str = Query(..., description="Must match the document's owner field"),
 ):
-    with MOADB() as db:
-        if not db.check_username_exists(owner):
-            return JSONResponse(status_code=404, content={"error": "Unknown owner"})
-        fields = persisted_update_to_mongo_set(payload)
-        if not db.update_persisted_project(project_id, owner, fields):
-            return JSONResponse(status_code=404, content={"error": "Project not found"})
+    db = _ensure_db()
+    if not db.check_username_exists(owner):
+        return JSONResponse(status_code=404, content={"error": "Unknown owner"})
+    fields = persisted_update_to_mongo_set(payload)
+    if not db.update_persisted_project(project_id, owner, fields):
+        return JSONResponse(status_code=404, content={"error": "Project not found"})
     return {"message": "Project updated successfully", "project_id": project_id}
 
 
@@ -515,52 +519,49 @@ async def delete_project(
     project_id: str,
     owner: str = Query(..., description="Owner must match project document's owner field"),
 ):
-    with MOADB() as db:
-        if not db.check_username_exists(owner):
-            return JSONResponse(status_code=404, content={"error": "Unknown owner"})
-        if not db.delete_persisted_project(project_id, owner):
-            return JSONResponse(status_code=404, content={"error": "Project not found"})
+    db = _ensure_db()
+    if not db.check_username_exists(owner):
+        return JSONResponse(status_code=404, content={"error": "Unknown owner"})
+    if not db.delete_persisted_project(project_id, owner):
+        return JSONResponse(status_code=404, content={"error": "Project not found"})
     return {"message": "Project deleted", "project_id": project_id}
 
 
 @app.post("/create-account")
 async def create_account(payload: AccountRequest):
-    with MOADB() as db:
-        username = payload.username
-        password = payload.password
+    db = _ensure_db()
+    username = payload.username
+    password = payload.password
 
-        # Check if username already exists
-        if db.check_username_exists(username):
-            return JSONResponse(status_code=400, content={"error": "Username already exists"})
+    # Check if username already exists
+    if db.check_username_exists(username):
+        return JSONResponse(status_code=400, content={"error": "Username already exists"})
 
-        # Create new user
-        success = db.create_user(username, password)
-        if success:
-            return JSONResponse(status_code=201, content={"message": "Account created successfully"})
-        else:
-            return JSONResponse(status_code=400, content={"error": "Failed to create account"})
+    # Create new user
+    success = db.create_user(username, password)
+    if success:
+        return JSONResponse(status_code=201, content={"message": "Account created successfully"})
+    else:
+        return JSONResponse(status_code=400, content={"error": "Failed to create account"})
 
 
 @app.post("/sign-in")
 async def sign_in(payload: AccountRequest):
-    with MOADB() as db:
-        username = payload.username
-        password = payload.password
+    db = _ensure_db()
+    username = payload.username
+    password = payload.password
 
-        if not db.check_username_exists(username):
-            return JSONResponse(status_code=400, content={"error": "Invalid username or password"})
+    if not db.check_username_exists(username):
+        return JSONResponse(status_code=400, content={"error": "Invalid username or password"})
 
-        user = db.get_user(username)
+    user = db.get_user(username)
 
-        if not user or not _verify_password(password, user["password_hash"]):
-            return JSONResponse(status_code=400, content={"error": "Invalid username or password"})
-        else:
-            return JSONResponse(status_code=200, content={"message": "Sign-in successful"})
+    if not user or not _verify_password(password, user["password_hash"]):
+        return JSONResponse(status_code=400, content={"error": "Invalid username or password"})
+    else:
+        return JSONResponse(status_code=200, content={"message": "Sign-in successful"})
 
 
 if __name__ == "__main__":
     import code
-
-    db = MOADB()
-    db.connect()
     code.interact(local=globals())
