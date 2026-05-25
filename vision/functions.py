@@ -358,6 +358,21 @@ def merge_masks_alpha_shape(
 
     return merged_mask, combined, perimeter
 
+def save_csv(results, filename):
+
+    if len(results) == 0:
+        return
+
+    keys = results[0].keys()
+
+    with open(filename, "w", newline="") as f:
+
+        writer = csv.DictWriter(f, fieldnames=keys)
+
+        writer.writeheader()
+
+        writer.writerows(results)
+
 def main():
 
     image = load_image(INPUT_IMAGE_PATH)
