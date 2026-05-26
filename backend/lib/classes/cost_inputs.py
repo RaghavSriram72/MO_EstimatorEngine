@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from lib.classes.db_keys import SupplierKey, UnitCostKey
+from lib.classes.db_keys import SupplierMaterials, Suppliers, UnitCostEntries
 
 
 @dataclass
@@ -22,7 +22,7 @@ class InHouseInput(BaseInput):
     """Inputs used by in-house production scenarios."""
 
     imposition_hours: float | None = None
-    print_machine: str = UnitCostKey.RHO_512R
+    print_machine: str = UnitCostEntries.RHO_512R
     print_hours: float | None = None
     rollx_hours: float | None = None
     zund_hours: float | None = None
@@ -55,8 +55,8 @@ class OutsourceInput(BaseInput):
     """Inputs used by outsourced production scenarios."""
 
     print_hours: float | None = None
-    corrugate_supplier: str = SupplierKey.PQ
-    corrugate_material: str = SupplierKey.B_WHITE
+    corrugate_supplier: str = Suppliers.PQ
+    corrugate_material: str = SupplierMaterials.B_WHITE
     pallet_count: int | None = None
     freight_cost: float | None = None
     die_cost: float | None = None

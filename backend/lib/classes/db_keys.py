@@ -1,7 +1,18 @@
 from enum import StrEnum
 
 
-class UnitCostKey(StrEnum):
+class DBTables(StrEnum):
+    OVERS = "overs"
+    PRINT_BLANK = "print_blank_ratio"
+    PROJECTS = "projects"
+    STANDEE = "standee_static_costs"
+    SUPPLIERS = "suppliers"
+    UNIT_COSTS = "unit_costs"
+    USERS = "users"
+    QUOTES = "quotes"
+
+
+class UnitCostEntries(StrEnum):
     """Known keys in the ``unit_costs`` collection."""
 
     BLANK_COMP = "blank_comp"
@@ -28,6 +39,20 @@ class UnitCostKey(StrEnum):
     ROLLX = "roll-x"
 
 
+class StandeeData(StrEnum):
+    TYPE = "standee_type"
+    ENGINEERING_DESIGN_COST = "engineering_design_cost_per_project"
+    INSTRUCTION_SHEET_ENGINEERING_COST = "instruction_sheet_engineering_cost_per_project"
+    HARDWARE_COST = "hardware_cost"
+    ZUND_PRINT_FORM_MINUTES = "zund_print_form_minutes"
+    ZUND_BLANK_FORM_MINUTES = "zund_blank_form_minutes"
+    INSTRUCTION_SHEET_TOTAL_COST = "instruction_sheet_total_cost"
+    CUTTING_DIE_INCHES_MULTIPLIER = "cutting_die_inches_multiplier"
+    KITTING_AND_ASSEMBLY = "kitting_and_assembly"
+    CUTTING_DIE_BLANK_FORM_MIN = "cutting_die_blank_form_min"
+    CUTTING_DIE_PRINT_FORM_MIN = "cutting_die_print_form_min"
+
+
 class StandeeKey(StrEnum):
     """Known standee categories in the ``standee_static_costs`` collection."""
 
@@ -36,11 +61,14 @@ class StandeeKey(StrEnum):
     COMPLEX = "Complex Standee"
 
 
-class SupplierKey(StrEnum):
+class Suppliers(StrEnum):
     """Known supplier/material keys used by the estimator."""
 
+    FOSTERS = "fosters"
+    PQ = "pq"
+
+
+class SupplierMaterials(StrEnum):
     B_WHITE = "b_white_1_s"
     BLANK = "bk"
-    FOSTERS = "fosters"
     FOSTERS_PRINT_FORM = "fosters_print_form"
-    PQ = "pq"
