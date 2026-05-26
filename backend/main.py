@@ -62,6 +62,8 @@ app.add_middleware(
 
 
 class AccountRequest(BaseModel):
+    """Payload for account creation and sign-in endpoints."""
+
     username: str
     password: str
 
@@ -80,18 +82,14 @@ def _verify_password(password: str, stored_hash: str) -> bool:
             int(iterations),
         )
         return hmac.compare_digest(recomputed.hex(), digest_hex)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return False
 
 
 @app.get("/")
 async def root():
+    """Simple root endpoint to verify the server is running."""
     return {"message": "Hello from FastAPI"}
-
-
-@app.get("/health")
-async def health_check():
-    return {"status": "healthy"}
 
 
 _COMPLEXITY_MAP = {
@@ -101,7 +99,7 @@ _COMPLEXITY_MAP = {
 }
 
 
-def _elements_from_element_types(types: list["ElementType"]) -> list[Element]:
+def _elements_from_element_types(types: list[ElementType]) -> list[Element]:
     return [
         Element(
             name=e.name,
@@ -124,28 +122,29 @@ def _scenario_cost_input(sid: int, payload: QuoteRequest):
     ph = payload.print_hours
     rh = payload.rollx_hours
     zh = payload.zund_hours
-    kw = dict(num_standees=ns, print_forms_per_standee=pfps, structure_forms_per_standee=sfps, num_overs=no)
-    if sid == 1:
-        return Scenario1Input(**kw, print_hours=ph, rollx_hours=rh, zund_hours=zh)
-    if sid == 2:
-        return Scenario2Input(**kw, print_hours=ph, rollx_hours=rh, zund_hours=zh)
-    if sid == 3:
-        return Scenario3Input(**kw, print_hours=ph, rollx_hours=rh, zund_hours=zh)
+
+    scenario_map = {
+        1: Scenario1Input,
+        2: Scenario2Input,
+        3: Scenario3Input,
+        4: Scenario4Input,
+        5: Scenario5Input,
+    }
+    common_base: dict[str, Any] = dict(
+        num_standees=ns,
+        print_forms_per_standee=pfps,
+        structure_forms_per_standee=sfps,
+        num_overs=no,
+    )
+
+    if sid in [1, 2, 3]:
+        return scenario_map[sid](**common_base, print_hours=ph, rollx_hours=rh, zund_hours=zh)
+
     if sid == 4:
-        return Scenario4Input(
-            num_standees=ns,
-            print_forms_per_standee=pfps,
-            structure_forms_per_standee=sfps,
-            num_overs=no,
-            print_hours=ph,
-        )
+        return scenario_map[sid](**common_base, print_hours=ph, imposition_hours=ph)
+
     if sid == 5:
-        return Scenario5Input(
-            num_standees=ns,
-            print_forms_per_standee=pfps,
-            structure_forms_per_standee=sfps,
-            num_overs=no,
-        )
+        return scenario_map[sid](**common_base)
     raise ValueError(f"Unknown scenario id: {sid}")
 
 
@@ -170,6 +169,8 @@ def _compute_quote_scenarios(db: MidnightOilDB, elements: list[Element], payload
 
 
 class ElementType(BaseModel):
+    """Element data received from the frontend for quote generation."""
+
     name: str = ""
     height: float
     width: float
@@ -179,6 +180,8 @@ class ElementType(BaseModel):
 
 
 class QuoteRequest(BaseModel):
+    """Payload for generating quote scenarios."""
+
     elements: list[ElementType]
     num_standees: int
     scenario: int | None = None
@@ -207,6 +210,15 @@ _SCENARIO_CLASSES = {
 
 @app.post("/generate_quote")
 async def generate_quote(payload: QuoteRequest):
+    """
+    Generate quote scenarios based on input elements and parameters.
+
+    If ``payload.scenario`` is provided, only calculate that scenario;
+    otherwise calculate all. Returns a dict of scenario names to cost breakdowns.
+    If ``payload.persist_project`` is True and a valid ``payload.owner`` is
+    provided, also creates or updates a project document in Mongo with the
+    provided details (but does not persist the quote itself).
+    """
     elements = _elements_from_element_types(payload.elements)
     out: dict[str, Any] = {}
     db = _ensure_db()
@@ -250,6 +262,7 @@ async def generate_quote(payload: QuoteRequest):
 
 @app.get("/standee-data")
 async def get_standee_data(standee_type: int, data_type: str):
+    """Return a single field from the standee static costs collection based on standee type and requested data_type."""
     type_mapping = {0: "Simple Standee", 1: "Moderate Standee", 2: "Complex Standee"}
     db = _ensure_db()
     standee_data = db.get_standee_data(type_mapping[standee_type], data_type.strip())
@@ -259,6 +272,7 @@ async def get_standee_data(standee_type: int, data_type: str):
 
 @app.get("/unit-costs")
 async def get_unit_costs():
+    """Return all unit cost records as a dict of {key: {cost, unit, display_name, type}}."""
     db = _ensure_db()
     return {"data": db.get_all_unit_costs()}
 
@@ -301,6 +315,7 @@ async def update_standee_static_costs(standee_type: str, payload: UpdateStandeeR
 
 @app.patch("/unit-costs/{name}")
 async def update_unit_cost(name: str, payload: UpdateCostRequest):
+    """Update fields on a unit cost record. Only fields included in the payload will be updated."""
     db = _ensure_db()
     updates = {k: v for k, v in payload.model_dump().items() if v is not None}
     try:
@@ -328,20 +343,20 @@ class UpdateOversRequest(BaseModel):
 @app.post("/overs")
 async def add_overs(payload: UpdateOversRequest):
     """Insert a new overs tier record."""
-    with MOADB() as db:
-        new_id = db.upsert_overs(None, payload.lower_bound, payload.upper_bound, payload.overs)
-        return {"message": "Created successfully", "id": new_id}
+    db = _ensure_db()
+    new_id = db.upsert_overs(None, payload.lower_bound, payload.upper_bound, payload.overs)
+    return {"message": "Created successfully", "id": new_id}
 
 
 @app.delete("/overs/{record_id}")
 async def delete_overs(record_id: str):
     """Delete an overs tier record by id."""
-    with MOADB() as db:
-        try:
-            db.delete_overs(record_id)
-            return {"message": "Deleted successfully"}
-        except ValueError as e:
-            return JSONResponse(status_code=404, content={"error": str(e)})
+    db = _ensure_db()
+    try:
+        db.delete_overs(record_id)
+        return {"message": "Deleted successfully"}
+    except ValueError as e:
+        return JSONResponse(status_code=404, content={"error": str(e)})
 
 
 @app.patch("/overs/{record_id}")
@@ -371,27 +386,25 @@ async def get_supplier_materials(supplier: str):
 
 @app.get("/suppliers/{supplier}/{material}")
 async def get_supplier_material_records(supplier: str, material: str):
-    """Return all cost records for a supplier+material pair sorted by amount."""
+    """Return one supplier/material document with embedded price breaks."""
     db = _ensure_db()
     return {"data": db.get_supplier_material_records(supplier, material)}
 
 
-class UpdateSupplierRequest(BaseModel):
-    """Payload for updating a supplier price break."""
+class UpdateSupplierMaterialRequest(BaseModel):
+    """Payload for updating supplier/material-level fields like unit or cost (not price break specific)."""
 
-    amount: float
-    cost: float
     unit: str
+    price_breaks: list[dict[str, float]]
+    display_name: str
 
 
-@app.patch("/suppliers/{supplier}/{material}/{original_amount}")
-async def update_supplier_price_break(
-    supplier: str, material: str, original_amount: float, payload: UpdateSupplierRequest
-):
-    """Update one supplier price break within a material-level Mongo document."""
+@app.patch("/suppliers/{supplier}/{material}")
+async def update_supplier_material(supplier: str, material: str, payload: UpdateSupplierMaterialRequest):
+    """Update the unit or cost fields for a supplier/material document."""
     db = _ensure_db()
     try:
-        db.update_supplier_price_break(supplier, material, original_amount, payload.amount, payload.cost, payload.unit)
+        db.upsert_supplier_material(supplier, material, payload.display_name, payload.unit, payload.price_breaks)
         return {"message": "Updated successfully"}
     except ValueError as e:
         return JSONResponse(status_code=404, content={"error": str(e)})
@@ -399,6 +412,7 @@ async def update_supplier_price_break(
 
 @app.post("/create-project")
 async def create_project(payload: PersistedProjectCreate):
+    """Create a new project document owned by ``payload.owner`` with the provided details."""
     db = _ensure_db()
     if not db.check_username_exists(payload.owner):
         return JSONResponse(status_code=404, content={"error": "Unknown owner"})
@@ -412,6 +426,7 @@ async def create_project(payload: PersistedProjectCreate):
 
 @app.get("/projects")
 async def list_projects(owner: str = Query(..., description="Username of the account that owns the projects")):
+    """List all projects owned by the specified user."""
     db = _ensure_db()
     if not db.check_username_exists(owner):
         return JSONResponse(status_code=404, content={"error": "Unknown owner"})
@@ -424,6 +439,7 @@ async def get_project(
     project_id: str,
     owner: str = Query(..., description="Must match the document's owner field"),
 ):
+    """Return one project document if it exists and belongs to ``owner``."""
     db = _ensure_db()
     row = db.get_project_by_owner(project_id, owner)
     if row is None:
@@ -469,6 +485,7 @@ async def get_quote(
     quote_id: str,
     owner: str = Query(..., description="Must match the document's owner field"),
 ):
+    """Get one quote document if it exists and belongs to ``owner``."""
     db = _ensure_db()
     if not db.check_username_exists(owner):
         return JSONResponse(status_code=404, content={"error": "Unknown owner"})
@@ -484,6 +501,7 @@ async def update_quote(
     payload: PersistedQuoteUpdateBody,
     owner: str = Query(..., description="Must match the document's owner field"),
 ):
+    """Update allowed fields on a quote document if it exists and belongs to ``owner``."""
     db = _ensure_db()
     if not db.check_username_exists(owner):
         return JSONResponse(status_code=404, content={"error": "Unknown owner"})
@@ -498,6 +516,7 @@ async def delete_quote(
     quote_id: str,
     owner: str = Query(..., description="Owner must match quote document's owner field"),
 ):
+    """Delete one quote document if it exists and belongs to ``owner``."""
     db = _ensure_db()
     if not db.check_username_exists(owner):
         return JSONResponse(status_code=404, content={"error": "Unknown owner"})
@@ -512,6 +531,7 @@ async def update_project(
     payload: PersistedProjectUpdateBody,
     owner: str = Query(..., description="Must match the document's owner field"),
 ):
+    """Update allowed fields on a project document if it exists and belongs to ``owner``. Does not update quotes."""
     db = _ensure_db()
     if not db.check_username_exists(owner):
         return JSONResponse(status_code=404, content={"error": "Unknown owner"})
@@ -526,6 +546,7 @@ async def delete_project(
     project_id: str,
     owner: str = Query(..., description="Owner must match project document's owner field"),
 ):
+    """Delete one project document if it exists and belongs to ``owner``. Also deletes all linked quotes."""
     db = _ensure_db()
     if not db.check_username_exists(owner):
         return JSONResponse(status_code=404, content={"error": "Unknown owner"})
@@ -536,6 +557,7 @@ async def delete_project(
 
 @app.post("/create-account")
 async def create_account(payload: AccountRequest):
+    """Create a new user account with a username and password."""
     db = _ensure_db()
     username = payload.username
     password = payload.password
@@ -554,6 +576,7 @@ async def create_account(payload: AccountRequest):
 
 @app.post("/sign-in")
 async def sign_in(payload: AccountRequest):
+    """Verify username and password for sign-in."""
     db = _ensure_db()
     username = payload.username
     password = payload.password

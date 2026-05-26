@@ -70,5 +70,5 @@ class Suppliers(StrEnum):
 
 class SupplierMaterials(StrEnum):
     B_WHITE = "b_white_1_s"
-    BLANK = "bk"
+    BLANK = "bk_blank_die"
     FOSTERS_PRINT_FORM = "fosters_print_form"
