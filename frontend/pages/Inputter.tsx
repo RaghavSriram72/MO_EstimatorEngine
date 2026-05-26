@@ -55,6 +55,7 @@ type ApiPersistedElement = {
     width: number;
     linear_inches?: number | null;
     complexity: string;
+    mask_b64?: string | null;
 };
 
 
@@ -147,6 +148,7 @@ function buildElementsForApi(elements: Element[]) {
         linear_inches: el.linear_inches === "" ? null : el.linear_inches,
         complexity: el.complexity as StandeeType,
         description: el.description || "",
+        mask_b64: el.maskImage ?? null,
     }));
 }
 
@@ -211,6 +213,23 @@ export default function Inputter() {
     const [sidebarQuoteSearch, setSidebarQuoteSearch] = useState("");
     const [activePersistedQuoteId, setActivePersistedQuoteId] = useState<string | null>(null);
     const [continueBusy, setContinueBusy] = useState(false);
+    const [toast, setToast] = useState<{ message: string; type: "save" | "delete" } | null>(null);
+    const [toastVisible, setToastVisible] = useState(false);
+
+    useEffect(() => {
+        if (toast) {
+            const showId = setTimeout(() => setToastVisible(true), 20);
+            const hideId = setTimeout(() => setToastVisible(false), 2500);
+            const removeId = setTimeout(() => setToast(null), 2800);
+            return () => { clearTimeout(showId); clearTimeout(hideId); clearTimeout(removeId); };
+        }
+    }, [toast]);
+
+    function showToast(message: string, type: "save" | "delete") {
+        setToastVisible(false);
+        setToast(null);
+        setTimeout(() => setToast({ message, type }), 10);
+    }
 
     const refreshProjects = useCallback(async () => {
         const owner = typeof window !== "undefined" ? localStorage.getItem("username") : null;
@@ -364,7 +383,7 @@ export default function Inputter() {
             setStandeeCount(typeof doc.num_standees === "number" ? doc.num_standees : "");
             const rows = Array.isArray(doc.elements) ? doc.elements : [];
             setElements(
-                rows.map((row: { length: number; width: number; complexity: string; linear_inches: number | null; description: string | null}, i: number) => ({
+                rows.map((row: { length: number; width: number; complexity: string; linear_inches: number | null; description: string | null; mask_b64?: string | null }, i: number) => ({
                     id: Date.now() + i,
                     height: row.length,
                     width: row.width,
@@ -372,6 +391,7 @@ export default function Inputter() {
                     description: row.description || "",
                     linear_inches:
                         row.linear_inches === null || row.linear_inches === undefined ? "" : row.linear_inches,
+                    maskImage: row.mask_b64 ?? undefined,
                 })),
             );
             setResetKey((k) => k + 1);
@@ -441,6 +461,7 @@ export default function Inputter() {
                 handleClear();
             }
             setListVersion((v) => v + 1);
+            showToast(`"${projectLabel}" deleted`, "delete");
         } catch {
             setProjectsError("Could not delete project");
         }
@@ -682,12 +703,35 @@ export default function Inputter() {
         if (!canPersist) return;
         if (!localStorage.getItem("username")?.trim()) return;
         const r = await persistCurrentProject();
-        if (r.success) setListVersion((v) => v + 1);
-        else if (r.errorMessage) console.error(r.errorMessage);
+        if (r.success) {
+            setListVersion((v) => v + 1);
+            showToast("Project saved", "save");
+        } else if (r.errorMessage) console.error(r.errorMessage);
     }
 
     const loggedIn =
         typeof window !== "undefined" && Boolean(localStorage.getItem("username")?.trim());
+
+    const toastJsx = toast && (
+        <div
+            className={`fixed top-6 left-1/2 z-50 -translate-x-1/2 transition-all duration-300 ease-out ${
+                toastVisible ? "translate-y-0 opacity-100" : "-translate-y-6 opacity-0"
+            }`}
+        >
+            <div className={`flex items-center gap-3 rounded-sm border-2 px-5 py-3 shadow-2xl ${
+                toast.type === "delete"
+                    ? "border-red-400 bg-[#000005]"
+                    : "border-[#FFC843] bg-[#000005]"
+            }`}>
+                <span className={`text-[10px] font-black uppercase tracking-widest ${
+                    toast.type === "delete" ? "text-red-400" : "text-[#FFC843]"
+                }`}>
+                    {toast.type === "delete" ? "// DELETED" : "// SAVED"}
+                </span>
+                <span className="text-xs font-semibold text-white">{toast.message}</span>
+            </div>
+        </div>
+    );
 
     if (isQuoteLoading) {
         return (
@@ -863,6 +907,7 @@ export default function Inputter() {
                     canSubmit={canSubmitBuildQuote}
                     onSubmit={runBuildQuoteFromModal}
                 />
+                {toastJsx}
             </>
         );
     }
@@ -1071,6 +1116,7 @@ export default function Inputter() {
                 </div>
             </div>
         </div>
+        {toastJsx}
         </>
     );
 }

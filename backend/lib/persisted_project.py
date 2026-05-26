@@ -60,6 +60,7 @@ class PersistedElement(BaseModel):
     linear_inches: float | None = None
     complexity: ComplexityStr
     description: str = Field(default="")
+    mask_b64: str | None = None
 
 
 class PersistedProjectCreate(BaseModel):
