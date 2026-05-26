@@ -79,11 +79,6 @@ class TestStaticCostCalculator(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.db = MidnightOilDB().connect()
-        try:
-            cls.db.get_supplier_values("pq", "b_white_1_s")
-            cls.has_scenario4_supplier_curve = True
-        except ValueError:
-            cls.has_scenario4_supplier_curve = False
 
     @classmethod
     def tearDownClass(cls):
@@ -138,12 +133,6 @@ class TestStaticCostCalculator(unittest.TestCase):
 
     def test_static_cost_calculator_sonic_standee(self):
         """Test static cost calculation for Sonic standee project."""
-        if not getattr(TestStaticCostCalculator, "has_scenario4_supplier_curve", False):
-            self.skipTest(
-                "MongoDB ``suppliers`` needs at least two rows for supplier 'pq' and material 'b_white_1_s' "
-                "with numeric amount, cost, and a unit in UNIT_MAP (Scenario 4 corrugate curve). "
-                "Dev databases often omit or null these — seed tiers or run against a full dataset."
-            )
         elements = [
             Element(name="Dr. Robotnik", width=41, length=15, complexity=Complexity.COMPLEX),
             Element(name="Tails", width=27, length=22, complexity=Complexity.COMPLEX),
