@@ -1,19 +1,9 @@
 import math
-from importlib import import_module
-from pathlib import Path
 
 from rectpack import PackingMode, newPacker
 
 from lib.classes import Complexity, Element, Form
 from lib.globals import FORM_LENGTH, FORM_WIDTH, PADDING
-
-# Calculate size per form -> apply_materials_tool -> fills in material field for each Element
-
-COMPLEXITY_COLORS = {
-    Complexity.SIMPLE: "#7fc97f",
-    Complexity.MODERATE: "#fdc086",
-    Complexity.COMPLEX: "#beaed4",
-}
 
 
 def print_form_calculator(initial_elements: list[Element], num_standees: int):
@@ -27,94 +17,8 @@ def print_form_calculator(initial_elements: list[Element], num_standees: int):
     Returns:
         None
     """
-    elements, bin_dict, _ = _pack_elements(initial_elements)
+    elements, bin_dict = _pack_elements(initial_elements)
     return elements, bin_dict
-
-
-def visualize_form_layout(
-    initial_elements: list[Element],
-    output_dir: str = "form_visualizations",
-    dpi: int = 150,
-):
-    """Render each packed form as an image with element bounding boxes.
-
-    Args:
-        initial_elements: List of elements to pack onto 60x80 forms.
-        output_dir: Directory where per-form images are saved.
-        dpi: Output image DPI.
-
-    Returns:
-        A list of file paths to generated images.
-    """
-    try:
-        patches = import_module("matplotlib.patches")
-        plt = import_module("matplotlib.pyplot")
-    except ImportError as exc:  # pragma: no cover - depends on runtime environment
-        msg = "matplotlib is required to visualize form layouts. Install it with: pip install matplotlib"
-        raise ImportError(msg) from exc
-
-    _, _, placements = _pack_elements(initial_elements)
-    save_dir = Path(output_dir)
-    save_dir.mkdir(parents=True, exist_ok=True)
-
-    image_paths = []
-    for form_id in sorted(placements):
-        fig, ax = plt.subplots(figsize=(7.5, 10))
-        ax.set_xlim(0, FORM_WIDTH)
-        ax.set_ylim(0, FORM_LENGTH)
-        ax.set_aspect("equal", adjustable="box")
-
-        # Draw form boundary first so all elements remain visible inside it.
-        ax.add_patch(
-            patches.Rectangle(
-                (0, 0),
-                FORM_WIDTH,
-                FORM_LENGTH,
-                linewidth=2,
-                edgecolor="black",
-                facecolor="none",
-            )
-        )
-
-        for placement in placements[form_id]:
-            element = placement["element"]
-            x = placement["x"]
-            y = placement["y"]
-            width = placement["width"]
-            length = placement["length"]
-
-            fill = COMPLEXITY_COLORS.get(element.complexity, "#8da0cb")
-            ax.add_patch(
-                patches.Rectangle(
-                    (x, y),
-                    width,
-                    length,
-                    linewidth=1,
-                    edgecolor="black",
-                    facecolor=fill,
-                    alpha=0.75,
-                )
-            )
-            ax.text(
-                x + width / 2,
-                y + length / 2,
-                f"{element.name}\n{width:.2f} x {length:.2f}",
-                ha="center",
-                va="center",
-                fontsize=7,
-            )
-
-        ax.set_title(f"Form {form_id} Layout ({FORM_WIDTH:.0f} x {FORM_LENGTH:.0f} in)")
-        ax.set_xlabel("Width (in)")
-        ax.set_ylabel("Length (in)")
-        ax.grid(True, linestyle="--", linewidth=0.4, alpha=0.4)
-
-        out_path = save_dir / f"form_{form_id}.png"
-        fig.savefig(str(out_path), dpi=dpi, bbox_inches="tight")
-        plt.close(fig)
-        image_paths.append(str(out_path))
-
-    return image_paths
 
 
 def _pack_elements(initial_elements: list[Element]):
@@ -129,24 +33,16 @@ def _pack_elements(initial_elements: list[Element]):
 
     all_rects = packer.rect_list()
     bin_dict = {}
-    placements = {}
     for b, x, y, w, h, rid in all_rects:
+        element = elements[rid]
+        element.length = h
+        element.width = w
         if b not in bin_dict:
             bin_dict[b] = Form(id=b, elements=[])
-            placements[b] = []
-        bin_dict[b].elements.append(elements[rid])
-        if elements[rid].complexity.value > bin_dict[b].complexity.value:
-            bin_dict[b].complexity = elements[rid].complexity
-        placements[b].append(
-            {
-                "element": elements[rid],
-                "x": x,
-                "y": y,
-                "width": w,
-                "length": h,
-            }
-        )
-    return elements, bin_dict, placements
+        bin_dict[b].elements.append(element)
+        if element.complexity.value > bin_dict[b].complexity.value:
+            bin_dict[b].complexity = element.complexity
+    return elements, bin_dict
 
 
 def _fits_on_form(element: Element):
@@ -197,18 +93,29 @@ def _split_element(element):
     Returns:
         list of Elements that can fit within a form
     """
-    if element.length > element.width:
-        # split perpindicular to length
+    length_ratio = element.length / FORM_LENGTH
+    width_ratio = element.width / FORM_WIDTH
+
+    if length_ratio >= width_ratio and element.length > FORM_LENGTH:
+        # Split along the longer side when it is the dimension preventing a fit.
         num_splits = math.ceil(element.length / FORM_LENGTH)
         split_length = element.length / num_splits
         split_width = element.width
         split_linear_inches = (element.get_linear_inches() / num_splits) + element.width
-    else:
-        # split perpindicular to width
+    elif element.width > FORM_WIDTH:
+        # Split width when it is the dimension preventing a fit.
         num_splits = math.ceil(element.width / FORM_WIDTH)
         split_width = element.width / num_splits
         split_length = element.length
         split_linear_inches = (element.get_linear_inches() / num_splits) + element.length
+    else:
+        raise ValueError(
+            (
+                f"Cannot split element {element.name}: {element.length} x {element.width} "
+                "does not exceed form limits in a splittable way"
+            )
+        )
+
     return [
         Element(
             name=f"{element.name}_{i}",
@@ -230,23 +137,9 @@ def _add_padding(element):
     Returns:
         Element with padding added
     """
-    padded_element = Element(
-        name=element.name,
-        length=element.length,
-        width=element.width,
-        linear_inches=element.linear_inches,
-        complexity=element.complexity,
-    )
-    if min(padded_element.length, padded_element.width) + PADDING > FORM_WIDTH:
-        if max(padded_element.length, padded_element.width) + PADDING < FORM_LENGTH:
-            if padded_element.length > padded_element.width:
-                padded_element.length += PADDING
-            else:
-                padded_element.width += PADDING
-    else:
-        padded_element.length += PADDING
-        padded_element.width += PADDING
-    return padded_element
+    element.length = min(element.length + PADDING, FORM_LENGTH)
+    element.width = min(element.width + PADDING, FORM_LENGTH)
+    return element
 
 
 if __name__ == "__main__":
@@ -269,7 +162,3 @@ if __name__ == "__main__":
         print(
             f"""Form {bin}: {[element.name for element in forms[bin].elements]}, complexity: {forms[bin].complexity}"""
         )
-    image_paths = visualize_form_layout(input_elements)
-    print(f"Saved {len(image_paths)} layout image(s):")
-    for path in image_paths:
-        print(path)
