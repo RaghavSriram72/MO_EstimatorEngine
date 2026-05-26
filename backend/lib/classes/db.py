@@ -412,17 +412,99 @@ class MidnightOilDB:
     
     def get_packout(self, standees, forms, complexity):
         """Return the packout cost for a given quantity of standees, forms, and complexity"""
-        result = self.overs_collection.find_one({
-            "standees_lower_bound": {"$lte": quantity},
-            "$or": [
-                {"upper_bound": None},
-                {"upper_bound": {"$gte": quantity}}
-            ]
-        })
-        if result and "overs" in result:
-            return result["overs"]
+        result = {
+        "$and": [
+            {
+                "standees_lower_bound": {"$lte": standees}
+            },
+            {
+                "$or": [
+                    {"standees_upper_bound": None},
+                    {"standees_upper_bound": {"$gte": standees}}
+                ]
+            },
+            {
+                "forms_lower_bound": {"$lte": forms}
+            },
+            {
+                "$or": [
+                    {"forms_upper_bound": None},
+                    {"forms_upper_bound": {"$gte": forms}}
+                ]
+            },
+            {
+                "complexity": complexity
+            }
+        ]
+        }
+        if result and "packout" in result:
+            return result["packout"]
         else:
-            raise ValueError(f"Overs not found for quantity {quantity}")
+            raise ValueError(f"Overs not found for standees {standees}, forms {forms}, and complexity {complexity}")
+        
+    def get_all_packout(self) -> list[dict]:
+        """Return all packout costs sorted by lower_bound."""
+        records = []
+        for r in sorted(self._cache["packout"], key=lambda x: (x["standees_lower_bound"], x["forms_lower_bound"])):
+            r["_id"] = str(r["_id"])
+            if "last_updated" in r and hasattr(r["last_updated"], "isoformat"):
+                r["last_updated"] = r["last_updated"].isoformat()
+            records.append(r)
+        return records
+    
+    def upsert_packout(
+        self,
+        record_id: str | None,
+        standees_lower_bound: int,
+        standees_upper_bound: int | None,
+        forms_lower_bound: int,
+        forms_upper_bound: int | None,
+        complexity: str,
+        packout: int,
+    ) -> str:
+        """Upsert a packout tier record. Generates a new _id when record_id is None."""
+
+        if record_id is not None:
+            try:
+                oid = ObjectId(record_id)
+            except Exception:
+                raise ValueError(f"Invalid packout record id '{record_id}'")
+        else:
+            oid = ObjectId()
+
+        self.packout_collection.update_one(
+            {"_id": oid},
+            {
+                "$set": {
+                    "standees_lower_bound": standees_lower_bound,
+                    "standees_upper_bound": standees_upper_bound,
+                    "forms_lower_bound": forms_lower_bound,
+                    "forms_upper_bound": forms_upper_bound,
+                    "complexity": complexity,
+                    "packout": packout,
+                    "last_updated": datetime.now(UTC),
+                }
+            },
+            upsert=True,
+        )
+
+        self._load_cache()
+        return str(oid)
+
+
+    def delete_packout(self, record_id: str) -> None:
+        """Delete a packout tier record by _id."""
+
+        try:
+            oid = ObjectId(record_id)
+        except Exception:
+            raise ValueError(f"Invalid packout record id '{record_id}'")
+
+        result = self.packout_collection.delete_one({"_id": oid})
+
+        if result.deleted_count == 0:
+            raise ValueError(f"Packout record not found for id '{record_id}'")
+
 def _hash_password(password: str) -> str:
     """Hash a password using PBKDF2-HMAC-SHA256 with random salt."""
     iterations = 120_000
