@@ -598,6 +598,7 @@ async def sign_in(payload: AccountRequest):
 
 _MAX_HIGHLIGHT_WIDTH = 800
 
+
 def _encode_element_highlight(image: np.ndarray, mask: np.ndarray) -> str:
     """Return a base64 JPEG with the element region clearly highlighted and background near-black."""
     mask_u8 = (mask * 255).astype(np.uint8)
@@ -605,7 +606,7 @@ def _encode_element_highlight(image: np.ndarray, mask: np.ndarray) -> str:
 
     result = image.copy().astype(np.float32)
     # Near-black background
-    result[~mask_bool] = result[~mask_bool] * 0.08
+    result[~mask_bool] = result[~mask_bool] * 0.28
 
     # Yellow on element region (BGR: 0, 230, 255)
     yellow = np.array([0.0, 230.0, 255.0], dtype=np.float32)
