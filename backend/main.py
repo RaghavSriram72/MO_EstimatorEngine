@@ -381,19 +381,21 @@ async def get_supplier_material_records(supplier: str, material: str):
 
 
 class UpdateSupplierRequest(BaseModel):
-    """Payload for updating amount, cost, and unit on a supplier record."""
+    """Payload for updating a supplier price break."""
 
     amount: float
     cost: float
     unit: str
 
 
-@app.patch("/suppliers/{record_id}")
-async def update_supplier_record(record_id: str, payload: UpdateSupplierRequest):
-    """Update amount, cost, and unit on a supplier cost record."""
+@app.patch("/suppliers/{supplier}/{material}/{original_amount}")
+async def update_supplier_price_break(
+    supplier: str, material: str, original_amount: float, payload: UpdateSupplierRequest
+):
+    """Update one supplier price break within a material-level Mongo document."""
     db = _ensure_db()
     try:
-        db.update_supplier_record(record_id, payload.amount, payload.cost, payload.unit)
+        db.update_supplier_price_break(supplier, material, original_amount, payload.amount, payload.cost, payload.unit)
         return {"message": "Updated successfully"}
     except ValueError as e:
         return JSONResponse(status_code=404, content={"error": str(e)})
