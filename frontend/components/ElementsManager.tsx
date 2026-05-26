@@ -151,7 +151,7 @@ export default function ElementsManager({ elements, setElements }: Props) {
         dismissPrompt();
     }
 
-    const inputCls = "border-2 border-[#E0E0E0] rounded-sm p-1 outline-none text-[#000005] text-xs bg-white w-full focus:border-[#FFC843] transition-colors font-semibold";
+    const inputCls = "border-2 border-[#E0E0E0] rounded-sm px-1 py-0.5 outline-none text-[#000005] text-xs bg-white w-full focus:border-[#FFC843] transition-colors font-semibold";
 
     return (
         <>
@@ -163,76 +163,68 @@ export default function ElementsManager({ elements, setElements }: Props) {
                 maskImage={viewMask?.image ?? ""}
                 elementLabel={viewMask?.label ?? ""}
             />
-            {/* Add new element — two rows so dropdowns and inputs never overlap */}
-            <div className="flex flex-col gap-3 w-full shrink-0 rounded-sm border-2 border-[#E0E0E0] bg-[#FAFAFA] p-3">
-                <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-3">
-                    <div className="min-w-0">
-                        <div className="text-[10px] font-bold mb-1 text-[#B1B3B6] uppercase tracking-wider">Length (in)</div>
-                        <input
-                            type="number"
-                            min={0}
-                            value={height}
-                            onChange={(e) => setHeight(e.target.value === "" ? "" : Number(e.target.value))}
-                            placeholder="0"
-                            className={inputCls}
-                        />
-                    </div>
-                    <div className="min-w-0">
-                        <div className="text-[10px] font-bold mb-1 text-[#B1B3B6] uppercase tracking-wider">Width (in)</div>
-                        <input
-                            type="number"
-                            min={0}
-                            value={width}
-                            onChange={(e) => setWidth(e.target.value === "" ? "" : Number(e.target.value))}
-                            placeholder="0"
-                            className={inputCls}
-                        />
-                    </div>
-                    <div className="min-w-0">
-                        <div className="text-[10px] font-bold mb-1 text-[#B1B3B6] uppercase tracking-wider">Complexity</div>
-                        <Dropdown
-                            options={complexityOptions}
-                            currOption={complexity || null}
-                            onSelect={(val: string) => setComplexity(val)}
-                            width="w-full"
-                        />
-                    </div>
+            {/* Add new element — single compact row */}
+            <div className="flex items-end gap-2 w-full shrink-0 rounded-sm border-2 border-[#E0E0E0] bg-[#FAFAFA] px-3 py-2">
+                <div className="min-w-0 w-20">
+                    <div className="text-[9px] font-bold mb-0.5 text-[#B1B3B6] uppercase tracking-wider">Length</div>
+                    <input
+                        type="number"
+                        min={0}
+                        value={height}
+                        onChange={(e) => setHeight(e.target.value === "" ? "" : Number(e.target.value))}
+                        placeholder="0"
+                        className={inputCls}
+                    />
                 </div>
-                <div className="grid w-full grid-cols-1 items-end gap-3 sm:grid-cols-[minmax(0,11rem)_1fr_auto]">
-                    <div className="min-w-0">
-                        <div className="text-[10px] font-bold mb-1 text-[#B1B3B6] uppercase tracking-wider">
-                            Linear In. <span className="font-normal normal-case">(opt.)</span>
-                        </div>
-                        <input
-                            type="number"
-                            min={0}
-                            value={linearInches}
-                            onChange={(e) => setLinearInches(e.target.value === "" ? "" : Number(e.target.value))}
-                            placeholder="—"
-                            className={inputCls}
-                        />
-                    </div>
-                    <div className="min-w-0">
-                        <div className="text-[10px] font-bold mb-1 text-[#B1B3B6] uppercase tracking-wider">
-                            Description <span className="font-normal normal-case">(opt.)</span>
-                        </div>
-                        <input
-                            type="text"
-                            value={descriptionDraft}
-                            onChange={(e) => setDescriptionDraft(e.target.value)}
-                            placeholder="—"
-                            className={inputCls}
-                        />
-                    </div>
-                    <button
-                        type="button"
-                        onClick={handleAdd}
-                        disabled={height === "" || width === "" || !complexity}
-                        className="h-[34px] shrink-0 self-end text-xs font-bold px-4 rounded-sm border-2 border-[#000005] bg-[#000005] text-white cursor-pointer transition-all duration-200 hover:bg-[#FFC843] hover:border-[#FFC843] hover:text-[#000005] disabled:opacity-30 disabled:cursor-not-allowed whitespace-nowrap sm:h-auto sm:py-1.5"
-                    >
-                        + ADD
-                    </button>
+                <div className="min-w-0 w-20">
+                    <div className="text-[9px] font-bold mb-0.5 text-[#B1B3B6] uppercase tracking-wider">Width</div>
+                    <input
+                        type="number"
+                        min={0}
+                        value={width}
+                        onChange={(e) => setWidth(e.target.value === "" ? "" : Number(e.target.value))}
+                        placeholder="0"
+                        className={inputCls}
+                    />
                 </div>
+                <div className="min-w-0 w-32">
+                    <div className="text-[9px] font-bold mb-0.5 text-[#B1B3B6] uppercase tracking-wider">Complexity</div>
+                    <Dropdown
+                        options={complexityOptions}
+                        currOption={complexity || null}
+                        onSelect={(val: string) => setComplexity(val)}
+                        width="w-full"
+                    />
+                </div>
+                <div className="min-w-0 w-20">
+                    <div className="text-[9px] font-bold mb-0.5 text-[#B1B3B6] uppercase tracking-wider">Linear In.</div>
+                    <input
+                        type="number"
+                        min={0}
+                        value={linearInches}
+                        onChange={(e) => setLinearInches(e.target.value === "" ? "" : Number(e.target.value))}
+                        placeholder="—"
+                        className={inputCls}
+                    />
+                </div>
+                <div className="min-w-0 flex-1">
+                    <div className="text-[9px] font-bold mb-0.5 text-[#B1B3B6] uppercase tracking-wider">Description</div>
+                    <input
+                        type="text"
+                        value={descriptionDraft}
+                        onChange={(e) => setDescriptionDraft(e.target.value)}
+                        placeholder="—"
+                        className={inputCls}
+                    />
+                </div>
+                <button
+                    type="button"
+                    onClick={handleAdd}
+                    disabled={height === "" || width === "" || !complexity}
+                    className="shrink-0 text-xs font-bold px-3 py-1.5 rounded-sm border-2 border-[#000005] bg-[#000005] text-white cursor-pointer transition-all duration-200 hover:bg-[#FFC843] hover:border-[#FFC843] hover:text-[#000005] disabled:opacity-30 disabled:cursor-not-allowed whitespace-nowrap"
+                >
+                    + ADD
+                </button>
             </div>
 
             {/* Scrollable list — horizontal scroll on narrow containers so columns never overlap */}
