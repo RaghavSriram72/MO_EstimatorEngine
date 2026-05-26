@@ -373,8 +373,8 @@ export default function ElementsManager({ elements, setElements }: Props) {
 
             {scalePrompt && (
                 <div
-                    className={`fixed bottom-6 left-1/2 z-50 -translate-x-1/2 transition-all duration-300 ease-out ${
-                        promptVisible ? "translate-y-0 opacity-100" : "translate-y-6 opacity-0"
+                    className={`fixed top-6 left-1/2 z-50 -translate-x-1/2 transition-all duration-300 ease-out ${
+                        promptVisible ? "translate-y-0 opacity-100" : "-translate-y-6 opacity-0"
                     }`}
                 >
                     <div className="flex min-w-[320px] max-w-[460px] flex-col gap-3 rounded-sm border-2 border-[#FFC843] bg-[#000005] px-6 py-4 shadow-2xl">
