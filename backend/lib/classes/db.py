@@ -274,14 +274,16 @@ class MidnightOilDB:
             raise ValueError(f"Failed to update standee record for '{standee_category}': {str(e)}")
 
     def get_structure_forms_per_standee(self, print_forms: int) -> int:
-        """Return the current print blank ratio."""
-        record = next(
-            (entry for entry in self._cache["print_blank_ratio"] if entry["print_forms"] == print_forms), None
-        )
+        """Return the print blank ratio, falling back to the nearest available value."""
+        ratios = self._cache["print_blank_ratio"]
+        record = next((e for e in ratios if e["print_forms"] == print_forms), None)
         if record and "blank_forms" in record:
             return record["blank_forms"]
-        else:
-            raise ValueError(f"Print blank ratio not found for {print_forms} print forms")
+        valid = [e for e in ratios if "print_forms" in e and "blank_forms" in e]
+        if valid:
+            closest = min(valid, key=lambda e: abs(e["print_forms"] - print_forms))
+            return closest["blank_forms"]
+        raise ValueError(f"Print blank ratio not found for {print_forms} print forms")
 
     def set_blank_forms_per_standee(self, print_forms: int, blank_forms: int) -> None:
         """Set the current print blank ratio."""
