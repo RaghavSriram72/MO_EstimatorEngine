@@ -29,6 +29,8 @@ class MidnightOilDB:
         self.standee_collection = self.db["standee_static_costs"]
         self.print_blank_collection = self.db["print_blank_ratio"]
         self.overs_collection = self.db["overs"]
+        self.packout_collection = self.db["packout"]
+        self.work_center_costs_collection = self.db["work_center_costs"]
         self.suppliers_collection = self.db["suppliers"]
         self.users_collection = self.db["users"]
         self.projects_collection = self.db["projects"]
@@ -407,9 +409,20 @@ class MidnightOilDB:
         result = self.overs_collection.delete_one({"_id": oid})
         if result.deleted_count == 0:
             raise ValueError(f"Overs record not found for id '{record_id}'")
-        self._load_cache()
-
-
+    
+    def get_packout(self, standees, forms, complexity):
+        """Return the packout cost for a given quantity of standees, forms, and complexity"""
+        result = self.overs_collection.find_one({
+            "standees_lower_bound": {"$lte": quantity},
+            "$or": [
+                {"upper_bound": None},
+                {"upper_bound": {"$gte": quantity}}
+            ]
+        })
+        if result and "overs" in result:
+            return result["overs"]
+        else:
+            raise ValueError(f"Overs not found for quantity {quantity}")
 def _hash_password(password: str) -> str:
     """Hash a password using PBKDF2-HMAC-SHA256 with random salt."""
     iterations = 120_000
