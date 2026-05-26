@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from lib.classes import Project, Scenario1, Scenario2, Scenario3, Scenario4, Scenario5
 from lib.classes.cost_inputs import (
     Scenario1Input,
     Scenario2Input,
@@ -25,7 +26,6 @@ from lib.classes.db import MidnightOilDB
 
 # from lib.globals import
 from lib.classes.form import Complexity, Element
-from lib.classes.scenarios import Scenario1, Scenario2, Scenario3, Scenario4, Scenario5
 from lib.persisted_project import (
     PersistedProjectCreate,
     PersistedProjectUpdateBody,
@@ -158,7 +158,7 @@ def _compute_quote_scenarios(db: MidnightOilDB, elements: list[Element], payload
     scenarios_to_run = [payload.scenario] if payload.scenario is not None else [1, 2, 3, 4, 5]
     out: dict[str, Any] = {}
     for sid in scenarios_to_run:
-        s = _SCENARIO_CLASSES[sid](
+        s: Project = _SCENARIO_CLASSES[sid](
             db=db,
             name="API quote",
             print_forms=print_forms,
