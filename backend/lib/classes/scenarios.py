@@ -12,14 +12,14 @@ from lib.classes.project import InHouseProject, OutsourceProject
 
 FOSTERS_DEFAULT_OVERS = 100
 
+
 class Scenario1[T: Scenario1Input](InHouseProject[T]):
     """Scenario 1: Internal Print, Internal Finishing, Packed out."""
 
     @override
-    def calculate_cost(self, input: T) -> float:
+    def calculate_cost(self, input: T) -> None:
         super().calculate_cost(input)
         self.instruction_sheet_cost = self._get_instruction_sheet_cost()
-        return self.total_cost
 
     @property
     def total_cost(self) -> float:
@@ -37,7 +37,7 @@ class Scenario3[T: Scenario3Input](InHouseProject[T]):
     """Scenario 3: Internal Print, Internal Finishing, External Assembly."""
 
     @override
-    def calculate_cost(self, input: T) -> float:
+    def calculate_cost(self, input: T) -> None:
         super().calculate_cost(input)
         self.instruction_sheet_cost = self._get_instruction_sheet_cost()
         self.pallet_count = input.pallet_count or self.print_forms_per_standee
@@ -72,8 +72,11 @@ class Scenario4[T: Scenario4Input](OutsourceProject[T]):
     """Scenario 4: Internal Print, External Mount & Die Cut, External Assembly."""
 
     @override
-    def calculate_cost(self, input: T) -> float:
+    def calculate_cost(self, input: T) -> None:
         super().calculate_cost(input)
+        self.imposition_hours = input.imposition_hours or self.print_forms_per_standee
+        imposition_rate = self.db.get_unit_cost(UnitCostEntries.IMPOSITION_LABOR)
+        self.imposition_cost = imposition_rate * self.imposition_hours
         self.print_form_cost = self._get_print_form_cost(UnitCostEntries.SHEET_95)
         print_linear_inches = self._get_print_form_linear_inches()
         self.print_hours = input.print_hours or self._get_machine_time(UnitCostEntries.RHO_1312, print_linear_inches)
@@ -114,7 +117,7 @@ class Scenario5[T: Scenario5Input](OutsourceProject[T]):
     """Scenario 5: External Print, External Finishing, Packed out."""
 
     @override
-    def calculate_cost(self, input: T) -> float:
+    def calculate_cost(self, input: T) -> None:
         self.overs = FOSTERS_DEFAULT_OVERS
         super().calculate_cost(input)
         self.print_form_cost = self._get_supplier_cost(

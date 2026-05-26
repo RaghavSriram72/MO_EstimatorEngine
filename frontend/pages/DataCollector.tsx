@@ -65,18 +65,22 @@ type SupplierMaterial = {
     display_name: string;
 };
 
-type SupplierRecord = {
-    _id: string;
+type SupplierPriceBreak = {
     amount: number;
     cost: number;
-    unit: string;
+};
+
+type SupplierDocument = {
+    _id: string;
     supplier: string;
     material: string;
     material_display_name: string;
+    unit: string;
+    price_breaks: SupplierPriceBreak[];
     last_updated: string;
 };
 
-type SupplierEditFields = { amount: number; cost: number; unit: string };
+// SupplierRecord and per-break edit map removed — we operate on `supplierDraft`.
 
 type ModuleId = 0 | 1 | 2 | 3;
 
@@ -96,6 +100,8 @@ function standeeNumericFields(record: StandeeRecord): [string, number][] {
         ([k, v]) => k !== "_id" && k !== "standee_type" && typeof v === "number"
     ) as [string, number][];
 }
+
+// no-op: supplierDraft is edited directly instead of flattening price_breaks.
 
 // ── Component ──────────────────────────────────────────────────────────────
 export default function DataCollector() {
@@ -341,18 +347,12 @@ export default function DataCollector() {
     const [selectedSupplier, setSelectedSupplier]   = useState<string>("");
     const [supplierMaterials, setSupplierMaterials] = useState<SupplierMaterial[]>([]);
     const [selectedMaterial, setSelectedMaterial]   = useState<string>("");
-    const [supplierRecords, setSupplierRecords]     = useState<SupplierRecord[]>([]);
-    const [supplierEdits, setSupplierEdits]         = useState<Record<string, SupplierEditFields> | null>(null);
+    const [supplierDoc, setSupplierDoc]             = useState<SupplierDocument | null>(null);
+    const [supplierDraft, setSupplierDraft]         = useState<SupplierDocument | null>(null);
     const [isLoadingSupplier, setIsLoadingSupplier] = useState(false);
 
     const supplierOptions  = useMemo(() => supplierNames.map(supplierLabel), [supplierNames]);
     const materialOptions  = useMemo(() => supplierMaterials.map((m) => m.display_name), [supplierMaterials]);
-
-    function buildSupplierEdits(records: SupplierRecord[]): Record<string, SupplierEditFields> {
-        const edits: Record<string, SupplierEditFields> = {};
-        records.forEach((r) => { edits[r._id] = { amount: r.amount, cost: r.cost, unit: r.unit }; });
-        return edits;
-    }
 
     useEffect(() => {
         if (currentModule !== 3) return;
@@ -366,8 +366,8 @@ export default function DataCollector() {
         if (!selectedSupplier) return;
         setSelectedMaterial("");
         setSupplierMaterials([]);
-        setSupplierRecords([]);
-        setSupplierEdits(null);
+        setSupplierDoc(null);
+        setSupplierDraft(null);
         fetch(`${API_BASE}/suppliers/${encodeURIComponent(selectedSupplier)}/materials`)
             .then((r) => r.json())
             .then((data) => setSupplierMaterials(data.data ?? []))
@@ -380,52 +380,50 @@ export default function DataCollector() {
         fetch(`${API_BASE}/suppliers/${encodeURIComponent(selectedSupplier)}/${encodeURIComponent(selectedMaterial)}`)
             .then((r) => r.json())
             .then((data) => {
-                const records: SupplierRecord[] = data.data ?? [];
-                setSupplierRecords(records);
-                setSupplierEdits(buildSupplierEdits(records));
+                const doc: SupplierDocument | null = data.data ?? null;
+                setSupplierDoc(doc);
+                setSupplierDraft(doc ? JSON.parse(JSON.stringify(doc)) : null);
             })
             .catch(console.error)
             .finally(() => setIsLoadingSupplier(false));
     }, [selectedSupplier, selectedMaterial]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    function handleSupplierEdit(id: string, field: keyof SupplierEditFields, value: string) {
-        setSupplierEdits((prev) => {
-            if (!prev) return null;
-            const parsed = field === "unit" ? value : parseFloat(value) || 0;
-            return { ...prev, [id]: { ...prev[id], [field]: parsed } };
+    function handleSupplierEdit(index: number, field: "amount" | "cost" | "unit", value: string) {
+        setSupplierDraft((prev) => {
+            if (!prev) return prev;
+            const draft = JSON.parse(JSON.stringify(prev)) as SupplierDocument;
+            if (field === "unit") {
+                draft.unit = value;
+            } else if (typeof draft.price_breaks?.[index] !== "undefined") {
+                const parsed = parseFloat(value) || 0;
+                draft.price_breaks[index] = { ...draft.price_breaks[index], [field]: parsed } as SupplierPriceBreak;
+            }
+            return draft;
         });
     }
 
-    const isSupplierDirty = !!supplierEdits && supplierRecords.some((r) => {
-        const e = supplierEdits[r._id];
-        return e && (e.amount !== r.amount || e.cost !== r.cost || e.unit !== r.unit);
-    });
+    const isSupplierDirty = !!supplierDraft && !!supplierDoc && JSON.stringify(supplierDraft) !== JSON.stringify(supplierDoc);
 
     async function handleSupplierSubmit() {
-        if (!isSupplierDirty || !supplierEdits) return;
+        if (!isSupplierDirty || !supplierDraft || !supplierDoc) return;
         setIsSaving(true);
         try {
-            await Promise.all(
-                supplierRecords
-                    .filter((r) => {
-                        const e = supplierEdits[r._id];
-                        return e && (e.amount !== r.amount || e.cost !== r.cost || e.unit !== r.unit);
-                    })
-                    .map((r) =>
-                        fetch(
-                            `${API_BASE}/suppliers/${encodeURIComponent(selectedSupplier)}/${encodeURIComponent(selectedMaterial)}/${encodeURIComponent(String(r.amount))}`,
-                            {
-                                method: "PATCH",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify(supplierEdits[r._id]),
-                            }
-                        )
-                    )
-            );
+            const payload = {
+                display_name: supplierDraft.material_display_name,
+                unit: supplierDraft.unit,
+                price_breaks: supplierDraft.price_breaks,
+            };
+
+            await fetch(`${API_BASE}/suppliers/${encodeURIComponent(selectedSupplier)}/${encodeURIComponent(selectedMaterial)}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+            });
+
             const data = await fetch(`${API_BASE}/suppliers/${encodeURIComponent(selectedSupplier)}/${encodeURIComponent(selectedMaterial)}`).then((r) => r.json());
-            const updated: SupplierRecord[] = data.data ?? [];
-            setSupplierRecords(updated);
-            setSupplierEdits(buildSupplierEdits(updated));
+            const updatedDoc: SupplierDocument | null = data.data ?? null;
+            setSupplierDoc(updatedDoc);
+            setSupplierDraft(updatedDoc ? JSON.parse(JSON.stringify(updatedDoc)) : null);
         } catch (e) { console.error(e); }
         finally { setIsSaving(false); }
     }
@@ -450,8 +448,8 @@ export default function DataCollector() {
         if (currentModule === 3) {
             setSelectedSupplier("");
             setSelectedMaterial("");
-            setSupplierRecords([]);
-            setSupplierEdits(null);
+            setSupplierDoc(null);
+            setSupplierDraft(null);
         }
     }
 
@@ -828,7 +826,7 @@ export default function DataCollector() {
                                 <div className="text-xs m-2">Select a supplier and material above to view cost data points.</div>
                             ) : isLoadingSupplier ? (
                                 <div className="text-xs m-2">Loading...</div>
-                            ) : supplierRecords.length > 0 && supplierEdits ? (
+                            ) : supplierDraft && supplierDraft.price_breaks && supplierDraft.price_breaks.length > 0 ? (
                                 <>
                                     <div className="flex flex-row gap-3 w-full mb-1 px-1">
                                         <div className="text-[9px] flex-1 font-bold tracking-wider">AMOUNT</div>
@@ -837,20 +835,19 @@ export default function DataCollector() {
                                         <div className="text-[9px] w-[120px] shrink-0 font-bold tracking-wider">LAST UPDATED</div>
                                     </div>
                                     <div className="w-full flex flex-col gap-2">
-                                        {supplierRecords.map((rec) => {
-                                            const e = supplierEdits[rec._id];
-                                            if (!e) return null;
-                                            const amtChanged  = e.amount !== rec.amount;
-                                            const costChanged = e.cost   !== rec.cost;
-                                            const unitChanged = e.unit   !== rec.unit;
+                                        {supplierDraft.price_breaks.map((pb, idx) => {
+                                            const orig = supplierDoc?.price_breaks?.[idx];
+                                            const amtChanged = !!orig && pb.amount !== orig.amount;
+                                            const costChanged = !!orig && pb.cost !== orig.cost;
+                                            const unitChanged = !!supplierDoc && pb && pb.amount !== undefined && supplierDraft.unit !== supplierDoc.unit;
                                             return (
-                                                <div key={rec._id} className="flex flex-row items-center gap-3">
+                                                <div key={idx} className="flex flex-row items-center gap-3">
                                                     <div className="flex flex-col flex-1">
                                                         {amtChanged && <span className="text-[8px] text-[#FFB604] font-bold mb-0.5">CHANGED</span>}
                                                         <input
                                                             type="number" min={0} step={1}
-                                                            value={e.amount}
-                                                            onChange={(ev) => handleSupplierEdit(rec._id, "amount", ev.target.value)}
+                                                            value={pb.amount}
+                                                            onChange={(ev) => handleSupplierEdit(idx, "amount", ev.target.value)}
                                                             className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
                                                         />
                                                     </div>
@@ -858,8 +855,8 @@ export default function DataCollector() {
                                                         {costChanged && <span className="text-[8px] text-[#FFB604] font-bold mb-0.5">CHANGED</span>}
                                                         <input
                                                             type="number" min={0} step={1}
-                                                            value={e.cost}
-                                                            onChange={(ev) => handleSupplierEdit(rec._id, "cost", ev.target.value)}
+                                                            value={pb.cost}
+                                                            onChange={(ev) => handleSupplierEdit(idx, "cost", ev.target.value)}
                                                             className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
                                                         />
                                                     </div>
@@ -867,13 +864,13 @@ export default function DataCollector() {
                                                         {unitChanged && <span className="text-[8px] text-[#FFB604] font-bold mb-0.5">CHANGED</span>}
                                                         <input
                                                             type="text"
-                                                            value={e.unit}
-                                                            onChange={(ev) => handleSupplierEdit(rec._id, "unit", ev.target.value)}
+                                                            value={supplierDraft.unit}
+                                                            onChange={(ev) => handleSupplierEdit(idx, "unit", ev.target.value)}
                                                             className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
                                                         />
                                                     </div>
                                                     <div className="flex justify-center items-center p-2 border-2 w-[120px] shrink-0 border-[#EDEAEA] rounded-md h-[34px]">
-                                                        <div className="text-[0.75em] font-instrument text-black">{formatDate(rec.last_updated)}</div>
+                                                        <div className="text-[0.75em] font-instrument text-black">{formatDate(supplierDoc?.last_updated ?? "")}</div>
                                                     </div>
                                                 </div>
                                             );

@@ -73,9 +73,7 @@ class MidnightOilDB:
         self.suppliers_collection = self.db["suppliers"]
         self.users_collection = self.db["users"]
         self.projects_collection = self.db["projects"]
-        self.projects_collection.create_index([("owner", 1), ("_id", -1)])
         self.quotes_collection = self.db["quotes"]
-        self.quotes_collection.create_index([("owner", 1), ("project_id", 1), ("_id", -1)])
         self._load_cache()
         return self
 
@@ -352,36 +350,42 @@ class MidnightOilDB:
         )
 
     def _get_supplier_doc(self, supplier: str, material: str) -> dict[str, Any] | None:
-        """Return one normalized supplier/material document from cache."""
+        """Return one supplier/material document from cache."""
         return next(
             (r for r in self._cache["suppliers"] if r["supplier"] == supplier and r["material"] == material),
             None,
         )
 
-    def get_supplier_material_records(self, supplier: str, material: str) -> list[dict]:
-        """Return all price breaks for a supplier+material pair, sorted by amount ascending."""
+    def get_supplier_material_records(self, supplier: str, material: str) -> dict[str, Any] | None:
+        """Return one supplier/material document with serialized price_breaks."""
         doc = self._get_supplier_doc(supplier, material)
         if doc is None:
-            return []
+            return None
 
         last_updated = doc.get("last_updated")
         if last_updated is not None and hasattr(last_updated, "isoformat"):
             last_updated = last_updated.isoformat()
 
-        parent_id = str(doc.get("_id", ""))
-        return [
+        # Return price_breaks as simple amount/cost objects. Older documents may have
+        # embedded `_id` fields; drop them and only expose amount/cost to the frontend.
+        serialized_breaks = [
             {
-                "_id": f"{parent_id}:{price_break['amount']}",
-                "amount": price_break["amount"],
-                "cost": price_break["cost"],
-                "unit": doc["unit"],
-                "supplier": doc["supplier"],
-                "material": doc["material"],
-                "material_display_name": doc["material_display_name"],
-                "last_updated": last_updated,
+                "amount": price_break.get("amount"),
+                "cost": price_break.get("cost"),
             }
-            for price_break in doc["price_breaks"]
+            for price_break in sorted(doc.get("price_breaks", []), key=lambda row: row.get("amount", 0))
         ]
+
+        return {
+            "_id": str(doc.get("_id", "")),
+            "supplier": doc["supplier"],
+            "material": doc["material"],
+            "material_display_name": doc["material_display_name"],
+            "unit": doc["unit"],
+            "price_breaks": serialized_breaks,
+            "curve_params": doc.get("curve_params"),
+            "last_updated": last_updated,
+        }
 
     def upsert_supplier_material(
         self,
@@ -393,6 +397,7 @@ class MidnightOilDB:
     ) -> None:
         """Insert or replace a supplier/material document and precompute curve parameters."""
         ordered_breaks = sorted(price_breaks, key=lambda row: row["amount"])
+
         amounts = [row["amount"] for row in ordered_breaks]
         costs = [row["cost"] * UNIT_MAP[unit] for row in ordered_breaks]
         curve_params = _fit_supplier_curve(amounts, costs)
@@ -404,54 +409,6 @@ class MidnightOilDB:
                 "material": material,
                 "material_display_name": material_display_name,
                 "unit": unit,
-                "price_breaks": ordered_breaks,
-                "curve_params": curve_params,
-                "last_updated": datetime.now(UTC),
-            },
-            upsert=True,
-        )
-        self._load_cache()
-
-    def update_supplier_price_break(
-        self,
-        supplier: str,
-        material: str,
-        original_amount: float,
-        amount: float,
-        cost: float,
-        unit: str | None = None,
-    ) -> None:
-        """Update one price break in a material-level supplier document and refit the curve."""
-        doc = self._get_supplier_doc(supplier, material)
-        if doc is None:
-            raise ValueError(f"Supplier material not found for {supplier!r} / {material!r}")
-
-        updated = False
-        for price_break in doc["price_breaks"]:
-            if price_break["amount"] == original_amount:
-                price_break["amount"] = amount
-                price_break["cost"] = cost
-                updated = True
-                break
-
-        if not updated:
-            raise ValueError(f"Price break not found for amount {original_amount!r} in {supplier!r} / {material!r}")
-
-        if unit is not None:
-            doc["unit"] = unit
-
-        ordered_breaks = sorted(doc["price_breaks"], key=lambda row: row["amount"])
-        amounts = [row["amount"] for row in ordered_breaks]
-        costs = [row["cost"] * UNIT_MAP[doc["unit"]] for row in ordered_breaks]
-        curve_params = _fit_supplier_curve(amounts, costs)
-
-        self.suppliers_collection.replace_one(
-            {"supplier": supplier, "material": material},
-            {
-                "supplier": supplier,
-                "material": material,
-                "material_display_name": doc["material_display_name"],
-                "unit": doc["unit"],
                 "price_breaks": ordered_breaks,
                 "curve_params": curve_params,
                 "last_updated": datetime.now(UTC),

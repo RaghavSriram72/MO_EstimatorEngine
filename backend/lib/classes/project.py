@@ -53,7 +53,7 @@ class Project[T: BaseInput]:
                 out[k] = v
         return out
 
-    def calculate_cost(self, input: T) -> float:
+    def calculate_cost(self, input: T) -> None:
         """Calculate the total cost of the project, including both universal and scenario-specific costs."""
         self.num_standees = input.num_standees or self.num_standees
         db = self.db
@@ -75,13 +75,13 @@ class Project[T: BaseInput]:
         self.blank_comp_cost = db.get_unit_cost(UnitCostEntries.BLANK_COMP) * self.blank_comp_count
         self.color_comp_count = input.color_comp_count or 1
         self.color_comp_cost = db.get_unit_cost(UnitCostEntries.COLOR_COMP) * self.color_comp_count
-        return self.total_universal_cost
 
     # Helpers
     def _get_print_form_cost(self, print_material_name: str) -> float:
         print_form_material = self.db.get_unit_cost_entry(print_material_name)
         print_form_unit = print_form_material["unit"]  # linear_foot
         linear_inches = 0
+        print_form_cost = 0
         if print_form_unit != "linear_foot":
             print_form_cost = print_form_material["cost"] * UNIT_MAP[print_form_unit] * self.print_form_total
         elif print_form_unit == "linear_foot":
@@ -99,7 +99,6 @@ class Project[T: BaseInput]:
             hi_tack_material = self.db.get_unit_cost_entry(UnitCostEntries.ROLL_HI_TACK)
             hi_tack_unit = hi_tack_material["unit"]
             hi_tack_cost = hi_tack_material["cost"] * UNIT_MAP[hi_tack_unit] * linear_inches
-            print_form_cost = print_form_material["cost"] * UNIT_MAP[print_form_unit] * linear_inches
             print_form_cost += hi_tack_cost
         return print_form_cost
 
@@ -152,13 +151,22 @@ class Project[T: BaseInput]:
         )
         return instruction_sheet_cost
 
-    def _die_cost(self) -> float:
+    def _get_die_cost(self) -> float:
         die_unit_cost = self.db.get_unit_cost(UnitCostEntries.DIE_COST)
         die_complexity_map = {
             complexity: self.db.get_standee_data(term, "cutting_die_inches_multiplier")
             for complexity, term in STANDEE_MAP.items()
         }
-        return sum(form.get_die_cost(die_complexity_map, die_unit_cost) for form in self.print_forms)
+        blank_die_cost = self.structure_forms_per_standee * self.db.get_standee_data(
+            self.standee_key, "cutting_die_blank_form_min"
+        )
+        print_die_cost = 0
+        for form in self.print_forms:
+            print_die_cost += self.db.get_standee_data(STANDEE_MAP[form.complexity], "cutting_die_print_form_min")
+        print_die_cost = min(
+            print_die_cost, sum(form.get_die_cost(die_complexity_map, die_unit_cost) for form in self.print_forms)
+        )
+        return blank_die_cost + print_die_cost
 
     def _get_kitting_and_assembly_cost(self) -> float:
         return self.db.get_standee_data(self.standee_key, "kitting_and_assembly") * self.num_standees
@@ -173,7 +181,7 @@ class Project[T: BaseInput]:
 
     def _get_supplier_litho_buyout_cost(self, supplier: str, material: str) -> float:
         sheets_per_form = self._get_net_print_forms() // self.print_forms_per_standee
-        return self._get_supplier_cost(supplier, material, sheets_per_form) * self.print_forms_per_standee
+        return self._get_supplier_cost(supplier, material, self.num_standees) * sheets_per_form
 
     def _get_supplier_mount_die_buyout_cost(self, supplier: str, material: str, forms: int | None = None) -> float:
         if forms is None:
@@ -227,7 +235,7 @@ class InHouseProject[T: InHouseInput](Project[T]):
         )
 
     @override
-    def calculate_cost(self, input: T) -> float:
+    def calculate_cost(self, input: T) -> None:
         super().calculate_cost(input)
         self.corrugate_cost = self._get_corrugate_cost()
         self.print_form_cost = self._get_print_form_cost(UnitCostEntries.ROLL_BUSMARK)
@@ -252,8 +260,6 @@ class InHouseProject[T: InHouseInput](Project[T]):
 
         self.shipping_box_cost, self.label_cost = self._get_shipping_box_and_label_cost()
         self.kitting_and_assembly_cost = self._get_kitting_and_assembly_cost()
-
-        return self.total_cost
 
 
 class OutsourceProject[T: OutsourceInput](Project[T]):
@@ -282,7 +288,7 @@ class OutsourceProject[T: OutsourceInput](Project[T]):
         )
 
     @override
-    def calculate_cost(self, input: T) -> float:
+    def calculate_cost(self, input: T) -> None:
         super().calculate_cost(input)
         self.corrugate_supplier = input.corrugate_supplier
         self.corrugate_material = input.corrugate_material
@@ -292,10 +298,9 @@ class OutsourceProject[T: OutsourceInput](Project[T]):
         self.mount_die_buyout_cost = self._get_supplier_mount_die_buyout_cost(
             input.corrugate_supplier, input.corrugate_material
         )
-        self.die_cost = self._die_cost()
+        self.die_cost = self._get_die_cost()
         self.shipping_box_cost = self._get_supplier_mount_die_buyout_cost(
-            input.corrugate_supplier, SupplierMaterials.BLANK
+            input.corrugate_supplier, SupplierMaterials.BLANK, 1
         )
         _, self.label_cost = self._get_shipping_box_and_label_cost()
         self.instruction_sheet_cost = self._get_instruction_sheet_cost()
-        return self.total_cost
