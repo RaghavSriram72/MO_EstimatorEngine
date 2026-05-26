@@ -10,7 +10,9 @@ dependencies = [
     "pymongo",
     "rectpack",
     "uvicorn>=0.45.0",
-    "scipy"
+    "scipy",
+    "opencv-python>=4.13.0.92",
+    "python-multipart>=0.0.29",
 ]
 
 [dependency-groups]

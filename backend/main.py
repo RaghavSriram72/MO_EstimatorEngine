@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+import base64
+import cv2
 import hashlib
 import hmac
+import numpy as np
 from datetime import UTC, datetime
 from typing import Any
 
 from bson import ObjectId
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, File, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from vision.functions import process_image as vision_process_image
 
 from lib.classes.cost_inputs import (
     Scenario1Input,
@@ -590,6 +594,55 @@ async def sign_in(payload: AccountRequest):
         return JSONResponse(status_code=400, content={"error": "Invalid username or password"})
     else:
         return JSONResponse(status_code=200, content={"message": "Sign-in successful"})
+
+
+_MAX_HIGHLIGHT_WIDTH = 800
+
+def _encode_element_highlight(image: np.ndarray, mask: np.ndarray) -> str:
+    """Return a base64 JPEG with the element region clearly highlighted and background near-black."""
+    mask_u8 = (mask * 255).astype(np.uint8)
+    mask_bool = mask_u8 > 0
+
+    result = image.copy().astype(np.float32)
+    # Near-black background
+    result[~mask_bool] = result[~mask_bool] * 0.08
+
+    # Yellow on element region (BGR: 0, 230, 255)
+    yellow = np.array([0.0, 230.0, 255.0], dtype=np.float32)
+    result[mask_bool] = result[mask_bool] * 0.4 + yellow * 0.6
+    result = np.clip(result, 0, 255).astype(np.uint8)
+
+    # Bright red outline around the mask contour (BGR: 0, 0, 255)
+    contours, _ = cv2.findContours(mask_u8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    cv2.drawContours(result, contours, -1, (0, 0, 255), thickness=1)
+
+    h, w = result.shape[:2]
+    if w > _MAX_HIGHLIGHT_WIDTH:
+        scale = _MAX_HIGHLIGHT_WIDTH / w
+        result = cv2.resize(result, (_MAX_HIGHLIGHT_WIDTH, int(h * scale)))
+    ok, buf = cv2.imencode(".jpg", result, [cv2.IMWRITE_JPEG_QUALITY, 80])
+    if not ok:
+        return ""
+    return base64.b64encode(buf.tobytes()).decode("utf-8")
+
+
+@app.post("/vision/process")
+async def process_vision_image(file: UploadFile = File(...)):
+    """Segment an uploaded image and return detected element bounding-box dimensions with highlight previews."""
+    contents = await file.read()
+    nparr = np.frombuffer(contents, np.uint8)
+    image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    if image is None:
+        return JSONResponse(status_code=400, content={"error": "Could not decode image"})
+    try:
+        _, _, all_results, binary_masks = vision_process_image(image)
+        elements = []
+        for i, r in enumerate(all_results):
+            mask_b64 = _encode_element_highlight(image, binary_masks[i]) if i < len(binary_masks) else ""
+            elements.append({"id": r["id"], "width": r["width"], "height": r["height"], "mask_b64": mask_b64})
+        return {"elements": elements}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 
 if __name__ == "__main__":
