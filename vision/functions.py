@@ -375,7 +375,7 @@ def save_csv(results, filename):
 
 def main():
 
-    image = load_image(INPUT_IMAGE_PATH )
+    image = load_image(INPUT_IMAGE_PATH)
 
     segmented_image, annotated_image, results, _ = process_image(
         image
