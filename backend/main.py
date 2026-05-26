@@ -1,19 +1,18 @@
 from __future__ import annotations
 
 import base64
-import cv2
 import hashlib
 import hmac
-import numpy as np
 from datetime import UTC, datetime
 from typing import Any
 
+import cv2
+import numpy as np
 from bson import ObjectId
 from fastapi import FastAPI, File, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from vision.functions import process_image as vision_process_image
 
 from lib.classes.cost_inputs import (
     Scenario1Input,
@@ -43,6 +42,7 @@ from lib.persisted_quote import (
     persisted_quote_update_to_mongo_set,
 )
 from lib.print_form_calculator import print_form_calculator
+from vision.functions import process_image as vision_process_image
 
 app = FastAPI()
 db = None
