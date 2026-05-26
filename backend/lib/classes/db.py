@@ -4,13 +4,52 @@ import secrets
 from datetime import UTC, datetime
 from typing import Any
 
+import numpy as np
 from bson import ObjectId
 from bson.errors import InvalidId
 from dotenv import load_dotenv
 from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
+from scipy.optimize import curve_fit
 
 from lib.globals import UNIT_MAP
+
+
+def _fit_supplier_curve(amounts: list[float], costs: list[float]) -> dict[str, float]:
+    """Fit a power-law curve to supplier price breaks and return params plus R²."""
+    x_values = np.asarray(amounts, dtype=float)
+    y_values = np.asarray(costs, dtype=float)
+
+    if len(x_values) == 0:
+        return {"a": 0.0, "b": 0.0, "c": 0.0, "r_squared": 1.0}
+    if len(x_values) == 1:
+        value = float(y_values[0])
+        return {"a": value, "b": 0.0, "c": 0.0, "r_squared": 1.0}
+
+    a_guess = float(np.max(y_values))
+    if x_values[0] > 0 and x_values[-1] > 0 and y_values[-1] > 0:
+        b_guess = float(np.log(y_values[0] / y_values[-1]) / np.log(x_values[0] / x_values[-1]))
+    else:
+        b_guess = -1.0
+    c_guess = float(np.min(y_values) * 0.8)
+
+    try:
+        params, _ = curve_fit(
+            lambda x, a, b, c: a * np.asarray(x, dtype=float) ** b + c,
+            x_values,
+            y_values,
+            p0=[a_guess, b_guess, c_guess],
+            maxfev=10_000,
+        )
+        a, b, c = (float(params[0]), float(params[1]), float(params[2]))
+    except Exception:
+        a, b, c = a_guess, b_guess, c_guess
+
+    predicted = a * x_values**b + c
+    ss_res = float(np.sum((y_values - predicted) ** 2))
+    ss_tot = float(np.sum((y_values - np.mean(y_values)) ** 2))
+    r_squared = 1.0 if ss_tot == 0 else 1 - (ss_res / ss_tot)
+    return {"a": round(a, 6), "b": round(b, 6), "c": round(c, 6), "r_squared": round(float(r_squared), 6)}
 
 
 class MidnightOilDB:
@@ -32,9 +71,7 @@ class MidnightOilDB:
         self.suppliers_collection = self.db["suppliers"]
         self.users_collection = self.db["users"]
         self.projects_collection = self.db["projects"]
-        self.projects_collection.create_index([("owner", 1), ("_id", -1)])
         self.quotes_collection = self.db["quotes"]
-        self.quotes_collection.create_index([("owner", 1), ("project_id", 1), ("_id", -1)])
         self._load_cache()
         return self
 
@@ -133,7 +170,11 @@ class MidnightOilDB:
             return False
 
     def insert_persisted_quote(self, doc: dict[str, Any]) -> str:
-        """Insert a quote document. Caller must supply a BSON-safe ``doc`` (no ``Form`` objects). Returns new ``_id`` as str."""
+        """Insert a quote document.
+
+        Caller must supply a BSON-safe ``doc`` (no ``Form`` objects).
+        Returns the new ``_id`` as a string.
+        """
         result = self.quotes_collection.insert_one(doc)
         return str(result.inserted_id)
 
@@ -297,91 +338,87 @@ class MidnightOilDB:
 
     def get_distinct_materials(self, supplier: str) -> list[dict]:
         """Return distinct materials for a supplier with their display names."""
-        seen = {}
-        for r in self._cache["suppliers"]:
-            if r["supplier"] == supplier and r["material"] not in seen:
-                seen[r["material"]] = r["material_display_name"]
-        return sorted([{"material": k, "display_name": v} for k, v in seen.items()], key=lambda x: x["material"])
-
-    def get_supplier_material_records(self, supplier: str, material: str) -> list[dict]:
-        """Return all records for a supplier+material pair, sorted by amount ascending."""
-        records = []
-        for r in sorted(
-            (r for r in self._cache["suppliers"] if r["supplier"] == supplier and r["material"] == material),
-            key=lambda x: x["amount"],
-        ):
-            r["_id"] = str(r["_id"])
-            if "last_updated" in r and hasattr(r["last_updated"], "isoformat"):
-                r["last_updated"] = r["last_updated"].isoformat()
-            records.append(r)
-        return records
-
-    def update_supplier_record(self, record_id: str, amount: float, cost: float, unit: str) -> None:
-        """Update amount, cost, and unit on a supplier record by _id."""
-        try:
-            oid = ObjectId(record_id)
-        except Exception:
-            raise ValueError(f"Invalid supplier record id '{record_id}'")
-
-        result = self.suppliers_collection.update_one(
-            {"_id": oid},
-            {"$set": {"amount": amount, "cost": cost, "unit": unit, "last_updated": datetime.now(UTC)}},
+        return sorted(
+            [
+                {"material": r["material"], "display_name": r["material_display_name"]}
+                for r in self._cache["suppliers"]
+                if r["supplier"] == supplier
+            ],
+            key=lambda x: x["material"],
         )
-        if result.matched_count == 0:
-            raise ValueError(f"Supplier record not found for id '{record_id}'")
+
+    def _get_supplier_doc(self, supplier: str, material: str) -> dict[str, Any] | None:
+        """Return one supplier/material document from cache."""
+        return next(
+            (r for r in self._cache["suppliers"] if r["supplier"] == supplier and r["material"] == material),
+            None,
+        )
+
+    def get_supplier_material_records(self, supplier: str, material: str) -> dict[str, Any] | None:
+        """Return one supplier/material document with serialized price_breaks."""
+        doc = self._get_supplier_doc(supplier, material)
+        if doc is None:
+            return None
+
+        last_updated = doc.get("last_updated")
+        if last_updated is not None and hasattr(last_updated, "isoformat"):
+            last_updated = last_updated.isoformat()
+
+        # Return price_breaks as simple amount/cost objects. Older documents may have
+        # embedded `_id` fields; drop them and only expose amount/cost to the frontend.
+        serialized_breaks = [
+            {
+                "amount": price_break.get("amount"),
+                "cost": price_break.get("cost"),
+            }
+            for price_break in sorted(doc.get("price_breaks", []), key=lambda row: row.get("amount", 0))
+        ]
+
+        return {
+            "_id": str(doc.get("_id", "")),
+            "supplier": doc["supplier"],
+            "material": doc["material"],
+            "material_display_name": doc["material_display_name"],
+            "unit": doc["unit"],
+            "price_breaks": serialized_breaks,
+            "curve_params": doc.get("curve_params"),
+            "last_updated": last_updated,
+        }
+
+    def upsert_supplier_material(
+        self,
+        supplier: str,
+        material: str,
+        material_display_name: str,
+        unit: str,
+        price_breaks: list[dict[str, float]],
+    ) -> None:
+        """Insert or replace a supplier/material document and precompute curve parameters."""
+        ordered_breaks = sorted(price_breaks, key=lambda row: row["amount"])
+
+        amounts = [row["amount"] for row in ordered_breaks]
+        costs = [row["cost"] * UNIT_MAP[unit] for row in ordered_breaks]
+        curve_params = _fit_supplier_curve(amounts, costs)
+
+        self.suppliers_collection.replace_one(
+            {"supplier": supplier, "material": material},
+            {
+                "supplier": supplier,
+                "material": material,
+                "material_display_name": material_display_name,
+                "unit": unit,
+                "price_breaks": ordered_breaks,
+                "curve_params": curve_params,
+                "last_updated": datetime.now(UTC),
+            },
+            upsert=True,
+        )
         self._load_cache()
 
-    def get_supplier_values(self, supplier: str, material: str) -> dict[str, list[float]]:
-        """Return the current suppliers print values (amount vs cost curve inputs).
-
-        Skips cache rows that match ``supplier``/``material`` but are missing ``amount``,
-        ``cost``, or ``unit`` (incomplete or legacy Mongo documents).
-
-        Matching is case-insensitive on supplier and material strings.
-        """
-        sup_key = (supplier or "").strip().lower()
-        mat_key = (material or "").strip().lower()
-
-        suppliers_data: dict[str, list[float]] = {"amounts": [], "costs": []}
-        for record in self._cache["suppliers"]:
-            if (record.get("supplier") or "").strip().lower() != sup_key:
-                continue
-            if (record.get("material") or "").strip().lower() != mat_key:
-                continue
-            if "amount" not in record or "cost" not in record or "unit" not in record:
-                continue
-            unit = record.get("unit")
-            amount = record.get("amount")
-            cost = record.get("cost")
-            if amount is None or cost is None or unit is None:
-                continue
-            if unit not in UNIT_MAP:
-                continue
-            try:
-                amt_f = float(amount)
-                cost_f = float(cost)
-            except (TypeError, ValueError):
-                continue
-            suppliers_data["amounts"].append(amt_f)
-            suppliers_data["costs"].append(cost_f * UNIT_MAP[unit])
-        n = len(suppliers_data["amounts"])
-        if n < 2:
-            raise ValueError(
-                f"Need at least 2 usable supplier rows (non-null numeric amount/cost and a known unit) for "
-                f"supplier={supplier!r} material={material!r}; found {n}. Rows with null amount/cost, unknown "
-                f"``unit``, or non-numeric values are skipped — update the ``suppliers`` collection."
-            )
-        return suppliers_data
-
-    def update_supplier_value(self, supplier: str, amount: float, cost: float, unit: str, **kwargs) -> None:
-        """Update or insert a supplier print value."""
-        try:
-            self.suppliers_collection.update_one(
-                {"supplier": supplier, "amount": amount}, {"$set": {"cost": cost, "unit": unit, **kwargs}}, upsert=True
-            )
-            self._load_cache()
-        except Exception as e:
-            raise ValueError(f"Failed to update/insert supplier value for amount {amount}: {str(e)}")
+    def get_curve_params(self, supplier: str, material: str) -> dict[str, float] | None:
+        """Return precomputed curve params for a supplier/material pair."""
+        doc = self._get_supplier_doc(supplier, material)
+        return doc.get("curve_params") if doc else None
 
     def get_overs(self, quantity: int) -> int:
         """Return the over cost for a given quantity."""
@@ -451,5 +488,3 @@ def _hash_password(password: str) -> str:
     salt = secrets.token_bytes(16)
     digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
     return f"pbkdf2_sha256${iterations}${salt.hex()}${digest.hex()}"
-
-
