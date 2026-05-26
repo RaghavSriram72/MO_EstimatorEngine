@@ -47,11 +47,13 @@ from lib.print_form_calculator import print_form_calculator
 app = FastAPI()
 db = None
 
+
 def _ensure_db():
     global db
     if not db:
         db = MidnightOilDB().connect()
     return db
+
 
 # Configure CORS for Next.js frontend
 app.add_middleware(
@@ -119,15 +121,14 @@ def _elements_from_element_types(types: list["ElementType"]) -> list[Element]:
 
 def _scenario_cost_input(sid: int, payload: QuoteRequest):
     """Build the typed input dataclass each scenario's ``calculate_cost`` expects."""
-    ns   = payload.num_standees
+    ns = payload.num_standees
     pfps = payload.print_forms_per_standee
     sfps = payload.structure_forms_per_standee
-    no   = payload.num_overs
-    ph   = payload.print_hours
-    rh   = payload.rollx_hours
-    zh   = payload.zund_hours
-    kw = dict(num_standees=ns, print_forms_per_standee=pfps,
-              structure_forms_per_standee=sfps, num_overs=no)
+    no = payload.num_overs
+    ph = payload.print_hours
+    rh = payload.rollx_hours
+    zh = payload.zund_hours
+    kw = dict(num_standees=ns, print_forms_per_standee=pfps, structure_forms_per_standee=sfps, num_overs=no)
     if sid == 1:
         return Scenario1Input(**kw, print_hours=ph, rollx_hours=rh, zund_hours=zh)
     if sid == 2:
@@ -136,14 +137,18 @@ def _scenario_cost_input(sid: int, payload: QuoteRequest):
         return Scenario3Input(**kw, print_hours=ph, rollx_hours=rh, zund_hours=zh)
     if sid == 4:
         return Scenario4Input(
-            num_standees=ns, print_forms_per_standee=pfps,
-            structure_forms_per_standee=sfps, num_overs=no,
+            num_standees=ns,
+            print_forms_per_standee=pfps,
+            structure_forms_per_standee=sfps,
+            num_overs=no,
             print_hours=ph,
         )
     if sid == 5:
         return Scenario5Input(
-            num_standees=ns, print_forms_per_standee=pfps,
-            structure_forms_per_standee=sfps, num_overs=no,
+            num_standees=ns,
+            print_forms_per_standee=pfps,
+            structure_forms_per_standee=sfps,
+            num_overs=no,
         )
     raise ValueError(f"Unknown scenario id: {sid}")
 
@@ -327,20 +332,20 @@ class UpdateOversRequest(BaseModel):
 @app.post("/overs")
 async def add_overs(payload: UpdateOversRequest):
     """Insert a new overs tier record."""
-    with MOADB() as db:
-        new_id = db.upsert_overs(None, payload.lower_bound, payload.upper_bound, payload.overs)
-        return {"message": "Created successfully", "id": new_id}
+    db = _ensure_db()
+    new_id = db.upsert_overs(None, payload.lower_bound, payload.upper_bound, payload.overs)
+    return {"message": "Created successfully", "id": new_id}
 
 
 @app.delete("/overs/{record_id}")
 async def delete_overs(record_id: str):
     """Delete an overs tier record by id."""
-    with MOADB() as db:
-        try:
-            db.delete_overs(record_id)
-            return {"message": "Deleted successfully"}
-        except ValueError as e:
-            return JSONResponse(status_code=404, content={"error": str(e)})
+    db = _ensure_db()
+    try:
+        db.delete_overs(record_id)
+        return {"message": "Deleted successfully"}
+    except ValueError as e:
+        return JSONResponse(status_code=404, content={"error": str(e)})
 
 
 @app.patch("/overs/{record_id}")
@@ -568,6 +573,7 @@ async def sign_in(payload: AccountRequest):
 
 _MAX_HIGHLIGHT_WIDTH = 800
 
+
 def _encode_element_highlight(image: np.ndarray, mask: np.ndarray) -> str:
     """Return a base64 JPEG with the element region clearly highlighted and background near-black."""
     mask_u8 = (mask * 255).astype(np.uint8)
@@ -575,7 +581,7 @@ def _encode_element_highlight(image: np.ndarray, mask: np.ndarray) -> str:
 
     result = image.copy().astype(np.float32)
     # Near-black background
-    result[~mask_bool] = result[~mask_bool] * 0.08
+    result[~mask_bool] = result[~mask_bool] * 0.28
 
     # Yellow on element region (BGR: 0, 230, 255)
     yellow = np.array([0.0, 230.0, 255.0], dtype=np.float32)
@@ -617,4 +623,5 @@ async def process_vision_image(file: UploadFile = File(...)):
 
 if __name__ == "__main__":
     import code
+
     code.interact(local=globals())
