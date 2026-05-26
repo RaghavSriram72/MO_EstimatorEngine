@@ -319,7 +319,7 @@ function CostRow({
                                 type="number"
                                 min={0}
                                 step={1}
-                                value={line.qty}
+                                value={parseFloat(line.qty.toFixed(2))}
                                 onChange={(e) => onChange(line.key, "qty", parseFloat(e.target.value) || 0)}
                                 className="border border-[#E0E0E0] rounded-sm px-2 py-1 text-xs text-[#000005] outline-none bg-[#F8F8F8] focus:border-[#FFC843] focus:bg-white w-[68px] text-right transition-colors font-semibold"
                             />

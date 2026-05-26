@@ -3,6 +3,7 @@ import ElementsManager from "@/components/ElementsManager";
 import Dropdown from "@/components/Dropdown";
 import QuoteBreakdown from "@/components/QuoteBreakdown";
 import BuildQuoteModal from "@/components/BuildQuoteModal";
+import UploadBlueModal from "@/components/UploadBlueModal";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { API_BASE } from "@/lib/config";
 
@@ -15,6 +16,9 @@ type Element = {
     complexity: string;
     linear_inches: number | "";
     description: string | "";
+    maskImage?: string;
+    originalHeight?: number;
+    originalWidth?: number;
 };
 
 /** Persisted subtotal override strings keyed by scenario id "1" … "5". */
@@ -194,6 +198,7 @@ export default function Inputter() {
     const [quoteInitialScenario, setQuoteInitialScenario] = useState<QuoteScenarioId>(1);
     const [breakdownQuoteName, setBreakdownQuoteName] = useState<string | null>(null);
     const [buildQuoteModalOpen, setBuildQuoteModalOpen] = useState(false);
+    const [uploadBlueOpen, setUploadBlueOpen] = useState(false);
     const [quoteBuildName, setQuoteBuildName] = useState("");
     const [quoteBuildScenario, setQuoteBuildScenario] = useState<QuoteScenarioId>(1);
     const [quoteBuildQuantity, setQuoteBuildQuantity] = useState<number | "">("");
@@ -316,9 +321,23 @@ export default function Inputter() {
         setActivePersistedQuoteId(null);
     }
 
-    // TODO: Implement blue upload
     function handleBlueUpload() {
-        console.log("Uploading anduuuuuuu...");
+        setUploadBlueOpen(true);
+    }
+
+    function handleVisionElementsLoaded(raw: { id: number; width: number; height: number; mask_b64?: string }[]) {
+        const mapped: Element[] = raw.map((r, i) => ({
+            id: Date.now() + i,
+            height: r.height,
+            width: r.width,
+            complexity: "Simple",
+            linear_inches: 0,
+            description: `Vision element ${r.id + 1}`,
+            maskImage: r.mask_b64 ? `data:image/jpeg;base64,${r.mask_b64}` : undefined,
+            originalHeight: r.height,
+            originalWidth: r.width,
+        }));
+        setElements((prev) => [...prev, ...mapped]);
     }
 
     function handleNewProject() {
@@ -827,6 +846,11 @@ export default function Inputter() {
                         )}
                     </div>
                 </div>
+                <UploadBlueModal
+                    open={uploadBlueOpen}
+                    onClose={() => setUploadBlueOpen(false)}
+                    onElementsLoaded={handleVisionElementsLoaded}
+                />
                 <BuildQuoteModal
                     open={buildQuoteModalOpen}
                     onClose={() => setBuildQuoteModalOpen(false)}
@@ -844,6 +868,12 @@ export default function Inputter() {
     }
 
     return (
+        <>
+        <UploadBlueModal
+            open={uploadBlueOpen}
+            onClose={() => setUploadBlueOpen(false)}
+            onElementsLoaded={handleVisionElementsLoaded}
+        />
         <div className="flex flex-row w-full flex-1 min-h-0 overflow-hidden bg-[#F8F8F8]">
             {/* Projects sidebar */}
             <aside className="shrink-0 w-[220px] flex flex-col border-r-2 border-[#E0E0E0] bg-white px-3 py-5 gap-3">
@@ -1041,5 +1071,6 @@ export default function Inputter() {
                 </div>
             </div>
         </div>
+        </>
     );
 }
