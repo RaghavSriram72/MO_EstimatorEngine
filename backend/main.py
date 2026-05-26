@@ -43,11 +43,13 @@ from lib.print_form_calculator import print_form_calculator
 app = FastAPI()
 db = None
 
+
 def _ensure_db():
     global db
     if not db:
         db = MidnightOilDB().connect()
     return db
+
 
 # Configure CORS for Next.js frontend
 app.add_middleware(
@@ -115,15 +117,14 @@ def _elements_from_element_types(types: list["ElementType"]) -> list[Element]:
 
 def _scenario_cost_input(sid: int, payload: QuoteRequest):
     """Build the typed input dataclass each scenario's ``calculate_cost`` expects."""
-    ns   = payload.num_standees
+    ns = payload.num_standees
     pfps = payload.print_forms_per_standee
     sfps = payload.structure_forms_per_standee
-    no   = payload.num_overs
-    ph   = payload.print_hours
-    rh   = payload.rollx_hours
-    zh   = payload.zund_hours
-    kw = dict(num_standees=ns, print_forms_per_standee=pfps,
-              structure_forms_per_standee=sfps, num_overs=no)
+    no = payload.num_overs
+    ph = payload.print_hours
+    rh = payload.rollx_hours
+    zh = payload.zund_hours
+    kw = dict(num_standees=ns, print_forms_per_standee=pfps, structure_forms_per_standee=sfps, num_overs=no)
     if sid == 1:
         return Scenario1Input(**kw, print_hours=ph, rollx_hours=rh, zund_hours=zh)
     if sid == 2:
@@ -132,14 +133,18 @@ def _scenario_cost_input(sid: int, payload: QuoteRequest):
         return Scenario3Input(**kw, print_hours=ph, rollx_hours=rh, zund_hours=zh)
     if sid == 4:
         return Scenario4Input(
-            num_standees=ns, print_forms_per_standee=pfps,
-            structure_forms_per_standee=sfps, num_overs=no,
+            num_standees=ns,
+            print_forms_per_standee=pfps,
+            structure_forms_per_standee=sfps,
+            num_overs=no,
             print_hours=ph,
         )
     if sid == 5:
         return Scenario5Input(
-            num_standees=ns, print_forms_per_standee=pfps,
-            structure_forms_per_standee=sfps, num_overs=no,
+            num_standees=ns,
+            print_forms_per_standee=pfps,
+            structure_forms_per_standee=sfps,
+            num_overs=no,
         )
     raise ValueError(f"Unknown scenario id: {sid}")
 
@@ -372,19 +377,21 @@ async def get_supplier_material_records(supplier: str, material: str):
 
 
 class UpdateSupplierRequest(BaseModel):
-    """Payload for updating amount, cost, and unit on a supplier record."""
+    """Payload for updating a supplier price break."""
 
     amount: float
     cost: float
     unit: str
 
 
-@app.patch("/suppliers/{record_id}")
-async def update_supplier_record(record_id: str, payload: UpdateSupplierRequest):
-    """Update amount, cost, and unit on a supplier cost record."""
+@app.patch("/suppliers/{supplier}/{material}/{original_amount}")
+async def update_supplier_price_break(
+    supplier: str, material: str, original_amount: float, payload: UpdateSupplierRequest
+):
+    """Update one supplier price break within a material-level Mongo document."""
     db = _ensure_db()
     try:
-        db.update_supplier_record(record_id, payload.amount, payload.cost, payload.unit)
+        db.update_supplier_price_break(supplier, material, original_amount, payload.amount, payload.cost, payload.unit)
         return {"message": "Updated successfully"}
     except ValueError as e:
         return JSONResponse(status_code=404, content={"error": str(e)})
@@ -564,4 +571,5 @@ async def sign_in(payload: AccountRequest):
 
 if __name__ == "__main__":
     import code
+
     code.interact(local=globals())

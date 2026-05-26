@@ -2,9 +2,6 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import override
 
-import numpy as np
-from scipy.optimize import curve_fit
-
 from lib.classes import Complexity, Form, MidnightOilDB
 from lib.classes.cost_inputs import BaseInput, InHouseInput, OutsourceInput
 from lib.classes.db_keys import StandeeKey, SupplierMaterials, UnitCostEntries
@@ -167,15 +164,11 @@ class Project[T: BaseInput]:
         return self.db.get_standee_data(self.standee_key, "kitting_and_assembly") * self.num_standees
 
     def _get_supplier_cost(self, supplier: str, material: str, num_forms: int) -> float:
-        supplier_data = self.db.get_supplier_values(supplier, material)
-        amounts = supplier_data["amounts"]
-        costs = supplier_data["costs"]
-        a_guess = max(costs)
-        b_guess = np.log(costs[0] / costs[-1]) / np.log(amounts[0] / amounts[-1])
-        c_guess = min(costs) * 0.8
-        params, _ = curve_fit(lambda x, a, b, c: a * x**b + c, amounts, costs, p0=[a_guess, b_guess, c_guess])
-        scale, power, floor = params
-        cost_per_unit = scale * num_forms**power + floor
+        params = self.db.get_curve_params(supplier, material)
+        if params is None:
+            raise ValueError(f"No pricing data found for supplier={supplier!r} material={material!r}")
+
+        cost_per_unit = params["a"] * num_forms ** params["b"] + params["c"]
         return cost_per_unit * num_forms
 
     def _get_supplier_litho_buyout_cost(self, supplier: str, material: str) -> float:

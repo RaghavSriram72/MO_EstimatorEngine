@@ -366,11 +366,14 @@ export default function DataCollector() {
                         return e && (e.amount !== r.amount || e.cost !== r.cost || e.unit !== r.unit);
                     })
                     .map((r) =>
-                        fetch(`http://localhost:8000/suppliers/${r._id}`, {
-                            method: "PATCH",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify(supplierEdits[r._id]),
-                        })
+                        fetch(
+                            `http://localhost:8000/suppliers/${encodeURIComponent(selectedSupplier)}/${encodeURIComponent(selectedMaterial)}/${encodeURIComponent(String(r.amount))}`,
+                            {
+                                method: "PATCH",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify(supplierEdits[r._id]),
+                            }
+                        )
                     )
             );
             const data = await fetch(`http://localhost:8000/suppliers/${encodeURIComponent(selectedSupplier)}/${encodeURIComponent(selectedMaterial)}`).then((r) => r.json());
