@@ -332,12 +332,45 @@ class MidnightOilDB:
         self._load_cache()
 
     def get_supplier_values(self, supplier: str, material: str) -> dict[str, list[float]]:
-        """Return the current suppliers print values."""
-        # get all records from the suppliers collection and return as a dict of lists
-        suppliers_data = {"amounts": [], "costs": []}
-        for record in (r for r in self._cache["suppliers"] if r["supplier"] == supplier and r["material"] == material):
-            suppliers_data["amounts"].append(record["amount"])
-            suppliers_data["costs"].append(record["cost"] * UNIT_MAP[record["unit"]])
+        """Return the current suppliers print values (amount vs cost curve inputs).
+
+        Skips cache rows that match ``supplier``/``material`` but are missing ``amount``,
+        ``cost``, or ``unit`` (incomplete or legacy Mongo documents).
+
+        Matching is case-insensitive on supplier and material strings.
+        """
+        sup_key = (supplier or "").strip().lower()
+        mat_key = (material or "").strip().lower()
+
+        suppliers_data: dict[str, list[float]] = {"amounts": [], "costs": []}
+        for record in self._cache["suppliers"]:
+            if (record.get("supplier") or "").strip().lower() != sup_key:
+                continue
+            if (record.get("material") or "").strip().lower() != mat_key:
+                continue
+            if "amount" not in record or "cost" not in record or "unit" not in record:
+                continue
+            unit = record.get("unit")
+            amount = record.get("amount")
+            cost = record.get("cost")
+            if amount is None or cost is None or unit is None:
+                continue
+            if unit not in UNIT_MAP:
+                continue
+            try:
+                amt_f = float(amount)
+                cost_f = float(cost)
+            except (TypeError, ValueError):
+                continue
+            suppliers_data["amounts"].append(amt_f)
+            suppliers_data["costs"].append(cost_f * UNIT_MAP[unit])
+        n = len(suppliers_data["amounts"])
+        if n < 2:
+            raise ValueError(
+                f"Need at least 2 usable supplier rows (non-null numeric amount/cost and a known unit) for "
+                f"supplier={supplier!r} material={material!r}; found {n}. Rows with null amount/cost, unknown "
+                f"``unit``, or non-numeric values are skipped — update the ``suppliers`` collection."
+            )
         return suppliers_data
 
     def update_supplier_value(self, supplier: str, amount: float, cost: float, unit: str, **kwargs) -> None:
