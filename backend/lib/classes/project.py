@@ -183,6 +183,15 @@ class Project[T: BaseInput]:
 
     def _get_supplier_cost(self, supplier: str, material: str, num_forms: int) -> float:
         supplier_data = self.db.get_supplier_values(supplier, material)
+        cp = supplier_data.get("curve_params")
+        if isinstance(cp, dict):
+            try:
+                a, b, c = float(cp["a"]), float(cp["b"]), float(cp["c"])
+            except (KeyError, TypeError, ValueError):
+                pass
+            else:
+                cost_per_unit = a * num_forms**b + c
+                return cost_per_unit * num_forms
         amounts = supplier_data["amounts"]
         costs = supplier_data["costs"]
         a_guess = max(costs)
