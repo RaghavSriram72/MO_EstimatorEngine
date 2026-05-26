@@ -433,7 +433,12 @@ class MidnightOilDB:
                 ]
             },
             {
-                "complexity": complexity
+                {
+                    "complexity": {
+                        "$regex": f"^{complexity}$",
+                        "$options": "i"
+                    }
+                }
             }
         ]
         }
