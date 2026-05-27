@@ -4,8 +4,12 @@ import Dropdown from "@/components/Dropdown";
 import QuoteBreakdown from "@/components/QuoteBreakdown";
 import BuildQuoteModal from "@/components/BuildQuoteModal";
 import UploadBlueModal from "@/components/UploadBlueModal";
+import ProjectSidebar, { type ProjectSummary } from "@/components/inputter/ProjectSidebar";
+import QuotesSidebar, { type SavedQuoteListItem } from "@/components/inputter/QuotesSidebar";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { API_BASE } from "@/lib/config";
+
+// ── Types ──────────────────────────────────────────────────────────────────
 
 type StandeeType = "Simple" | "Moderate" | "Complex";
 
@@ -21,19 +25,20 @@ type Element = {
     originalWidth?: number;
 };
 
-/** Persisted subtotal override strings keyed by scenario id "1" … "5". */
+// Subtotal overrides stored in MongoDB alongside the quote breakdown
 export type QuoteBreakdownUi = {
     universal_subtotal_override?: Record<string, string>;
     scenario_subtotal_override?: Record<string, string>;
 };
 
-/** Scenario blobs (`scenario_*`) plus optional UI overrides from Mongo. */
+// Full quote object — scenario_1 … scenario_5 blobs + optional UI overrides
 export type QuoteData = {
     [key: string]: Record<string, number> | QuoteBreakdownUi | undefined;
 };
 
+// Body shape sent to POST /generate_quote
 export type RequestPayload = {
-    elements: { name: string; height: number; width: number; complexity: string; linear_inches: number | null; description: string | null}[];
+    elements: { name: string; height: number; width: number; complexity: string; linear_inches: number | null; description: string | null }[];
     num_standees: number;
     standee_type: number;
     scenario?: number;
@@ -41,14 +46,7 @@ export type RequestPayload = {
 
 type QuoteScenarioId = 1 | 2 | 3 | 4 | 5;
 
-type PersistedQuoteListItem = {
-    _id: string;
-    quote_name?: string;
-    scenario?: number;
-    num_standees?: number;
-    updated_at?: string;
-};
-
+// Shape of an element as stored in MongoDB (uses "length" not "height")
 type ApiPersistedElement = {
     name?: string;
     length: number;
@@ -58,27 +56,19 @@ type ApiPersistedElement = {
     mask_b64?: string | null;
 };
 
+// ── Helpers ────────────────────────────────────────────────────────────────
 
-// information that gets displayed in the projects sidebar
-type PersistedProjectSummary = {
-    _id: string;
-    project_name: string;
-    num_standees: number;
-    standee_type: StandeeType;
-};
-
-// converts the inputted elements array into a format that can be stored in the MongoDB
+// Pulls scenario_* keys out of the raw /generate_quote response
 function quoteDataFromGenerateResponse(data: Record<string, unknown>): QuoteData {
     const out: QuoteData = {};
     for (const key of Object.keys(data)) {
-        if (key.startsWith("scenario_")) {
-            out[key] = data[key] as Record<string, number>;
-        }
+        if (key.startsWith("scenario_")) out[key] = data[key] as Record<string, number>;
     }
     return out;
 }
 
-function quoteDataFromPersistedBreakdown(breakdown: unknown): QuoteData {
+// Extracts scenario_* blobs + _breakdown_ui from a persisted quote document
+function quoteDataFromPersistedDoc(breakdown: unknown): QuoteData {
     const out: QuoteData = {};
     if (!breakdown || typeof breakdown !== "object" || Array.isArray(breakdown)) return out;
     const b = breakdown as Record<string, unknown>;
@@ -95,13 +85,9 @@ function quoteDataFromPersistedBreakdown(breakdown: unknown): QuoteData {
     return out;
 }
 
-function requestPayloadFromQuoteDoc(
-    doc: {
-        scenario?: number;
-        num_standees?: number;
-        standee_type?: string;
-        elements?: ApiPersistedElement[];
-    },
+// Reconstructs a RequestPayload from a persisted quote doc, falling back to current form state
+function buildPayloadFromPersistedQuote(
+    doc: { scenario?: number; num_standees?: number; standee_type?: string; elements?: ApiPersistedElement[] },
     fallback: { elements: Element[]; standeeType: StandeeType; standeeCount: number | "" },
 ): RequestPayload {
     const standeeTypeMap: Record<StandeeType, number> = { Simple: 1, Moderate: 2, Complex: 3 };
@@ -140,7 +126,8 @@ function requestPayloadFromQuoteDoc(
     };
 }
 
-function buildElementsForApi(elements: Element[]) {
+// Converts the UI element list to the shape expected by the backend
+function elementsForApi(elements: Element[]) {
     return elements.map((el) => ({
         name: "",
         length: el.height === "" ? 0 : el.height,
@@ -152,21 +139,16 @@ function buildElementsForApi(elements: Element[]) {
     }));
 }
 
-function sidebarSearchMatches(query: string, haystack: string): boolean {
+// Returns true if every word in `query` appears somewhere in `text`
+function searchMatches(query: string, text: string): boolean {
     const q = query.trim().toLowerCase();
     if (!q) return true;
-    const blob = haystack.toLowerCase();
-    for (const term of q.split(/\s+/)) {
-        if (!term) continue;
-        if (!blob.includes(term)) return false;
-    }
-    return true;
+    const blob = text.toLowerCase();
+    return q.split(/\s+/).filter(Boolean).every((term) => blob.includes(term));
 }
 
-const SIDEBAR_SEARCH_INPUT_CLASS =
-    "w-full text-[11px] font-semibold text-[#000005] placeholder:text-[#B1B3B6] border-2 border-[#E0E0E0] rounded-sm px-2 py-2 outline-none focus-visible:border-[#FFC843] focus-visible:ring-2 focus-visible:ring-[#FFC843]";
-
-function persistApiFailureMessage(data: unknown): string | null {
+// Extracts a user-readable error message from a failed API response body
+function apiErrorMessage(data: unknown): string | null {
     if (!data || typeof data !== "object") return null;
     const o = data as Record<string, unknown>;
     if (typeof o.error === "string") return o.error;
@@ -182,44 +164,58 @@ function persistApiFailureMessage(data: unknown): string | null {
     return null;
 }
 
-export default function Inputter() {
-    const [standeeCount, setStandeeCount] = useState<number | "">("");
-    const [standeeType, setStandeeType] = useState<StandeeType>("Simple");
-    const [elements, setElements] = useState<Element[]>([]);
-    const [resetKey, setResetKey] = useState(0);
-    const [projectName, setProjectName] = useState("Untitled project");
-    const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
-    const [projects, setProjects] = useState<PersistedProjectSummary[]>([]);
-    const [projectsLoading, setProjectsLoading] = useState(false);
-    const [projectsError, setProjectsError] = useState<string | null>(null);
-    const [listVersion, setListVersion] = useState(0);
-    /** After Continue: same layout as quote breakdown (scenario sidebar + blank main); no API call. */
-    const [quoteFlowShellOpen, setQuoteFlowShellOpen] = useState(false);
-    const [quoteData, setQuoteData] = useState<QuoteData | null>(null);
-    const [lastPayload, setLastPayload] = useState<RequestPayload | null>(null);
-    const [quoteInitialScenario, setQuoteInitialScenario] = useState<QuoteScenarioId>(1);
-    const [breakdownQuoteName, setBreakdownQuoteName] = useState<string | null>(null);
-    const [buildQuoteModalOpen, setBuildQuoteModalOpen] = useState(false);
-    const [uploadBlueOpen, setUploadBlueOpen] = useState(false);
-    const [quoteBuildName, setQuoteBuildName] = useState("");
-    const [quoteBuildScenario, setQuoteBuildScenario] = useState<QuoteScenarioId>(1);
-    const [quoteBuildQuantity, setQuoteBuildQuantity] = useState<number | "">("");
-    const [isQuoteLoading, setIsQuoteLoading] = useState(false);
-    const [projectQuotes, setProjectQuotes] = useState<PersistedQuoteListItem[]>([]);
-    const [projectQuotesLoading, setProjectQuotesLoading] = useState(false);
-    const [projectQuotesError, setProjectQuotesError] = useState<string | null>(null);
-    const [quoteDeletingId, setQuoteDeletingId] = useState<string | null>(null);
-    const [sidebarProjectSearch, setSidebarProjectSearch] = useState("");
-    const [sidebarQuoteSearch, setSidebarQuoteSearch] = useState("");
-    const [activePersistedQuoteId, setActivePersistedQuoteId] = useState<string | null>(null);
-    const [continueBusy, setContinueBusy] = useState(false);
-    const [toast, setToast] = useState<{ message: string; type: "save" | "delete" } | null>(null);
-    const [toastVisible, setToastVisible] = useState(false);
+// ── Component ──────────────────────────────────────────────────────────────
 
+export default function Inputter() {
+    // ── Estimator form state ───────────────────────────────────────────────
+    const [standeeCount, setStandeeCount]   = useState<number | "">("");
+    const [standeeType, setStandeeType]     = useState<StandeeType>("Simple");
+    const [elements, setElements]           = useState<Element[]>([]);
+    const [elementListKey, setElementListKey] = useState(0); // bumped to force ElementsManager reset
+    const [projectName, setProjectName]     = useState("Untitled project");
+
+    // ── Saved project state ────────────────────────────────────────────────
+    const [activeProjectId, setActiveProjectId]     = useState<string | null>(null);
+    const [projectList, setProjectList]             = useState<ProjectSummary[]>([]);
+    const [projectListLoading, setProjectListLoading] = useState(false);
+    const [projectListError, setProjectListError]   = useState<string | null>(null);
+    const [projectListRefreshKey, setProjectListRefreshKey] = useState(0); // bumped to re-fetch list
+
+    // ── Quote workspace state ──────────────────────────────────────────────
+    // inQuotesWorkspace = true after clicking "Continue" (shows quote sidebar + breakdown area)
+    const [inQuotesWorkspace, setInQuotesWorkspace]           = useState(false);
+    const [activeQuoteData, setActiveQuoteData]               = useState<QuoteData | null>(null);
+    const [activeQuotePayload, setActiveQuotePayload]         = useState<RequestPayload | null>(null);
+    const [activeQuoteScenario, setActiveQuoteScenario]       = useState<QuoteScenarioId>(1);
+    const [activeQuoteName, setActiveQuoteName]               = useState<string | null>(null);
+    const [activePersistedQuoteId, setActivePersistedQuoteId] = useState<string | null>(null);
+
+    // ── Build-quote modal state ────────────────────────────────────────────
+    const [buildQuoteModalOpen, setBuildQuoteModalOpen]   = useState(false);
+    const [newQuoteName, setNewQuoteName]                 = useState("");
+    const [newQuoteScenario, setNewQuoteScenario]         = useState<QuoteScenarioId>(1);
+    const [newQuoteQuantity, setNewQuoteQuantity]         = useState<number | "">("");
+    const [isQuoteGenerating, setIsQuoteGenerating]       = useState(false);
+
+    // ── Saved quotes list (inside workspace) ──────────────────────────────
+    const [savedQuoteList, setSavedQuoteList]           = useState<SavedQuoteListItem[]>([]);
+    const [savedQuoteListLoading, setSavedQuoteListLoading] = useState(false);
+    const [savedQuoteListError, setSavedQuoteListError] = useState<string | null>(null);
+    const [deletingQuoteId, setDeletingQuoteId]         = useState<string | null>(null);
+
+    // ── UI state ───────────────────────────────────────────────────────────
+    const [projectSearchQuery, setProjectSearchQuery]   = useState("");
+    const [quoteSearchQuery, setQuoteSearchQuery]       = useState("");
+    const [uploadBlueOpen, setUploadBlueOpen]           = useState(false);
+    const [isSavingBeforeContinue, setIsSavingBeforeContinue] = useState(false);
+    const [toast, setToast]                             = useState<{ message: string; type: "save" | "delete" } | null>(null);
+    const [toastVisible, setToastVisible]               = useState(false);
+
+    // Slides the toast in from the top, then fades it out after 2.5 s
     useEffect(() => {
         if (toast) {
-            const showId = setTimeout(() => setToastVisible(true), 20);
-            const hideId = setTimeout(() => setToastVisible(false), 2500);
+            const showId   = setTimeout(() => setToastVisible(true), 20);
+            const hideId   = setTimeout(() => setToastVisible(false), 2500);
             const removeId = setTimeout(() => setToast(null), 2800);
             return () => { clearTimeout(showId); clearTimeout(hideId); clearTimeout(removeId); };
         }
@@ -231,119 +227,414 @@ export default function Inputter() {
         setTimeout(() => setToast({ message, type }), 10);
     }
 
-    const refreshProjects = useCallback(async () => {
+    // ── Data fetching ──────────────────────────────────────────────────────
+
+    // GET /projects?owner=... → refresh the sidebar project list
+    const refreshProjectList = useCallback(async () => {
         const owner = typeof window !== "undefined" ? localStorage.getItem("username") : null;
-        if (!owner) {
-            setProjects([]);
-            return;
-        }
-        setProjectsLoading(true);
-        setProjectsError(null);
+        if (!owner) { setProjectList([]); return; }
+        setProjectListLoading(true);
+        setProjectListError(null);
         try {
-            const res = await fetch(`${API_BASE}/projects?owner=${encodeURIComponent(owner)}`);
+            const res  = await fetch(`${API_BASE}/projects?owner=${encodeURIComponent(owner)}`);
             const data = await res.json().catch(() => ({}));
             if (!res.ok) {
-                setProjectsError(typeof data.error === "string" ? data.error : "Could not load projects");
-                setProjects([]);
+                setProjectListError(typeof data.error === "string" ? data.error : "Could not load projects");
+                setProjectList([]);
                 return;
             }
-            setProjects(Array.isArray(data.projects) ? data.projects : []);
+            setProjectList(Array.isArray(data.projects) ? data.projects : []);
         } catch {
-            setProjectsError("Could not load projects");
-            setProjects([]);
+            setProjectListError("Could not load projects");
+            setProjectList([]);
         } finally {
-            setProjectsLoading(false);
+            setProjectListLoading(false);
         }
     }, []);
 
-    const refreshProjectQuotes = useCallback(async () => {
+    // GET /projects/:id/quotes?owner=... → refresh the quotes list inside the workspace
+    const refreshSavedQuoteList = useCallback(async () => {
         const owner = typeof window !== "undefined" ? localStorage.getItem("username") : null;
-        const pid = activeProjectId;
-        if (!owner?.trim() || !pid) {
-            setProjectQuotes([]);
-            setProjectQuotesLoading(false);
+        if (!owner?.trim() || !activeProjectId) {
+            setSavedQuoteList([]);
+            setSavedQuoteListLoading(false);
             return;
         }
-        setProjectQuotesLoading(true);
-        setProjectQuotesError(null);
+        setSavedQuoteListLoading(true);
+        setSavedQuoteListError(null);
         try {
             const res = await fetch(
-                `${API_BASE}/projects/${encodeURIComponent(pid)}/quotes?owner=${encodeURIComponent(owner)}`,
+                `${API_BASE}/projects/${encodeURIComponent(activeProjectId)}/quotes?owner=${encodeURIComponent(owner)}`,
             );
             const data = await res.json().catch(() => ({}));
             if (!res.ok) {
-                setProjectQuotesError(typeof data.error === "string" ? data.error : "Could not load quotes");
-                setProjectQuotes([]);
+                setSavedQuoteListError(typeof data.error === "string" ? data.error : "Could not load quotes");
+                setSavedQuoteList([]);
                 return;
             }
-            setProjectQuotes(Array.isArray(data.quotes) ? data.quotes : []);
+            setSavedQuoteList(Array.isArray(data.quotes) ? data.quotes : []);
         } catch {
-            setProjectQuotesError("Could not load quotes");
-            setProjectQuotes([]);
+            setSavedQuoteListError("Could not load quotes");
+            setSavedQuoteList([]);
         } finally {
-            setProjectQuotesLoading(false);
+            setSavedQuoteListLoading(false);
         }
     }, [activeProjectId]);
 
-    const showQuotesWorkspace = quoteFlowShellOpen || (!!quoteData && !!lastPayload);
+    // Whether the quotes workspace (sidebar + breakdown panel) should be shown
+    const showQuotesWorkspace = inQuotesWorkspace || (!!activeQuoteData && !!activeQuotePayload);
 
     useEffect(() => {
-        if (showQuotesWorkspace && activeProjectId) {
-            void refreshProjectQuotes();
-        }
-    }, [showQuotesWorkspace, activeProjectId, refreshProjectQuotes]);
+        if (showQuotesWorkspace && activeProjectId) void refreshSavedQuoteList();
+    }, [showQuotesWorkspace, activeProjectId, refreshSavedQuoteList]);
 
-    useEffect(() => {
-        void refreshProjects();
-    }, [refreshProjects, listVersion]);
+    useEffect(() => { void refreshProjectList(); }, [refreshProjectList, projectListRefreshKey]);
 
-    const filteredProjects = useMemo(() => {
-        const q = sidebarProjectSearch;
-        return projects.filter((p) =>
-            sidebarSearchMatches(
-                q,
-                `${p.project_name || ""} ${p.num_standees} ${p.standee_type} ${p._id}`,
-            ),
-        );
-    }, [projects, sidebarProjectSearch]);
+    // ── Filtered sidebar lists ─────────────────────────────────────────────
 
-    const filteredProjectQuotes = useMemo(() => {
-        const q = sidebarQuoteSearch;
-        return projectQuotes.filter((quote) => {
-            const name = (quote.quote_name || "Untitled").trim();
-            const scen =
-                typeof quote.scenario === "number" ? `scenario ${quote.scenario} sc ${quote.scenario}` : "";
-            const ns =
-                typeof quote.num_standees === "number" ? `${quote.num_standees} standees` : "";
-            return sidebarSearchMatches(q, `${name} ${scen} ${ns} ${quote._id}`);
-        });
-    }, [projectQuotes, sidebarQuoteSearch]);
+    const filteredProjects = useMemo(() =>
+        projectList.filter((p) =>
+            searchMatches(projectSearchQuery, `${p.project_name || ""} ${p.num_standees} ${p.standee_type} ${p._id}`),
+        ),
+    [projectList, projectSearchQuery]);
 
-    function handleClear() {
+    const filteredSavedQuotes = useMemo(() =>
+        savedQuoteList.filter((q) => {
+            const name = (q.quote_name || "Untitled").trim();
+            const scen = typeof q.scenario === "number" ? `scenario ${q.scenario}` : "";
+            const ns   = typeof q.num_standees === "number" ? `${q.num_standees} standees` : "";
+            return searchMatches(quoteSearchQuery, `${name} ${scen} ${ns} ${q._id}`);
+        }),
+    [savedQuoteList, quoteSearchQuery]);
+
+    // ── Project actions ────────────────────────────────────────────────────
+
+    function resetEstimatorForm() {
         setStandeeCount("");
         setStandeeType("Simple");
         setElements([]);
-        setResetKey((k) => k + 1);
+        setElementListKey((k) => k + 1);
         setProjectName("Untitled project");
         setActiveProjectId(null);
-        setQuoteFlowShellOpen(false);
-        setQuoteData(null);
-        setLastPayload(null);
+        setInQuotesWorkspace(false);
+        setActiveQuoteData(null);
+        setActiveQuotePayload(null);
         setBuildQuoteModalOpen(false);
-        setIsQuoteLoading(false);
-        setBreakdownQuoteName(null);
-        setProjectQuotes([]);
-        setProjectQuotesError(null);
-        setQuoteDeletingId(null);
-        setSidebarProjectSearch("");
-        setSidebarQuoteSearch("");
+        setIsQuoteGenerating(false);
+        setActiveQuoteName(null);
+        setSavedQuoteList([]);
+        setSavedQuoteListError(null);
+        setDeletingQuoteId(null);
+        setProjectSearchQuery("");
+        setQuoteSearchQuery("");
         setActivePersistedQuoteId(null);
     }
 
-    function handleBlueUpload() {
-        setUploadBlueOpen(true);
+    // POST /create-project  or  PATCH /projects/:id  → save current form to MongoDB
+    async function saveCurrentProject(): Promise<{ success: boolean; errorMessage?: string }> {
+        const owner = localStorage.getItem("username");
+        if (!owner?.trim()) return { success: false, errorMessage: "Not signed in" };
+        if (!canCalculate)  return { success: false, errorMessage: "Add standees and at least one element" };
+        const num        = standeeCount as number;
+        const apiElems   = elementsForApi(elements);
+        try {
+            if (activeProjectId) {
+                // PATCH /projects/:id → update existing project
+                const res = await fetch(
+                    `${API_BASE}/projects/${encodeURIComponent(activeProjectId)}?owner=${encodeURIComponent(owner)}`,
+                    {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            project_name: projectName.trim() || "Untitled project",
+                            num_standees: num,
+                            standee_type: standeeType,
+                            elements: apiElems,
+                        }),
+                    },
+                );
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) return { success: false, errorMessage: apiErrorMessage(data) ?? "Could not update project" };
+                return { success: true };
+            }
+            // POST /create-project → create a new project
+            const res = await fetch(`${API_BASE}/create-project`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    schema_version: 1,
+                    owner: owner.trim(),
+                    project_name: projectName.trim() || "Untitled project",
+                    num_standees: num,
+                    standee_type: standeeType,
+                    elements: apiElems,
+                }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) return { success: false, errorMessage: apiErrorMessage(data) ?? "Could not save project" };
+            if (typeof data.project_id !== "string") return { success: false, errorMessage: "Could not save project" };
+            setActiveProjectId(data.project_id);
+            return { success: true };
+        } catch (e) {
+            console.error("Save failed:", e);
+            return { success: false, errorMessage: "Save failed" };
+        }
     }
 
+    // GET /projects/:id → load a saved project into the estimator form
+    async function loadProject(projectId: string) {
+        const owner = localStorage.getItem("username");
+        if (!owner) return;
+        setProjectListLoading(true);
+        setProjectListError(null);
+        try {
+            const res = await fetch(
+                `${API_BASE}/projects/${encodeURIComponent(projectId)}?owner=${encodeURIComponent(owner)}`,
+            );
+            const doc = await res.json();
+            if (!res.ok) {
+                setProjectListError(typeof doc.error === "string" ? doc.error : "Could not load project");
+                return;
+            }
+            setActiveProjectId(doc._id);
+            setProjectName(typeof doc.project_name === "string" ? doc.project_name : "Untitled project");
+            setStandeeType((doc.standee_type as StandeeType) || "Simple");
+            setStandeeCount(typeof doc.num_standees === "number" ? doc.num_standees : "");
+            const rows = Array.isArray(doc.elements) ? doc.elements : [];
+            setElements(
+                rows.map((row: ApiPersistedElement & { description?: string | null }, i: number) => ({
+                    id: Date.now() + i,
+                    height: row.length,
+                    width: row.width,
+                    complexity: row.complexity || "Simple",
+                    description: row.description || "",
+                    linear_inches: row.linear_inches === null || row.linear_inches === undefined ? "" : row.linear_inches,
+                    maskImage: row.mask_b64 ?? undefined,
+                })),
+            );
+            setElementListKey((k) => k + 1);
+            setInQuotesWorkspace(false);
+            setActiveQuoteData(null);
+            setActiveQuotePayload(null);
+            setBuildQuoteModalOpen(false);
+            setActiveQuoteName(null);
+            setSavedQuoteList([]);
+            setActivePersistedQuoteId(null);
+        } catch {
+            setProjectListError("Could not load project");
+        } finally {
+            setProjectListLoading(false);
+        }
+    }
+
+    // DELETE /projects/:id → remove a project and clear form if it was active
+    async function deleteProject(projectId: string, projectLabel: string) {
+        if (!window.confirm(`Are you sure you want to delete "${projectLabel}"? This action cannot be undone.`)) return;
+        const owner = localStorage.getItem("username");
+        if (!owner) return;
+        setProjectListError(null);
+        try {
+            const res = await fetch(
+                `${API_BASE}/projects/${encodeURIComponent(projectId)}?owner=${encodeURIComponent(owner)}`,
+                { method: "DELETE" },
+            );
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                setProjectListError(typeof data.error === "string" ? data.error : "Could not delete project");
+                return;
+            }
+            if (activeProjectId === projectId) resetEstimatorForm();
+            setProjectListRefreshKey((v) => v + 1);
+            showToast(`"${projectLabel}" deleted`, "delete");
+        } catch {
+            setProjectListError("Could not delete project");
+        }
+    }
+
+    // ── Quote actions ──────────────────────────────────────────────────────
+
+    const canCalculate = (standeeCount !== "" && standeeCount > 0) && elements.length > 0;
+
+    // Builds the base request body for POST /generate_quote
+    function buildQuotePayload(numStandees: number, scenarioId: QuoteScenarioId): RequestPayload {
+        const standeeTypeMap: Record<StandeeType, number> = { Simple: 1, Moderate: 2, Complex: 3 };
+        return {
+            standee_type: standeeTypeMap[standeeType],
+            elements: elements.map(({ height, width, complexity, linear_inches, description }) => ({
+                name: "",
+                height: height === "" ? 0 : height,
+                width: width === "" ? 0 : width,
+                complexity,
+                linear_inches: linear_inches === "" ? null : linear_inches,
+                description: description || "",
+            })),
+            num_standees: numStandees,
+            scenario: scenarioId,
+        };
+    }
+
+    // "Continue" button — auto-saves the project then opens the quotes workspace
+    async function handleContinue() {
+        if (!canCalculate || isSavingBeforeContinue) return;
+        const owner = typeof window !== "undefined" ? localStorage.getItem("username")?.trim() : null;
+        if (owner && !activeProjectId) {
+            setProjectListError(null);
+            setIsSavingBeforeContinue(true);
+            try {
+                const r = await saveCurrentProject();
+                if (!r.success) { setProjectListError(r.errorMessage ?? "Could not save project"); return; }
+                setProjectListRefreshKey((v) => v + 1);
+            } finally {
+                setIsSavingBeforeContinue(false);
+            }
+        }
+        setInQuotesWorkspace(true);
+    }
+
+    // "Save" button — saves without navigating to quotes workspace
+    async function handleSave() {
+        if (!canCalculate) return;
+        if (!localStorage.getItem("username")?.trim()) return;
+        const r = await saveCurrentProject();
+        if (r.success) {
+            setProjectListRefreshKey((v) => v + 1);
+            showToast("Project saved", "save");
+        } else if (r.errorMessage) console.error(r.errorMessage);
+    }
+
+    const canSubmitNewQuote =
+        elements.length > 0 &&
+        newQuoteName.trim().length > 0 &&
+        newQuoteQuantity !== "" &&
+        newQuoteQuantity > 0;
+
+    // POST /generate_quote → generate quote, then POST /projects/:id/quotes → save it
+    async function handleBuildAndSaveQuote() {
+        if (!canSubmitNewQuote) return;
+        setBuildQuoteModalOpen(false);
+        setIsQuoteGenerating(true);
+
+        const corePayload = buildQuotePayload(newQuoteQuantity as number, newQuoteScenario);
+        const owner       = typeof window !== "undefined" ? localStorage.getItem("username") : null;
+        const pid         = activeProjectId;
+        const quoteName   = newQuoteName.trim() || "Untitled quote";
+
+        try {
+            // POST /generate_quote → run the estimation engine
+            const res  = await fetch(`${API_BASE}/generate_quote`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ ...corePayload, persist_project: false }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) { console.error("Quote error:", data); return; }
+
+            const quoteResult = data as Record<string, unknown>;
+            setActiveQuotePayload(corePayload);
+            setActiveQuoteScenario(newQuoteScenario);
+            setActiveQuoteName(quoteName);
+            setActiveQuoteData(quoteDataFromGenerateResponse(quoteResult));
+            setInQuotesWorkspace(false);
+            setActivePersistedQuoteId(null);
+
+            // POST /projects/:id/quotes → persist the generated quote if the user is signed in
+            if (owner?.trim() && pid) {
+                const breakdownPayload: Record<string, unknown> = {};
+                for (const key of Object.keys(quoteResult)) {
+                    if (key.startsWith("scenario_")) breakdownPayload[key] = quoteResult[key];
+                }
+                const saveRes = await fetch(`${API_BASE}/projects/${encodeURIComponent(pid)}/quotes`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        owner: owner.trim(),
+                        quote_name: quoteName,
+                        scenario: newQuoteScenario,
+                        num_standees: newQuoteQuantity as number,
+                        standee_type: standeeType,
+                        elements: elementsForApi(elements),
+                        breakdown: breakdownPayload,
+                    }),
+                });
+                const saveData = await saveRes.json().catch(() => ({}));
+                if (saveRes.ok && typeof saveData.quote_id === "string") {
+                    setActivePersistedQuoteId(saveData.quote_id);
+                } else {
+                    console.error("Could not persist quote:", saveData);
+                }
+                void refreshSavedQuoteList();
+            }
+        } catch (err) {
+            console.error("Error generating quote:", err);
+        } finally {
+            setIsQuoteGenerating(false);
+        }
+    }
+
+    // GET /quotes/:id → load a saved quote into the breakdown view
+    async function openSavedQuote(quoteId: string) {
+        if (activePersistedQuoteId === quoteId && activeQuoteData) return;
+        const owner = localStorage.getItem("username");
+        if (!owner?.trim()) { console.error("Sign in to load saved quotes"); return; }
+        const res = await fetch(`${API_BASE}/quotes/${encodeURIComponent(quoteId)}?owner=${encodeURIComponent(owner)}`);
+        const doc = await res.json().catch(() => ({}));
+        if (!res.ok) { console.error("Load quote:", doc); return; }
+        const qd = quoteDataFromPersistedDoc(doc.breakdown);
+        if (Object.keys(qd).length === 0) { console.error("Quote has no scenario breakdown"); return; }
+        const initialScenario =
+            typeof doc.scenario === "number" && doc.scenario >= 1 && doc.scenario <= 5
+                ? (doc.scenario as QuoteScenarioId)
+                : 1;
+        setActiveQuoteScenario(initialScenario);
+        setActiveQuoteName(typeof doc.quote_name === "string" ? doc.quote_name : "Quote");
+        setActivePersistedQuoteId(quoteId);
+        setActiveQuoteData(qd);
+        setActiveQuotePayload(buildPayloadFromPersistedQuote(doc, { elements, standeeType, standeeCount }));
+        setInQuotesWorkspace(false);
+    }
+
+    // DELETE /quotes/:id → remove a saved quote from the project
+    async function deleteSavedQuote(quoteId: string, quoteLabel: string) {
+        if (!window.confirm(`Are you sure you want to delete "${quoteLabel}"? This action cannot be undone.`)) return;
+        const owner = localStorage.getItem("username")?.trim();
+        if (!owner) return;
+        setSavedQuoteListError(null);
+        setDeletingQuoteId(quoteId);
+        try {
+            const res = await fetch(
+                `${API_BASE}/quotes/${encodeURIComponent(quoteId)}?owner=${encodeURIComponent(owner)}`,
+                { method: "DELETE" },
+            );
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) { setSavedQuoteListError(apiErrorMessage(data) ?? "Could not delete quote"); return; }
+            if (activePersistedQuoteId === quoteId) clearActiveQuote();
+            await refreshSavedQuoteList();
+        } catch {
+            setSavedQuoteListError("Could not delete quote");
+        } finally {
+            setDeletingQuoteId(null);
+        }
+    }
+
+    function exitQuotesWorkspace() {
+        setInQuotesWorkspace(false);
+        setActiveQuoteData(null);
+        setActiveQuotePayload(null);
+        setActiveQuoteName(null);
+        setActivePersistedQuoteId(null);
+        setBuildQuoteModalOpen(false);
+        setQuoteSearchQuery("");
+    }
+
+    function clearActiveQuote() {
+        setActiveQuoteData(null);
+        setActiveQuotePayload(null);
+        setActiveQuoteName(null);
+        setActivePersistedQuoteId(null);
+        setInQuotesWorkspace(true);
+    }
+
+    // Called when vision processing completes and returns detected elements
     function handleVisionElementsLoaded(raw: { id: number; width: number; height: number; mask_b64?: string }[]) {
         const mapped: Element[] = raw.map((r, i) => ({
             id: Date.now() + i,
@@ -359,359 +650,10 @@ export default function Inputter() {
         setElements((prev) => [...prev, ...mapped]);
     }
 
-    function handleNewProject() {
-        handleClear();
-    }
-
-    async function loadProject(projectId: string) {
-        const owner = localStorage.getItem("username");
-        if (!owner) return;
-        setProjectsLoading(true);
-        setProjectsError(null);
-        try {
-            const res = await fetch(
-                `${API_BASE}/projects/${encodeURIComponent(projectId)}?owner=${encodeURIComponent(owner)}`,
-            );
-            const doc = await res.json();
-            if (!res.ok) {
-                setProjectsError(typeof doc.error === "string" ? doc.error : "Could not load project");
-                return;
-            }
-            setActiveProjectId(doc._id);
-            setProjectName(typeof doc.project_name === "string" ? doc.project_name : "Untitled project");
-            setStandeeType((doc.standee_type as StandeeType) || "Simple");
-            setStandeeCount(typeof doc.num_standees === "number" ? doc.num_standees : "");
-            const rows = Array.isArray(doc.elements) ? doc.elements : [];
-            setElements(
-                rows.map((row: { length: number; width: number; complexity: string; linear_inches: number | null; description: string | null; mask_b64?: string | null }, i: number) => ({
-                    id: Date.now() + i,
-                    height: row.length,
-                    width: row.width,
-                    complexity: row.complexity || "Simple",
-                    description: row.description || "",
-                    linear_inches:
-                        row.linear_inches === null || row.linear_inches === undefined ? "" : row.linear_inches,
-                    maskImage: row.mask_b64 ?? undefined,
-                })),
-            );
-            setResetKey((k) => k + 1);
-            setQuoteFlowShellOpen(false);
-            setQuoteData(null);
-            setLastPayload(null);
-            setBuildQuoteModalOpen(false);
-            setBreakdownQuoteName(null);
-            setProjectQuotes([]);
-            setActivePersistedQuoteId(null);
-        } catch {
-            setProjectsError("Could not load project");
-        } finally {
-            setProjectsLoading(false);
-        }
-    }
-
-    async function deletePersistedQuote(quoteId: string, quoteLabel: string) {
-        if (!window.confirm(`Are you sure you want to delete "${quoteLabel}"? This action cannot be undone.`)) {
-            return;
-        }
-        const owner = localStorage.getItem("username")?.trim();
-        if (!owner) return;
-        setProjectQuotesError(null);
-        setQuoteDeletingId(quoteId);
-        try {
-            const res = await fetch(
-                `${API_BASE}/quotes/${encodeURIComponent(quoteId)}?owner=${encodeURIComponent(owner)}`,
-                { method: "DELETE" },
-            );
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok) {
-                setProjectQuotesError(persistApiFailureMessage(data) ?? "Could not delete quote");
-                return;
-            }
-            if (activePersistedQuoteId === quoteId) {
-                handleClearQuoteSelection();
-            }
-            await refreshProjectQuotes();
-        } catch {
-            setProjectQuotesError("Could not delete quote");
-        } finally {
-            setQuoteDeletingId(null);
-        }
-    }
-
-    async function deleteProject(projectId: string, projectLabel: string) {
-        if (!window.confirm(`Are you sure you want to delete "${projectLabel}"? This action cannot be undone.`)) {
-            return;
-        }
-        const owner = localStorage.getItem("username");
-        if (!owner) {
-            return;
-        }
-        setProjectsError(null);
-        try {
-            const res = await fetch(
-                `${API_BASE}/projects/${encodeURIComponent(projectId)}?owner=${encodeURIComponent(owner)}`,
-                { method: "DELETE" },
-            );
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok) {
-                setProjectsError(typeof data.error === "string" ? data.error : "Could not delete project");
-                return;
-            }
-            if (activeProjectId === projectId) {
-                handleClear();
-            }
-            setListVersion((v) => v + 1);
-            showToast(`"${projectLabel}" deleted`, "delete");
-        } catch {
-            setProjectsError("Could not delete project");
-        }
-    }
-
-    const canCalculate = (standeeCount !== "" && standeeCount > 0) && elements.length > 0;
-    const canPersist = canCalculate;
-
-    /** Create or update the current project on the server. Caller should bump listVersion on success. */
-    async function persistCurrentProject(): Promise<{ success: boolean; errorMessage?: string }> {
-        const owner = localStorage.getItem("username");
-        if (!owner?.trim()) {
-            return { success: false, errorMessage: "Not signed in" };
-        }
-        if (!canPersist) {
-            return { success: false, errorMessage: "Add standees and at least one element" };
-        }
-        const num = standeeCount as number;
-        const apiElements = buildElementsForApi(elements);
-        try {
-            if (activeProjectId) {
-                const body = {
-                    project_name: projectName.trim() || "Untitled project",
-                    num_standees: num,
-                    standee_type: standeeType,
-                    elements: apiElements,
-                };
-                const res = await fetch(
-                    `${API_BASE}/projects/${encodeURIComponent(activeProjectId)}?owner=${encodeURIComponent(owner)}`,
-                    {
-                        method: "PATCH",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify(body),
-                    },
-                );
-                const data = await res.json().catch(() => ({}));
-                if (!res.ok) {
-                    return {
-                        success: false,
-                        errorMessage: persistApiFailureMessage(data) ?? "Could not update project",
-                    };
-                }
-                return { success: true };
-            }
-            const body = {
-                schema_version: 1,
-                owner: owner.trim(),
-                project_name: projectName.trim() || "Untitled project",
-                num_standees: num,
-                standee_type: standeeType,
-                elements: apiElements,
-            };
-            const res = await fetch(`${API_BASE}/create-project`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(body),
-            });
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok) {
-                return {
-                    success: false,
-                    errorMessage: persistApiFailureMessage(data) ?? "Could not save project",
-                };
-            }
-            if (typeof data.project_id !== "string") {
-                return { success: false, errorMessage: "Could not save project" };
-            }
-            setActiveProjectId(data.project_id);
-            return { success: true };
-        } catch (e) {
-            console.error("Save failed:", e);
-            return { success: false, errorMessage: "Save failed" };
-        }
-    }
-
-    async function handleContinue() {
-        if (!canCalculate || continueBusy) return;
-        const owner = typeof window !== "undefined" ? localStorage.getItem("username")?.trim() : null;
-        if (owner && !activeProjectId) {
-            setProjectsError(null);
-            setContinueBusy(true);
-            try {
-                const r = await persistCurrentProject();
-                if (!r.success) {
-                    setProjectsError(r.errorMessage ?? "Could not save project");
-                    return;
-                }
-                setListVersion((v) => v + 1);
-            } finally {
-                setContinueBusy(false);
-            }
-        }
-        setQuoteFlowShellOpen(true);
-    }
-
-    function buildCoreQuotePayload(numStandees: number, scenarioId: QuoteScenarioId): RequestPayload {
-        const standeeTypeMap: Record<StandeeType, number> = { Simple: 1, Moderate: 2, Complex: 3 };
-        return {
-            standee_type: standeeTypeMap[standeeType],
-            elements: elements.map(({ height, width, complexity, linear_inches, description}) => ({
-                name: "",
-                height: height === "" ? 0 : height,
-                width: width === "" ? 0 : width,
-                complexity,
-                linear_inches: linear_inches === "" ? null : linear_inches,
-                description: description || "",
-            })),
-            num_standees: numStandees,
-            scenario: scenarioId,
-        };
-    }
-
-    const canSubmitBuildQuote =
-        elements.length > 0 &&
-        quoteBuildName.trim().length > 0 &&
-        quoteBuildQuantity !== "" &&
-        quoteBuildQuantity > 0;
-
-    function handleExitQuotesWorkspace() {
-        setQuoteFlowShellOpen(false);
-        setQuoteData(null);
-        setLastPayload(null);
-        setBreakdownQuoteName(null);
-        setActivePersistedQuoteId(null);
-        setBuildQuoteModalOpen(false);
-        setSidebarQuoteSearch("");
-    }
-
-    function handleClearQuoteSelection() {
-        setQuoteData(null);
-        setLastPayload(null);
-        setBreakdownQuoteName(null);
-        setActivePersistedQuoteId(null);
-        setQuoteFlowShellOpen(true);
-    }
-
-    async function openPersistedQuote(quoteId: string) {
-        if (activePersistedQuoteId === quoteId && quoteData) return;
-        const owner = localStorage.getItem("username");
-        if (!owner?.trim()) {
-            console.error("Sign in to load saved quotes");
-            return;
-        }
-        const res = await fetch(`${API_BASE}/quotes/${encodeURIComponent(quoteId)}?owner=${encodeURIComponent(owner)}`);
-        const doc = await res.json().catch(() => ({}));
-        if (!res.ok) {
-            console.error("Load quote:", doc);
-            return;
-        }
-        const qd = quoteDataFromPersistedBreakdown(doc.breakdown);
-        if (Object.keys(qd).length === 0) {
-            console.error("Quote has no scenario breakdown");
-            return;
-        }
-        const initialScenario =
-            typeof doc.scenario === "number" && doc.scenario >= 1 && doc.scenario <= 5
-                ? (doc.scenario as QuoteScenarioId)
-                : 1;
-        setQuoteInitialScenario(initialScenario);
-        setBreakdownQuoteName(typeof doc.quote_name === "string" ? doc.quote_name : "Quote");
-        setActivePersistedQuoteId(quoteId);
-        setQuoteData(qd);
-        setLastPayload(
-            requestPayloadFromQuoteDoc(doc, {
-                elements,
-                standeeType,
-                standeeCount: standeeCount,
-            }),
-        );
-        setQuoteFlowShellOpen(false);
-    }
-
-    function runBuildQuoteFromModal() {
-        if (!canSubmitBuildQuote) return;
-        const corePayload = buildCoreQuotePayload(quoteBuildQuantity as number, quoteBuildScenario);
-        const payload: Record<string, unknown> = {
-            ...corePayload,
-            persist_project: false,
-        };
-
-        setBuildQuoteModalOpen(false);
-        setIsQuoteLoading(true);
-        const owner = typeof window !== "undefined" ? localStorage.getItem("username") : null;
-        const pid = activeProjectId;
-        const buildName = quoteBuildName.trim() || "Untitled quote";
-
-        fetch(`${API_BASE}/generate_quote`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-        })
-            .then(async (res) => {
-                const data = await res.json().catch(() => ({}));
-                if (!res.ok) {
-                    console.error("Quote error:", data);
-                    return;
-                }
-                console.log(data);
-                const row = data as Record<string, unknown>;
-                setLastPayload(corePayload);
-                setQuoteInitialScenario(quoteBuildScenario);
-                setBreakdownQuoteName(buildName);
-                setQuoteData(quoteDataFromGenerateResponse(row));
-                setQuoteFlowShellOpen(false);
-                setActivePersistedQuoteId(null);
-
-                if (owner?.trim() && pid) {
-                    const breakdownPayload: Record<string, unknown> = {};
-                    for (const key of Object.keys(row)) {
-                        if (key.startsWith("scenario_")) breakdownPayload[key] = row[key];
-                    }
-                    const cre = await fetch(`${API_BASE}/projects/${encodeURIComponent(pid)}/quotes`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            owner: owner.trim(),
-                            quote_name: buildName,
-                            scenario: quoteBuildScenario,
-                            num_standees: quoteBuildQuantity as number,
-                            standee_type: standeeType,
-                            elements: buildElementsForApi(elements),
-                            breakdown: breakdownPayload,
-                        }),
-                    });
-                    const cr = await cre.json().catch(() => ({}));
-                    if (cre.ok && typeof cr.quote_id === "string") {
-                        setActivePersistedQuoteId(cr.quote_id);
-                    } else {
-                        console.error("Could not persist quote:", cr);
-                    }
-                    void refreshProjectQuotes();
-                }
-            })
-            .catch((error) => console.error("Error generating quote:", error))
-            .finally(() => setIsQuoteLoading(false));
-    }
-
-    async function handleSave() {
-        if (!canPersist) return;
-        if (!localStorage.getItem("username")?.trim()) return;
-        const r = await persistCurrentProject();
-        if (r.success) {
-            setListVersion((v) => v + 1);
-            showToast("Project saved", "save");
-        } else if (r.errorMessage) console.error(r.errorMessage);
-    }
-
-    const loggedIn =
+    const isSignedIn =
         typeof window !== "undefined" && Boolean(localStorage.getItem("username")?.trim());
 
+    // ── Toast JSX (shared between both views) ─────────────────────────────
     const toastJsx = toast && (
         <div
             className={`fixed top-6 left-1/2 z-50 -translate-x-1/2 transition-all duration-300 ease-out ${
@@ -719,9 +661,7 @@ export default function Inputter() {
             }`}
         >
             <div className={`flex items-center gap-3 rounded-sm border-2 px-5 py-3 shadow-2xl ${
-                toast.type === "delete"
-                    ? "border-red-400 bg-[#000005]"
-                    : "border-[#FFC843] bg-[#000005]"
+                toast.type === "delete" ? "border-red-400 bg-[#000005]" : "border-[#FFC843] bg-[#000005]"
             }`}>
                 <span className={`text-[10px] font-black uppercase tracking-widest ${
                     toast.type === "delete" ? "text-red-400" : "text-[#FFC843]"
@@ -733,13 +673,12 @@ export default function Inputter() {
         </div>
     );
 
-    if (isQuoteLoading) {
+    // ── Loading screen (while quote is being generated) ───────────────────
+    if (isQuoteGenerating) {
         return (
             <div className="flex flex-col items-center justify-center w-full flex-1 bg-white">
                 <div className="text-xs font-bold text-[#FFC843] tracking-widest uppercase mb-2">// PROCESSING</div>
-                <div className="text-3xl font-black text-[#000005] uppercase tracking-tight mb-6">
-                    Calculating Quote
-                </div>
+                <div className="text-3xl font-black text-[#000005] uppercase tracking-tight mb-6">Calculating Quote</div>
                 <div className="flex gap-2">
                     <span className="w-3 h-3 rounded-full bg-[#FFC843] animate-bounce [animation-delay:-0.3s]" />
                     <span className="w-3 h-3 rounded-full bg-[#FFC843] animate-bounce [animation-delay:-0.15s]" />
@@ -749,279 +688,108 @@ export default function Inputter() {
         );
     }
 
+    // ── Quotes workspace view ──────────────────────────────────────────────
     if (showQuotesWorkspace) {
         return (
             <>
                 <div className="flex flex-row w-full flex-1 min-h-0 overflow-hidden bg-[#F8F8F8]">
-                    <aside className="shrink-0 w-[220px] flex flex-col border-r-2 border-[#E0E0E0] bg-white px-3 py-5 gap-3 min-h-0">
-                        <div className="text-[10px] font-black uppercase tracking-widest text-[#000005]">
-                            <span className="text-[#FFC843]">// </span>QUOTES
-                        </div>
-                        <div className="text-[11px] font-black text-[#000005] uppercase tracking-tight line-clamp-3 break-words px-0.5">
-                            {projectName.trim() || "Untitled project"}
-                        </div>
-                        <button
-                            type="button"
-                            onClick={() => {
-                                setQuoteBuildName(projectName.trim() || "Untitled quote");
-                                setQuoteBuildScenario(1);
-                                setQuoteBuildQuantity(standeeCount !== "" && standeeCount > 0 ? standeeCount : "");
-                                setBuildQuoteModalOpen(true);
-                            }}
-                            className="text-[10px] font-black text-center uppercase tracking-widest py-2.5 rounded-sm border-2 border-[#000005] bg-[#000005] text-white hover:bg-[#FFC843] hover:border-[#FFC843] hover:text-[#000005] transition-all duration-200"
-                        >
-                            + BUILD NEW QUOTE
-                        </button>
-                        <div className="flex flex-col gap-1 shrink-0">
-                            <label htmlFor="sidebar-quote-search" className="sr-only">
-                                Search quotes
-                            </label>
-                            <input
-                                id="sidebar-quote-search"
-                                type="search"
-                                value={sidebarQuoteSearch}
-                                onChange={(e) => setSidebarQuoteSearch(e.target.value)}
-                                placeholder="Search quotes…"
-                                className={SIDEBAR_SEARCH_INPUT_CLASS}
-                                autoComplete="off"
-                            />
-                        </div>
-                        {!loggedIn && (
-                            <p className="text-[10px] text-[#B1B3B6] font-semibold leading-snug px-0.5">
-                                Sign in to load saved quotes for this project.
-                            </p>
-                        )}
-                        <div className="text-[10px] font-bold uppercase tracking-wider text-[#B1B3B6] px-0.5">
-                            Saved on this project
-                        </div>
-                        <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-1.5 -mx-0.5 px-0.5">
-                            {projectQuotesLoading && (
-                                <div className="text-[11px] text-[#B1B3B6] font-semibold px-1">Loading…</div>
-                            )}
-                            {projectQuotesError && (
-                                <div className="text-[10px] text-red-500 font-semibold px-1 leading-snug">
-                                    {projectQuotesError}
-                                </div>
-                            )}
-                            {!projectQuotesLoading &&
-                                loggedIn &&
-                                projectQuotes.length === 0 &&
-                                !projectQuotesError && (
-                                    <div className="text-[11px] text-[#B1B3B6] font-semibold px-1">No quotes yet.</div>
-                                )}
-                            {!projectQuotesLoading &&
-                                loggedIn &&
-                                projectQuotes.length > 0 &&
-                                filteredProjectQuotes.length === 0 &&
-                                sidebarQuoteSearch.trim() &&
-                                !projectQuotesError && (
-                                    <div className="text-[11px] text-[#B1B3B6] font-semibold px-1">
-                                        No quotes match your search.
-                                    </div>
-                                )}
-                            {filteredProjectQuotes.map((q) => {
-                                const label = (q.quote_name || "Untitled").trim();
-                                return (
-                                    <div
-                                        key={q._id}
-                                        className={`flex items-stretch gap-1 rounded-sm border-2 transition-all duration-200 ${
-                                            activePersistedQuoteId === q._id
-                                                ? "border-[#FFC843] bg-[#FFFBF0]"
-                                                : "border-[#E0E0E0] bg-[#F8F8F8] hover:border-[#B1B3B6]"
-                                        }`}
-                                    >
-                                        <button
-                                            type="button"
-                                            onClick={() => void openPersistedQuote(q._id)}
-                                            disabled={quoteDeletingId !== null}
-                                            className="min-w-0 flex-1 text-left px-2 py-2 outline-none focus-visible:ring-2 focus-visible:ring-[#FFC843] disabled:opacity-50 disabled:cursor-not-allowed"
-                                        >
-                                            <div className="text-[11px] font-black text-[#000005] uppercase tracking-tight line-clamp-3 break-words">
-                                                {label}
-                                            </div>
-                                            <div className="text-[9px] text-[#B1B3B6] font-bold mt-0.5 uppercase tracking-wider">
-                                                {typeof q.scenario === "number" ? `Sc. ${q.scenario}` : ""}
-                                                {typeof q.num_standees === "number"
-                                                    ? ` · ${q.num_standees} standees`
-                                                    : ""}
-                                            </div>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            aria-label={`Delete quote ${label}`}
-                                            disabled={quoteDeletingId !== null}
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                void deletePersistedQuote(q._id, label);
-                                            }}
-                                            className="shrink-0 w-8 flex items-center justify-center text-[12px] font-bold text-[#B1B3B6] hover:text-red-600 hover:bg-red-50 border-l-2 border-[#E0E0E0] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                                        >
-                                            ✕
-                                        </button>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                        <button
-                            type="button"
-                            onClick={handleExitQuotesWorkspace}
-                            className="shrink-0 w-full text-xs font-black text-[#B1B3B6] border-2 border-[#E0E0E0] py-2 rounded-sm cursor-pointer hover:bg-[#000005] hover:text-white hover:border-[#000005] transition-all duration-200 uppercase tracking-widest"
-                        >
-                            ← TO ESTIMATOR
-                        </button>
-                    </aside>
+                    <QuotesSidebar
+                        projectName={projectName}
+                        quotes={filteredSavedQuotes}
+                        totalQuoteCount={savedQuoteList.length}
+                        isLoading={savedQuoteListLoading}
+                        error={savedQuoteListError}
+                        activeQuoteId={activePersistedQuoteId}
+                        deletingQuoteId={deletingQuoteId}
+                        searchQuery={quoteSearchQuery}
+                        isSignedIn={isSignedIn}
+                        onSearchChange={setQuoteSearchQuery}
+                        onBuildNewQuote={() => {
+                            setNewQuoteName(projectName.trim() || "Untitled quote");
+                            setNewQuoteScenario(1);
+                            setNewQuoteQuantity(standeeCount !== "" && standeeCount > 0 ? standeeCount : "");
+                            setBuildQuoteModalOpen(true);
+                        }}
+                        onOpenQuote={(id) => void openSavedQuote(id)}
+                        onDeleteQuote={(id, label) => void deleteSavedQuote(id, label)}
+                        onBack={exitQuotesWorkspace}
+                    />
+
+                    {/* Breakdown panel (empty until a quote is selected / built) */}
                     <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
-                        {quoteData && lastPayload ? (
+                        {activeQuoteData && activeQuotePayload ? (
                             <QuoteBreakdown
                                 key={activePersistedQuoteId ?? "draft"}
-                                quoteData={quoteData}
-                                numStandees={lastPayload.num_standees}
-                                requestPayload={lastPayload}
-                                initialActiveScenario={quoteInitialScenario}
-                                quoteName={breakdownQuoteName}
+                                quoteData={activeQuoteData}
+                                numStandees={activeQuotePayload.num_standees}
+                                requestPayload={activeQuotePayload}
+                                initialActiveScenario={activeQuoteScenario}
+                                quoteName={activeQuoteName}
                                 persistedQuoteId={activePersistedQuoteId}
-                                quoteOwner={
-                                    typeof window !== "undefined" ? localStorage.getItem("username") : null
-                                }
-                                onBack={handleClearQuoteSelection}
+                                quoteOwner={typeof window !== "undefined" ? localStorage.getItem("username") : null}
+                                onBack={clearActiveQuote}
                             />
                         ) : (
                             <div className="flex-1 min-h-0 bg-[#F8F8F8]" aria-hidden />
                         )}
                     </div>
                 </div>
-                <UploadBlueModal
-                    open={uploadBlueOpen}
-                    onClose={() => setUploadBlueOpen(false)}
-                    onElementsLoaded={handleVisionElementsLoaded}
-                />
+
+                <UploadBlueModal open={uploadBlueOpen} onClose={() => setUploadBlueOpen(false)} onElementsLoaded={handleVisionElementsLoaded} />
                 <BuildQuoteModal
                     open={buildQuoteModalOpen}
                     onClose={() => setBuildQuoteModalOpen(false)}
-                    quoteName={quoteBuildName}
-                    onQuoteNameChange={setQuoteBuildName}
-                    scenario={quoteBuildScenario}
-                    onScenarioChange={setQuoteBuildScenario}
-                    quantity={quoteBuildQuantity}
-                    onQuantityChange={setQuoteBuildQuantity}
-                    canSubmit={canSubmitBuildQuote}
-                    onSubmit={runBuildQuoteFromModal}
+                    quoteName={newQuoteName}
+                    onQuoteNameChange={setNewQuoteName}
+                    scenario={newQuoteScenario}
+                    onScenarioChange={setNewQuoteScenario}
+                    quantity={newQuoteQuantity}
+                    onQuantityChange={setNewQuoteQuantity}
+                    canSubmit={canSubmitNewQuote}
+                    onSubmit={() => void handleBuildAndSaveQuote()}
                 />
                 {toastJsx}
             </>
         );
     }
 
+    // ── Estimator view (default) ───────────────────────────────────────────
     return (
         <>
-        <UploadBlueModal
-            open={uploadBlueOpen}
-            onClose={() => setUploadBlueOpen(false)}
-            onElementsLoaded={handleVisionElementsLoaded}
-        />
+        <UploadBlueModal open={uploadBlueOpen} onClose={() => setUploadBlueOpen(false)} onElementsLoaded={handleVisionElementsLoaded} />
         <div className="flex flex-row w-full flex-1 min-h-0 overflow-hidden bg-[#F8F8F8]">
-            {/* Projects sidebar */}
-            <aside className="shrink-0 w-[220px] flex flex-col border-r-2 border-[#E0E0E0] bg-white px-3 py-5 gap-3">
-                <div className="text-[10px] font-black uppercase tracking-widest text-[#000005]">
-                    <span className="text-[#FFC843]">// </span>PROJECTS
-                </div>
-                <button
-                    type="button"
-                    onClick={handleNewProject}
-                    className="text-[10px] font-black text-center uppercase tracking-widest py-2.5 rounded-sm border-2 border-[#000005] bg-[#000005] text-white hover:bg-[#FFC843] hover:border-[#FFC843] hover:text-[#000005] transition-all duration-200"
-                >
-                    + NEW PROJECT
-                </button>
-                <div className="flex flex-col gap-1 shrink-0">
-                    <label htmlFor="sidebar-project-search" className="sr-only">
-                        Search projects
-                    </label>
-                    <input
-                        id="sidebar-project-search"
-                        type="search"
-                        value={sidebarProjectSearch}
-                        onChange={(e) => setSidebarProjectSearch(e.target.value)}
-                        placeholder="Search projects…"
-                        className={SIDEBAR_SEARCH_INPUT_CLASS}
-                        autoComplete="off"
-                    />
-                </div>
-                <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-1.5">
-                    {projectsLoading && projects.length === 0 && (
-                        <div className="text-[11px] text-[#B1B3B6] font-semibold px-1">Loading…</div>
-                    )}
-                    {projectsError && (
-                        <div className="text-[10px] text-red-500 font-semibold px-1 leading-snug">{projectsError}</div>
-                    )}
-                    {!projectsLoading && projects.length === 0 && !projectsError && (
-                        <div className="text-[11px] text-[#B1B3B6] font-semibold px-1">No saved projects yet.</div>
-                    )}
-                    {!projectsLoading &&
-                        projects.length > 0 &&
-                        filteredProjects.length === 0 &&
-                        sidebarProjectSearch.trim() &&
-                        !projectsError && (
-                            <div className="text-[11px] text-[#B1B3B6] font-semibold px-1">
-                                No projects match your search.
-                            </div>
-                        )}
-                    {filteredProjects.map((p) => (
-                        <div
-                            key={p._id}
-                            className={`flex items-stretch gap-1 rounded-sm border-2 transition-all duration-200 ${
-                                activeProjectId === p._id
-                                    ? "border-[#FFC843] bg-[#FFFBF0]"
-                                    : "border-[#E0E0E0] bg-[#F8F8F8] hover:border-[#B1B3B6]"
-                            }`}
-                        >
-                            <button
-                                type="button"
-                                onClick={() => void loadProject(p._id)}
-                                className="min-w-0 flex-1 text-left px-2 py-2 outline-none focus-visible:ring-2 focus-visible:ring-[#FFC843]"
-                            >
-                                <div className="text-[11px] font-black text-[#000005] uppercase tracking-tight line-clamp-2">
-                                    {p.project_name || "Untitled"}
-                                </div>
-                                <div className="text-[9px] text-[#B1B3B6] font-bold mt-0.5 uppercase tracking-wider">
-                                    {p.num_standees} × {p.standee_type}
-                                </div>
-                            </button>
-                            <button
-                                type="button"
-                                aria-label={`Delete project ${p.project_name || "Untitled"}`}
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    void deleteProject(p._id, p.project_name || "Untitled");
-                                }}
-                                className="shrink-0 w-8 flex items-center justify-center text-[12px] font-bold text-[#B1B3B6] hover:text-red-600 hover:bg-red-50 border-l-2 border-[#E0E0E0] transition-colors"
-                            >
-                                ✕
-                            </button>
-                        </div>
-                    ))}
-                </div>
-            </aside>
 
-            {/* Main estimator */}
+            <ProjectSidebar
+                activeProjectId={activeProjectId}
+                projects={filteredProjects}
+                hasProjects={projectList.length > 0}
+                isLoading={projectListLoading}
+                error={projectListError}
+                searchQuery={projectSearchQuery}
+                onSearchChange={setProjectSearchQuery}
+                onNewProject={resetEstimatorForm}
+                onLoadProject={(id) => void loadProject(id)}
+                onDeleteProject={(id, label) => void deleteProject(id, label)}
+            />
+
+            {/* Main estimator form */}
             <div className="flex flex-col items-center flex-1 min-w-0 min-h-0 overflow-hidden px-8 py-6">
                 <div className="w-full max-w-2xl mb-4 shrink-0">
                     <div className="text-xs font-bold text-[#FFC843] tracking-widest uppercase mb-1">// ESTIMATOR</div>
                     <div className="text-3xl font-black text-[#000005] uppercase tracking-tight">Quote Estimate</div>
-                    <p className="text-xs text-[#B1B3B6] mt-1 font-semibold">
-                        Configure parameters to generate a cost estimate
-                    </p>
+                    <p className="text-xs text-[#B1B3B6] mt-1 font-semibold">Configure parameters to generate a cost estimate</p>
                 </div>
 
                 <div className="flex flex-col w-full max-w-3xl flex-1 min-h-0 border-2 bg-white border-[#E0E0E0] rounded-md text-[#B1B3B6] overflow-hidden">
+
+                    {/* 01 — project config */}
                     <div className="flex flex-col justify-center items-start w-full p-5 border-b-2 border-[#E0E0E0] shrink-0">
                         <div className="text-[10px] font-black mb-3 uppercase tracking-widest text-[#000005]">
                             <span className="text-[#FFC843]">// </span>01 — COUNTS
                         </div>
                         <div className="flex flex-row gap-4 w-full">
                             <div className="flex-1 min-w-0">
-                                <div className="text-[10px] font-bold mb-2 uppercase tracking-wider text-[#B1B3B6]">
-                                    Project name
-                                </div>
+                                <div className="text-[10px] font-bold mb-2 uppercase tracking-wider text-[#B1B3B6]">Project name</div>
                                 <input
                                     type="text"
                                     value={projectName}
@@ -1031,11 +799,9 @@ export default function Inputter() {
                                 />
                             </div>
                             <div className="flex-1 min-w-0">
-                                <div className="text-[10px] font-bold mb-2 uppercase tracking-wider text-[#B1B3B6]">
-                                    Standee Type
-                                </div>
+                                <div className="text-[10px] font-bold mb-2 uppercase tracking-wider text-[#B1B3B6]">Standee Type</div>
                                 <Dropdown
-                                    key={resetKey}
+                                    key={elementListKey}
                                     options={["Simple", "Moderate", "Complex"]}
                                     currOption={standeeType}
                                     onSelect={(val: StandeeType) => setStandeeType(val)}
@@ -1043,16 +809,12 @@ export default function Inputter() {
                                 />
                             </div>
                             <div className="flex-1 min-w-0">
-                                <div className="text-[10px] font-bold mb-2 uppercase tracking-wider text-[#B1B3B6]">
-                                    Standee Count
-                                </div>
+                                <div className="text-[10px] font-bold mb-2 uppercase tracking-wider text-[#B1B3B6]">Standee Count</div>
                                 <input
                                     type="number"
                                     min={0}
                                     value={standeeCount}
-                                    onChange={(e) =>
-                                        setStandeeCount(e.target.value === "" ? "" : Number(e.target.value))
-                                    }
+                                    onChange={(e) => setStandeeCount(e.target.value === "" ? "" : Number(e.target.value))}
                                     placeholder="0"
                                     className="border-2 border-[#E0E0E0] rounded-sm p-1.5 outline-none text-[#000005] text-xs w-full bg-[#F8F8F8] focus:border-[#FFC843] font-semibold transition-colors"
                                 />
@@ -1060,33 +822,35 @@ export default function Inputter() {
                         </div>
                     </div>
 
+                    {/* 02 — element list */}
                     <div className="flex flex-col flex-1 min-h-0 items-start w-full p-4 border-b-2 border-[#E0E0E0] overflow-hidden">
                         <div className="text-[10px] font-black mb-3 uppercase tracking-widest text-[#000005]">
                             <span className="text-[#FFC843]">// </span>02 — ELEMENTS
                             <span className="ml-2 text-[#FFC843] font-bold">({elements.length} added)</span>
                         </div>
                         <div className="w-full flex flex-col flex-1 min-h-0 overflow-hidden">
-                            <ElementsManager key={resetKey} elements={elements} setElements={setElements} />
+                            <ElementsManager key={elementListKey} elements={elements} setElements={setElements} />
                         </div>
                     </div>
 
+                    {/* Action buttons */}
                     <div className="flex w-full flex-row items-center px-4 py-3 gap-3 shrink-0 flex-wrap">
                         <div
-                            onClick={handleClear}
+                            onClick={resetEstimatorForm}
                             className="text-xs text-center font-black text-[#B1B3B6] border-2 border-[#E0E0E0] py-3 rounded-sm flex-1 min-w-[100px] cursor-pointer hover:bg-[#F4F4F4] hover:text-[#000005] hover:border-[#B1B3B6] transition-all duration-200 uppercase tracking-widest"
                         >
                             CLEAR
                         </div>
                         <div
-                            onClick={handleBlueUpload}
+                            onClick={() => setUploadBlueOpen(true)}
                             className="text-xs text-center font-black text-[#B1B3B6] border-2 border-[#E0E0E0] py-3 rounded-sm flex-1 min-w-[100px] cursor-pointer hover:bg-[#F4F4F4] hover:text-[#000005] hover:border-[#B1B3B6] transition-all duration-200 uppercase tracking-widest"
                         >
                             UPLOAD BLUE
                         </div>
                         <div
-                            onClick={canPersist ? () => void handleSave() : undefined}
+                            onClick={canCalculate ? () => void handleSave() : undefined}
                             className={`text-xs text-center font-black py-3 rounded-sm flex-1 min-w-[100px] transition-all duration-200 uppercase tracking-widest ${
-                                canPersist
+                                canCalculate
                                     ? "border-2 border-[#000005] text-[#000005] bg-white hover:bg-[#F4F4F4] cursor-pointer"
                                     : "border-2 border-[#E0E0E0] text-[#B1B3B6] cursor-not-allowed"
                             }`}
@@ -1094,19 +858,19 @@ export default function Inputter() {
                             SAVE
                         </div>
                         <div
-                            onClick={canCalculate && !continueBusy ? () => void handleContinue() : undefined}
+                            onClick={canCalculate && !isSavingBeforeContinue ? () => void handleContinue() : undefined}
                             className={`group flex flex-row justify-center gap-4 text-xs font-black py-3 rounded-sm flex-[2] min-w-[180px] transition-all duration-200 ease-in-out uppercase tracking-widest ${
-                                canCalculate && !continueBusy
+                                canCalculate && !isSavingBeforeContinue
                                     ? "bg-[#FFC843] text-[#000005] hover:bg-[#000005] hover:text-white cursor-pointer"
                                     : "bg-[#E0E0E0] text-[#B1B3B6] cursor-not-allowed"
                             }`}
                         >
-                            {continueBusy ? "SAVING…" : "CONTINUE"}{" "}
+                            {isSavingBeforeContinue ? "SAVING…" : "CONTINUE"}{" "}
                             <img
                                 src="/submitarrow.svg"
                                 alt=""
                                 className={`transition-all duration-300 ease-in-out ${
-                                    canCalculate && !continueBusy
+                                    canCalculate && !isSavingBeforeContinue
                                         ? "group-hover:translate-x-1 group-hover:invert"
                                         : "opacity-40"
                                 }`}
