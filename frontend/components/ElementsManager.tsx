@@ -23,6 +23,9 @@ const complexityColor: Record<string, string> = {
     Complex:  "bg-[#FFEBEE] text-[#C62828] border-[#FFCDD2]",
 };
 
+const ELEMENT_GRID_COLUMNS =
+    "28px minmax(0,1fr) minmax(0,1fr) minmax(7.5rem,1.1fr) minmax(5rem,0.9fr) minmax(6rem,1.2fr) 1.75rem 3.25rem 1.75rem";
+
 type Props = {
     elements: Element[];
     setElements: (elements: Element[]) => void;
@@ -220,7 +223,7 @@ export default function ElementsManager({ elements, setElements }: Props) {
                             className="grid w-full gap-x-2 gap-y-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-[#B1B3B6]"
                             style={{
                                 gridTemplateColumns:
-                                    "28px minmax(0,1fr) minmax(0,1fr) minmax(7.5rem,1.1fr) minmax(5rem,0.9fr) minmax(6rem,1.2fr) 1.75rem 3.25rem 1.75rem",
+                                    ELEMENT_GRID_COLUMNS,
                             }}
                         >
                             <span>#</span>
@@ -239,7 +242,7 @@ export default function ElementsManager({ elements, setElements }: Props) {
                                 className="grid w-full items-center gap-x-2 gap-y-0.5 rounded-sm border-2 border-[#E0E0E0] bg-[#F8F8F8] px-2 py-1"
                                 style={{
                                     gridTemplateColumns:
-                                        "28px minmax(0,1fr) minmax(0,1fr) minmax(7.5rem,1.1fr) minmax(5rem,0.9fr) minmax(6rem,1.2fr) 1.75rem 3.25rem 1.75rem",
+                                        ELEMENT_GRID_COLUMNS,
                                 }}
                             >
                                 <span className="text-[10px] font-bold text-[#B1B3B6]">{idx + 1}</span>
