@@ -237,13 +237,13 @@ export default function DataCollector() {
 
     // ── Module 2: Overs ───────────────────────────────────────────────────
     type OversEditFields = { lower_bound: number; upper_bound: number | null; overs: number };
+    type PendingOversRow = { lower_bound: string; upper_bound: string; overs: string };
 
-    const [oversRecords, setOversRecords]     = useState<OversRecord[]>([]);
-    const [oversEdits, setOversEdits]         = useState<Record<string, OversEditFields> | null>(null);
-    const [isLoadingOvers, setIsLoadingOvers] = useState(false);
-    const [newOversTier, setNewOversTier]     = useState<{ lower_bound: string; upper_bound: string; overs: string }>({ lower_bound: "", upper_bound: "", overs: "" });
-    const [isAddingTier, setIsAddingTier]     = useState(false);
-    const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+    const [oversRecords, setOversRecords]         = useState<OversRecord[]>([]);
+    const [oversEdits, setOversEdits]             = useState<Record<string, OversEditFields> | null>(null);
+    const [isLoadingOvers, setIsLoadingOvers]     = useState(false);
+    const [pendingNewOvers, setPendingNewOvers]   = useState<PendingOversRow[]>([]);
+    const [pendingDeleteId, setPendingDeleteId]   = useState<string | null>(null);
 
     function buildOversEdits(records: OversRecord[]): Record<string, OversEditFields> {
         const edits: Record<string, OversEditFields> = {};
@@ -277,33 +277,47 @@ export default function DataCollector() {
         });
     }
 
-    const isOversDirty = !!oversEdits && oversRecords.some((r) => {
-        const e = oversEdits[r._id];
-        return e && (e.lower_bound !== r.lower_bound || e.upper_bound !== r.upper_bound || e.overs !== r.overs);
-    });
+    const isOversDirty =
+        (!!oversEdits && oversRecords.some((r) => {
+            const e = oversEdits[r._id];
+            return e && (e.lower_bound !== r.lower_bound || e.upper_bound !== r.upper_bound || e.overs !== r.overs);
+        })) || pendingNewOvers.length > 0;
 
     async function handleOversSubmit() {
-        if (!isOversDirty || !oversEdits) return;
+        if (!isOversDirty) return;
         setIsSaving(true);
         try {
-            await Promise.all(
-                oversRecords
-                    .filter((r) => {
-                        const e = oversEdits[r._id];
-                        return e && (e.lower_bound !== r.lower_bound || e.upper_bound !== r.upper_bound || e.overs !== r.overs);
+            const patches = oversEdits
+                ? oversRecords.filter((r) => {
+                      const e = oversEdits[r._id];
+                      return e && (e.lower_bound !== r.lower_bound || e.upper_bound !== r.upper_bound || e.overs !== r.overs);
+                  }).map((r) =>
+                      fetch(`${API_BASE}/overs/${r._id}`, {
+                          method: "PATCH",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify(oversEdits[r._id]),
+                      })
+                  )
+                : [];
+            const posts = pendingNewOvers
+                .filter((row) => row.lower_bound !== "" && row.overs !== "")
+                .map((row) =>
+                    fetch(`${API_BASE}/overs`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            lower_bound: parseInt(row.lower_bound),
+                            upper_bound: row.upper_bound === "" ? null : parseInt(row.upper_bound),
+                            overs: parseInt(row.overs),
+                        }),
                     })
-                    .map((r) =>
-                        fetch(`${API_BASE}/overs/${r._id}`, {
-                            method: "PATCH",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify(oversEdits[r._id]),
-                        })
-                    )
-            );
+                );
+            await Promise.all([...patches, ...posts]);
             const data = await fetch(`${API_BASE}/overs`).then((r) => r.json());
             const updated: OversRecord[] = data.data ?? [];
             setOversRecords(updated);
             setOversEdits(buildOversEdits(updated));
+            setPendingNewOvers([]);
         } catch (e) { console.error(e); }
         finally { setIsSaving(false); }
     }
@@ -321,25 +335,16 @@ export default function DataCollector() {
         } catch (e) { console.error(e); }
     }
 
-    async function handleAddOversTier() {
-        const lb = parseInt(newOversTier.lower_bound);
-        const ub = newOversTier.upper_bound === "" ? null : parseInt(newOversTier.upper_bound);
-        const ov = parseInt(newOversTier.overs);
-        if (isNaN(lb) || isNaN(ov)) return;
-        setIsAddingTier(true);
-        try {
-            await fetch(`${API_BASE}/overs`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ lower_bound: lb, upper_bound: ub, overs: ov }),
-            });
-            const data = await fetch(`${API_BASE}/overs`).then((r) => r.json());
-            const updated: OversRecord[] = data.data ?? [];
-            setOversRecords(updated);
-            setOversEdits(buildOversEdits(updated));
-            setNewOversTier({ lower_bound: "", upper_bound: "", overs: "" });
-        } catch (e) { console.error(e); }
-        finally { setIsAddingTier(false); }
+    function handleAddOversRow() {
+        setPendingNewOvers((prev) => [...prev, { lower_bound: "", upper_bound: "", overs: "" }]);
+    }
+
+    function handlePendingOversEdit(index: number, field: keyof PendingOversRow, value: string) {
+        setPendingNewOvers((prev) => prev.map((row, i) => i === index ? { ...row, [field]: value } : row));
+    }
+
+    function handleDeletePendingOvers(index: number) {
+        setPendingNewOvers((prev) => prev.filter((_, i) => i !== index));
     }
 
     // ── Module 3: Suppliers ───────────────────────────────────────────────
@@ -402,24 +407,45 @@ export default function DataCollector() {
         });
     }
 
-    const isSupplierDirty = !!supplierDraft && !!supplierDoc && JSON.stringify(supplierDraft) !== JSON.stringify(supplierDoc);
+    function handleAddPriceBreak() {
+        setSupplierDraft((prev) => {
+            if (prev) return { ...prev, price_breaks: [...prev.price_breaks, { amount: 0, cost: 0 }] };
+            const displayName = supplierMaterials.find((m) => m.material === selectedMaterial)?.display_name ?? selectedMaterial;
+            return { _id: "", supplier: selectedSupplier, material: selectedMaterial, material_display_name: displayName, unit: "", price_breaks: [{ amount: 0, cost: 0 }], last_updated: "" };
+        });
+    }
+
+    function handleDeletePriceBreak(index: number) {
+        setSupplierDraft((prev) => {
+            if (!prev) return prev;
+            const draft = JSON.parse(JSON.stringify(prev)) as SupplierDocument;
+            draft.price_breaks.splice(index, 1);
+            return draft;
+        });
+    }
+
+    function confirmDeletePriceBreak() {
+        if (pendingDeletePbIdx === null) return;
+        const idx = pendingDeletePbIdx;
+        setPendingDeletePbIdx(null);
+        handleDeletePriceBreak(idx);
+    }
+
+    const isSupplierDirty = !!supplierDraft && JSON.stringify(supplierDraft) !== JSON.stringify(supplierDoc);
 
     async function handleSupplierSubmit() {
-        if (!isSupplierDirty || !supplierDraft || !supplierDoc) return;
+        if (!isSupplierDirty || !supplierDraft) return;
         setIsSaving(true);
         try {
-            const payload = {
-                display_name: supplierDraft.material_display_name,
-                unit: supplierDraft.unit,
-                price_breaks: supplierDraft.price_breaks,
-            };
-
             await fetch(`${API_BASE}/suppliers/${encodeURIComponent(selectedSupplier)}/${encodeURIComponent(selectedMaterial)}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload),
+                body: JSON.stringify({
+                    display_name: supplierDraft.material_display_name,
+                    unit: supplierDraft.unit,
+                    price_breaks: supplierDraft.price_breaks,
+                }),
             });
-
             const data = await fetch(`${API_BASE}/suppliers/${encodeURIComponent(selectedSupplier)}/${encodeURIComponent(selectedMaterial)}`).then((r) => r.json());
             const updatedDoc: SupplierDocument | null = data.data ?? null;
             setSupplierDoc(updatedDoc);
@@ -444,7 +470,7 @@ export default function DataCollector() {
     function handleClear() {
         if (currentModule === 0) { setSelectedUnitType(""); setSelectedName(""); setUnitEdits(null); }
         if (currentModule === 1) { setStandeeType(""); setStandeeRecord(null); setStandeeEdits(null); }
-        if (currentModule === 2) { setOversEdits(buildOversEdits(oversRecords)); }
+        if (currentModule === 2) { setOversEdits(buildOversEdits(oversRecords)); setPendingNewOvers([]); }
         if (currentModule === 3) {
             setSelectedSupplier("");
             setSelectedMaterial("");
@@ -461,6 +487,12 @@ export default function DataCollector() {
                 message="Delete this overs tier? This cannot be undone."
                 onConfirm={confirmDeleteOversTier}
                 onCancel={() => setPendingDeleteId(null)}
+            />
+            <ConfirmAlert
+                visible={pendingDeletePbIdx !== null}
+                message="Remove this price break?"
+                onConfirm={confirmDeletePriceBreak}
+                onCancel={() => setPendingDeletePbIdx(null)}
             />
 
             {/* Sidebar */}
@@ -641,63 +673,15 @@ export default function DataCollector() {
                                 <div className="text-xs m-2">Loading records...</div>
                             ) : (
                                 <div className="text-xs m-2 text-[#ABABAB]">
-                                    {oversRecords.length} tiers loaded. Edit bounds and overs for any tier below. Leave Upper Bound blank for an open-ended tier.
+                                    {oversRecords.length} tiers loaded. Leave Upper Bound blank for an open-ended tier.
                                 </div>
                             )}
                         </div>
 
-                        {/* Section 02 */}
-                        <div className="flex flex-col items-start w-full p-5 border-b-2 border-[#EDEAEA]">
-                            <div className="text-[10px] m-2">02 — ADD NEW TIER</div>
-                            <div className="flex flex-row items-end gap-3 w-full">
-                                <div className="flex flex-col flex-1">
-                                    <div className="text-xs font-bold m-1">Lower Bound</div>
-                                    <input
-                                        type="number"
-                                        min={0}
-                                        step={1}
-                                        value={newOversTier.lower_bound}
-                                        onChange={(ev) => setNewOversTier((p) => ({ ...p, lower_bound: ev.target.value }))}
-                                        className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
-                                    />
-                                </div>
-                                <div className="flex flex-col flex-1">
-                                    <div className="text-xs font-bold m-1">Upper Bound</div>
-                                    <input
-                                        type="number"
-                                        min={0}
-                                        step={1}
-                                        placeholder="∞ (open-ended)"
-                                        value={newOversTier.upper_bound}
-                                        onChange={(ev) => setNewOversTier((p) => ({ ...p, upper_bound: ev.target.value }))}
-                                        className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
-                                    />
-                                </div>
-                                <div className="flex flex-col flex-1">
-                                    <div className="text-xs font-bold m-1">Overs (%)</div>
-                                    <input
-                                        type="number"
-                                        min={0}
-                                        step={1}
-                                        value={newOversTier.overs}
-                                        onChange={(ev) => setNewOversTier((p) => ({ ...p, overs: ev.target.value }))}
-                                        className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
-                                    />
-                                </div>
-                                <button
-                                    onClick={handleAddOversTier}
-                                    disabled={isAddingTier || newOversTier.lower_bound === "" || newOversTier.overs === ""}
-                                    className="shrink-0 h-[34px] px-4 text-xs font-bold bg-[#000005] text-[#FFC843] rounded-md disabled:opacity-40 transition-opacity"
-                                >
-                                    {isAddingTier ? "ADDING..." : "+ ADD TIER"}
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Section 03 */}
+                        {/* Section 02 — tier rows */}
                         <div className="flex flex-col items-start w-full flex-1 p-5 overflow-y-auto">
                             <div className="flex items-center gap-2 m-2">
-                                <span className="text-[10px]">03 — TIER VALUES</span>
+                                <span className="text-[10px]">02 — TIER VALUES</span>
                                 {isOversDirty && (
                                     <span className="text-[10px] font-bold text-[#FFB604] px-1.5 py-0.5 tracking-wide">
                                         Unsaved Changes
@@ -706,75 +690,124 @@ export default function DataCollector() {
                             </div>
                             {isLoadingOvers ? (
                                 <div className="text-xs m-2">Loading...</div>
-                            ) : oversRecords.length > 0 && oversEdits ? (
-                                <div className="w-full flex flex-col gap-4">
-                                    {oversRecords.map((rec) => {
-                                        const e = oversEdits[rec._id];
-                                        if (!e) return null;
-                                        const lbChanged = e.lower_bound !== rec.lower_bound;
-                                        const ubChanged = e.upper_bound !== rec.upper_bound;
-                                        const ovChanged = e.overs !== rec.overs;
-                                        return (
-                                            <div key={rec._id} className="flex flex-row items-end gap-3">
-                                                <div className="flex flex-col flex-1">
-                                                    <div className="text-xs font-bold m-1 flex items-center gap-2">
-                                                        Lower Bound
-                                                        {lbChanged && <span className="text-[9px] text-[#FFB604] font-bold tracking-wider">CHANGED</span>}
+                            ) : (oversRecords.length > 0 && oversEdits) || pendingNewOvers.length > 0 ? (
+                                <>
+                                    <div className="flex flex-row gap-3 w-full mb-1 px-1">
+                                        <div className="text-[9px] flex-1 font-bold tracking-wider">LOWER BOUND</div>
+                                        <div className="text-[9px] flex-1 font-bold tracking-wider">UPPER BOUND</div>
+                                        <div className="text-[9px] flex-1 font-bold tracking-wider">OVERS (%)</div>
+                                        <div className="text-[9px] w-[120px] shrink-0 font-bold tracking-wider">LAST UPDATED</div>
+                                        <div className="w-[34px] shrink-0" />
+                                    </div>
+                                    <div className="w-full flex flex-col gap-2">
+                                        {oversRecords.map((rec) => {
+                                            const e = oversEdits?.[rec._id];
+                                            if (!e) return null;
+                                            const lbChanged = e.lower_bound !== rec.lower_bound;
+                                            const ubChanged = e.upper_bound !== rec.upper_bound;
+                                            const ovChanged = e.overs !== rec.overs;
+                                            const anyChanged = lbChanged || ubChanged || ovChanged;
+                                            return (
+                                                <div key={rec._id} className="flex flex-row items-center gap-3">
+                                                    <div className="flex flex-col flex-1">
+                                                        {lbChanged && <span className="text-[8px] text-[#FFB604] font-bold mb-0.5">CHANGED</span>}
+                                                        <input
+                                                            type="number" min={0} step={1}
+                                                            value={e.lower_bound}
+                                                            onChange={(ev) => handleOversEdit(rec._id, "lower_bound", ev.target.value)}
+                                                            className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
+                                                        />
                                                     </div>
+                                                    <div className="flex flex-col flex-1">
+                                                        {ubChanged && <span className="text-[8px] text-[#FFB604] font-bold mb-0.5">CHANGED</span>}
+                                                        <input
+                                                            type="number" min={0} step={1}
+                                                            placeholder="∞"
+                                                            value={e.upper_bound ?? ""}
+                                                            onChange={(ev) => handleOversEdit(rec._id, "upper_bound", ev.target.value)}
+                                                            className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
+                                                        />
+                                                    </div>
+                                                    <div className="flex flex-col flex-1">
+                                                        {ovChanged && <span className="text-[8px] text-[#FFB604] font-bold mb-0.5">CHANGED</span>}
+                                                        <input
+                                                            type="number" min={0} step={1}
+                                                            value={e.overs}
+                                                            onChange={(ev) => handleOversEdit(rec._id, "overs", ev.target.value)}
+                                                            className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
+                                                        />
+                                                    </div>
+                                                    <div className="flex justify-center items-center p-2 border-2 w-[120px] shrink-0 border-[#EDEAEA] rounded-md h-[34px]">
+                                                        <div className="text-[0.75em] font-instrument text-black">{formatDate(rec.last_updated)}</div>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => setPendingDeleteId(rec._id)}
+                                                        className="shrink-0 h-[34px] w-[34px] text-xs font-bold border-2 border-[#EDEAEA] rounded-md text-[#ABABAB] hover:border-red-300 hover:text-red-400 transition-colors"
+                                                    >
+                                                        ✕
+                                                    </button>
+                                                </div>
+                                            );
+                                        })}
+                                        {pendingNewOvers.map((row, idx) => (
+                                            <div key={`new-${idx}`} className="flex flex-row items-center gap-3">
+                                                <div className="flex flex-col flex-1">
+                                                    <span className="text-[8px] text-[#FFB604] font-bold mb-0.5">NEW</span>
                                                     <input
-                                                        type="number"
-                                                        min={0}
-                                                        step={1}
-                                                        value={e.lower_bound}
-                                                        onChange={(ev) => handleOversEdit(rec._id, "lower_bound", ev.target.value)}
+                                                        type="number" min={0} step={1}
+                                                        value={row.lower_bound}
+                                                        onChange={(ev) => handlePendingOversEdit(idx, "lower_bound", ev.target.value)}
                                                         className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
                                                     />
                                                 </div>
                                                 <div className="flex flex-col flex-1">
-                                                    <div className="text-xs font-bold m-1 flex items-center gap-2">
-                                                        Upper Bound
-                                                        {ubChanged && <span className="text-[9px] text-[#FFB604] font-bold tracking-wider">CHANGED</span>}
-                                                    </div>
+                                                    <span className="text-[8px] text-[#FFB604] font-bold mb-0.5">NEW</span>
                                                     <input
-                                                        type="number"
-                                                        min={0}
-                                                        step={1}
-                                                        placeholder="∞ (open-ended)"
-                                                        value={e.upper_bound ?? ""}
-                                                        onChange={(ev) => handleOversEdit(rec._id, "upper_bound", ev.target.value)}
+                                                        type="number" min={0} step={1}
+                                                        placeholder="∞"
+                                                        value={row.upper_bound}
+                                                        onChange={(ev) => handlePendingOversEdit(idx, "upper_bound", ev.target.value)}
                                                         className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
                                                     />
                                                 </div>
                                                 <div className="flex flex-col flex-1">
-                                                    <div className="text-xs font-bold m-1 flex items-center gap-2">
-                                                        Overs
-                                                        {ovChanged && <span className="text-[9px] text-[#FFB604] font-bold tracking-wider">CHANGED</span>}
-                                                    </div>
+                                                    <span className="text-[8px] text-[#FFB604] font-bold mb-0.5">NEW</span>
                                                     <input
-                                                        type="number"
-                                                        min={0}
-                                                        step={1}
-                                                        value={e.overs}
-                                                        onChange={(ev) => handleOversEdit(rec._id, "overs", ev.target.value)}
+                                                        type="number" min={0} step={1}
+                                                        value={row.overs}
+                                                        onChange={(ev) => handlePendingOversEdit(idx, "overs", ev.target.value)}
                                                         className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
                                                     />
                                                 </div>
-                                                <div className="flex flex-col justify-center items-start p-2 border-2 w-[130px] shrink-0 border-[#EDEAEA] rounded-md h-[46px]">
-                                                    <div className="text-[9px]">LAST UPDATED</div>
-                                                    <div className="text-[0.8em] font-instrument text-black">{formatDate(rec.last_updated)}</div>
+                                                <div className="flex justify-center items-center p-2 border-2 w-[120px] shrink-0 border-[#EDEAEA] rounded-md h-[34px]">
+                                                    <div className="text-[0.75em] font-instrument text-black">—</div>
                                                 </div>
                                                 <button
-                                                    onClick={() => setPendingDeleteId(rec._id)}
-                                                    className="shrink-0 h-[46px] px-3 text-xs font-bold border-2 border-[#EDEAEA] rounded-md text-[#ABABAB] hover:border-red-300 hover:text-red-400 transition-colors"
+                                                    onClick={() => handleDeletePendingOvers(idx)}
+                                                    className="shrink-0 h-[34px] w-[34px] text-xs font-bold border-2 border-[#EDEAEA] rounded-md text-[#ABABAB] hover:border-red-300 hover:text-red-400 transition-colors"
                                                 >
                                                     ✕
                                                 </button>
                                             </div>
-                                        );
-                                    })}
-                                </div>
+                                        ))}
+                                    </div>
+                                    <button
+                                        onClick={handleAddOversRow}
+                                        className="mt-2 cursor-pointer px-4 h-[34px] text-xs font-bold border-2 border-dashed border-[#EDEAEA] rounded-md text-[#ABABAB] hover:border-[#FFB604] hover:text-[#FFB604] transition-colors"
+                                    >
+                                        + ADD ROW
+                                    </button>
+                                </>
                             ) : (
-                                <div className="text-xs m-2">No overs records found.</div>
+                                <div className="flex flex-col gap-2 m-2">
+                                    <div className="text-xs text-[#ABABAB]">No overs records found.</div>
+                                    <button
+                                        onClick={handleAddOversRow}
+                                        className="self-start cursor-pointer px-4 h-[34px] text-xs font-bold border-2 border-dashed border-[#EDEAEA] rounded-md text-[#ABABAB] hover:border-[#FFB604] hover:text-[#FFB604] transition-colors"
+                                    >
+                                        + ADD ROW
+                                    </button>
+                                </div>
                             )}
                         </div>
                     </>)}
@@ -839,11 +872,12 @@ export default function DataCollector() {
                                             const orig = supplierDoc?.price_breaks?.[idx];
                                             const amtChanged = !!orig && pb.amount !== orig.amount;
                                             const costChanged = !!orig && pb.cost !== orig.cost;
-                                            const unitChanged = !!supplierDoc && pb && pb.amount !== undefined && supplierDraft.unit !== supplierDoc.unit;
+                                            const unitChanged = !!supplierDoc && supplierDraft.unit !== supplierDoc.unit;
+                                            const isNew = !orig;
                                             return (
                                                 <div key={idx} className="flex flex-row items-center gap-3">
                                                     <div className="flex flex-col flex-1">
-                                                        {amtChanged && <span className="text-[8px] text-[#FFB604] font-bold mb-0.5">CHANGED</span>}
+                                                        {(amtChanged || isNew) && <span className="text-[8px] text-[#FFB604] font-bold mb-0.5">{isNew ? "NEW" : "CHANGED"}</span>}
                                                         <input
                                                             type="number" min={0} step={1}
                                                             value={pb.amount}
@@ -852,7 +886,7 @@ export default function DataCollector() {
                                                         />
                                                     </div>
                                                     <div className="flex flex-col flex-[2]">
-                                                        {costChanged && <span className="text-[8px] text-[#FFB604] font-bold mb-0.5">CHANGED</span>}
+                                                        {(costChanged || isNew) && <span className="text-[8px] text-[#FFB604] font-bold mb-0.5">{isNew ? "NEW" : "CHANGED"}</span>}
                                                         <input
                                                             type="number" min={0} step={1}
                                                             value={pb.cost}
@@ -861,7 +895,7 @@ export default function DataCollector() {
                                                         />
                                                     </div>
                                                     <div className="flex flex-col flex-1">
-                                                        {unitChanged && <span className="text-[8px] text-[#FFB604] font-bold mb-0.5">CHANGED</span>}
+                                                        {(unitChanged || isNew) && <span className="text-[8px] text-[#FFB604] font-bold mb-0.5">{isNew ? "NEW" : "CHANGED"}</span>}
                                                         <input
                                                             type="text"
                                                             value={supplierDraft.unit}
@@ -870,15 +904,35 @@ export default function DataCollector() {
                                                         />
                                                     </div>
                                                     <div className="flex justify-center items-center p-2 border-2 w-[120px] shrink-0 border-[#EDEAEA] rounded-md h-[34px]">
-                                                        <div className="text-[0.75em] font-instrument text-black">{formatDate(supplierDoc?.last_updated ?? "")}</div>
+                                                        <div className="text-[0.75em] font-instrument text-black">{isNew ? "—" : formatDate(supplierDoc?.last_updated ?? "")}</div>
                                                     </div>
+                                                    <button
+                                                        onClick={() => setPendingDeletePbIdx(idx)}
+                                                        className="shrink-0 h-[34px] px-3 text-xs font-bold border-2 border-[#EDEAEA] rounded-md text-[#ABABAB] hover:border-red-300 hover:text-red-400 transition-colors"
+                                                    >
+                                                        ✕
+                                                    </button>
                                                 </div>
                                             );
                                         })}
                                     </div>
+                                    <button
+                                        onClick={handleAddPriceBreak}
+                                        className="mt-2 px-4 h-[34px] text-xs cursor-pointer font-bold border-2 border-dashed border-[#EDEAEA] rounded-md text-[#ABABAB] hover:border-[#FFB604] hover:text-[#FFB604] transition-colors"
+                                    >
+                                        + ADD ROW
+                                    </button>
                                 </>
                             ) : (
-                                <div className="text-xs m-2">No records found for this combination.</div>
+                                <div className="flex flex-col gap-2 m-2">
+                                    <div className="text-xs text-[#ABABAB]">No records found for this combination.</div>
+                                    <button
+                                        onClick={handleAddPriceBreak}
+                                        className="self-start cursor-pointer px-4 h-[34px] text-xs font-bold border-2 border-dashed border-[#EDEAEA] rounded-md text-[#ABABAB] hover:border-[#FFB604] hover:text-[#FFB604] transition-colors"
+                                    >
+                                        + ADD ROW
+                                    </button>
+                                </div>
                             )}
                         </div>
                     </>)}

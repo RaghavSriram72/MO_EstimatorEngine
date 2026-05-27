@@ -41,7 +41,7 @@ export default function ElementsManager({ elements, setElements }: Props) {
     const [linearInches, setLinearInches] = useState<number | "">("");
     const [descriptionDraft, setDescriptionDraft] = useState("");
     const [viewMask, setViewMask] = useState<{ image: string; label: string } | null>(null);
-    const [scalePrompt, setScalePrompt] = useState<{ scale: number; sourceId: number } | null>(null);
+    const [scalePrompt, setScalePrompt] = useState<{ heightScale: number; widthScale: number; sourceId: number } | null>(null);
     const [promptVisible, setPromptVisible] = useState(false);
     const [editSnapshot, setEditSnapshot] = useState<{ id: number; height: number | ""; width: number | "" } | null>(null);
 
@@ -108,22 +108,23 @@ export default function ElementsManager({ elements, setElements }: Props) {
             el.description.toLowerCase().includes("vision");
         const snap = editSnapshot;
         setEditSnapshot(null);
-        if (
-            isVision &&
-            snap &&
-            snap.id === el.id &&
-            typeof snap.height === "number" && snap.height > 0 &&
-            typeof el.height === "number" && el.height > 0
-        ) {
-            const scale = el.height / snap.height;
+        if (isVision && snap && snap.id === el.id) {
+            const heightScale =
+                typeof snap.height === "number" && snap.height > 0 && typeof el.height === "number" && el.height > 0
+                    ? el.height / snap.height
+                    : 1;
+            const widthScale =
+                typeof snap.width === "number" && snap.width > 0 && typeof el.width === "number" && el.width > 0
+                    ? el.width / snap.width
+                    : 1;
             const otherVision = elements.filter(
                 (e) =>
                     e.id !== el.id &&
                     typeof e.description === "string" &&
                     e.description.toLowerCase().includes("vision"),
             );
-            if (Math.abs(scale - 1) > 0.0001 && otherVision.length > 0) {
-                setScalePrompt({ scale, sourceId: el.id });
+            if ((Math.abs(heightScale - 1) > 0.0001 || Math.abs(widthScale - 1) > 0.0001) && otherVision.length > 0) {
+                setScalePrompt({ heightScale, widthScale, sourceId: el.id });
             }
         }
     }
@@ -141,8 +142,8 @@ export default function ElementsManager({ elements, setElements }: Props) {
                 ) {
                     return {
                         ...el,
-                        height: Math.round(el.height * scalePrompt.scale * 100) / 100,
-                        width: Math.round(el.width * scalePrompt.scale * 100) / 100,
+                        height: Math.round(el.height * scalePrompt.heightScale * 100) / 100,
+                        width: Math.round(el.width * scalePrompt.widthScale * 100) / 100,
                     };
                 }
                 return el;
@@ -383,12 +384,12 @@ export default function ElementsManager({ elements, setElements }: Props) {
                             <span className="text-white">SCALE DETECTED</span>
                         </div>
                         <p className="text-xs font-semibold leading-snug text-white">
-                            Scale factor{" "}
-                            <span className="font-black text-[#FFC843]">
-                                {scalePrompt.scale.toFixed(3)}×
-                            </span>{" "}
-                            detected. Apply to all Vision elements?
+                            Apply to all Vision elements?
                         </p>
+                        <div className="flex gap-4 text-[10px] font-semibold text-[#B1B3B6]">
+                            <span>H <span className="font-black text-[#FFC843]">{scalePrompt.heightScale.toFixed(3)}×</span></span>
+                            <span>W <span className="font-black text-[#FFC843]">{scalePrompt.widthScale.toFixed(3)}×</span></span>
+                        </div>
                         <div className="flex gap-2">
                             <button
                                 type="button"
