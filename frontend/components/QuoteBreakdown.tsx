@@ -422,7 +422,7 @@ export default function QuoteBreakdown({
         mergeBreakdownUiIntoPerScenario(builtInitial.perScenario, breakdownUiFromQuoteData(quoteData)),
     );
     const [scenarioLines, setScenarioLines] = useState<Record<ScenarioId, CostLine[]>>(
-        () => buildScenarioState(initialSources, initialStandees, resolveInitialActiveScenario(quoteData, initialActiveScenario)).scenarioLines
+        () => builtInitial.scenarioLines
     );
     const [scenarioSubtotalOverride, setScenarioSubtotalOverride] = useState<Record<ScenarioId, string>>(() =>
         scenarioSubtotalOverridesFromUi(breakdownUiFromQuoteData(quoteData))
@@ -543,7 +543,7 @@ export default function QuoteBreakdown({
         }));
     }
 
-    function recalculate() {
+    async function recalculate() {
         setIsRecalculating(true);
         setSaveQuoteError(null);
         setRecalculateError(null);
@@ -561,63 +561,52 @@ export default function QuoteBreakdown({
             }),
             ...(params.overs !== baseline.overs && { num_overs: params.overs }),
         };
-        fetch(`${API_BASE}/generate_quote`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body),
-        })
-            .then(async (res) => {
-                const data = await res.json().catch(() => null);
-                if (!res.ok) {
-                    console.error("Recalculate failed:", data);
-                    setRecalculateError("Recalculate failed — check console for details");
-                    return null;
+        try {
+            // POST /generate_quote → recalculate costs for the active scenario with updated params
+            const res = await fetch(`${API_BASE}/generate_quote`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+            });
+            const data = await res.json().catch(() => null);
+            if (!res.ok) {
+                console.error("Recalculate failed:", data);
+                setRecalculateError("Recalculate failed — check console for details");
+                return;
+            }
+            const src: Record<string, number> = (data[`scenario_${sid}`] as Record<string, number>) ?? {};
+            const newUniversalLines = seedLines(buildLines(Object.keys(UNIVERSAL_LINE_DEFS), UNIVERSAL_LINE_DEFS), src);
+            const newScenarioLines  = seedLines(buildLines(SCENARIO_KEYS[sid], SCENARIO_LINE_DEFS), src);
+            const newParams: ScenarioParams = { ...params, overs: src.overs ?? params.overs };
+            const mergedPs: Record<ScenarioId, PerScenarioState> = {
+                ...perScenario,
+                [sid]: { universalLines: newUniversalLines, universalSubtotalOverride: "" },
+            };
+            const mergedSl: Record<ScenarioId, CostLine[]>   = { ...scenarioLines, [sid]: newScenarioLines };
+            const mergedSso: Record<ScenarioId, string>       = { ...scenarioSubtotalOverride, [sid]: "" };
+            setParams(newParams);
+            setBaseline({ ...newParams });
+            setPerScenario(mergedPs);
+            setScenarioLines(mergedSl);
+            setScenarioSubtotalOverride(mergedSso);
+            if (canPersistQuote) {
+                setIsSavingQuote(true);
+                try {
+                    // PATCH /quotes/:id → persist updated scenario costs after recalculate
+                    const ok = await persistQuoteSnapshots(newParams, mergedPs, mergedSl, mergedSso, sid);
+                    if (!ok) setSaveQuoteError("Could not save quote after recalculate");
+                } catch {
+                    setSaveQuoteError("Could not save quote after recalculate");
+                } finally {
+                    setIsSavingQuote(false);
                 }
-                console.log("Recalculate response:", data);
-                return data;
-            })
-            .then(async (data) => {
-                if (!data) return;
-                const src: Record<string, number> = (data[`scenario_${sid}`] as Record<string, number>) ?? {};
-                const newUniversalLines = seedLines(
-                    buildLines(Object.keys(UNIVERSAL_LINE_DEFS), UNIVERSAL_LINE_DEFS), src
-                );
-                const newScenarioLines = seedLines(buildLines(SCENARIO_KEYS[sid], SCENARIO_LINE_DEFS), src);
-                const newParams: ScenarioParams = { ...params, overs: src.overs ?? params.overs };
-                const mergedPs: Record<ScenarioId, PerScenarioState> = {
-                    ...perScenario,
-                    [sid]: { universalLines: newUniversalLines, universalSubtotalOverride: "" },
-                };
-                const mergedSl: Record<ScenarioId, CostLine[]> = {
-                    ...scenarioLines,
-                    [sid]: newScenarioLines,
-                };
-                const mergedSso: Record<ScenarioId, string> = {
-                    ...scenarioSubtotalOverride,
-                    [sid]: "",
-                };
-                setParams(newParams);
-                setBaseline({ ...newParams });
-                setPerScenario(mergedPs);
-                setScenarioLines(mergedSl);
-                setScenarioSubtotalOverride(mergedSso);
-                if (canPersistQuote) {
-                    setIsSavingQuote(true);
-                    try {
-                        const ok = await persistQuoteSnapshots(newParams, mergedPs, mergedSl, mergedSso, sid);
-                        if (!ok) setSaveQuoteError("Could not save quote after recalculate");
-                    } catch {
-                        setSaveQuoteError("Could not save quote after recalculate");
-                    } finally {
-                        setIsSavingQuote(false);
-                    }
-                }
-            })
-            .catch((err) => {
-                console.error("Recalculate error:", err);
-                setRecalculateError("Recalculate failed — network error");
-            })
-            .finally(() => setIsRecalculating(false));
+            }
+        } catch (err) {
+            console.error("Recalculate error:", err);
+            setRecalculateError("Recalculate failed — network error");
+        } finally {
+            setIsRecalculating(false);
+        }
     }
 
     const universalLinesSum = universalLines.reduce((s, l) => s + lineTotal(l), 0);
