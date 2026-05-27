@@ -429,7 +429,6 @@ export default function Inputter() {
 
     // DELETE /projects/:id → remove a project and clear form if it was active
     async function deleteProject(projectId: string, projectLabel: string) {
-        if (!window.confirm(`Are you sure you want to delete "${projectLabel}"? This action cannot be undone.`)) return;
         const owner = localStorage.getItem("username");
         if (!owner) return;
         setProjectListError(null);
