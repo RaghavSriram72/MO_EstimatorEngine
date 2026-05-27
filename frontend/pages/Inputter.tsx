@@ -593,8 +593,7 @@ export default function Inputter() {
     }
 
     // DELETE /quotes/:id → remove a saved quote from the project
-    async function deleteSavedQuote(quoteId: string, quoteLabel: string) {
-        if (!window.confirm(`Are you sure you want to delete "${quoteLabel}"? This action cannot be undone.`)) return;
+    async function deleteSavedQuote(quoteId: string, _quoteLabel: string) {
         const owner = localStorage.getItem("username")?.trim();
         if (!owner) return;
         setSavedQuoteListError(null);
