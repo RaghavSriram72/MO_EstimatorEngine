@@ -4,7 +4,7 @@ from typing import override
 
 from lib.classes import Complexity, Form, MidnightOilDB
 from lib.classes.cost_inputs import BaseInput, InHouseInput, OutsourceInput
-from lib.classes.db_keys import StandeeKey, SupplierMaterials, UnitCostEntries
+from lib.classes.db_keys import StandeeKey, SupplierMaterials, Suppliers, UnitCostEntries
 from lib.globals import BUSMARK_PADDING, PRINT_FORM_LENGTH, UNIT_MAP
 
 STANDEE_MAP = {
@@ -179,9 +179,13 @@ class Project[T: BaseInput]:
         cost_per_unit = params["a"] * num_forms ** params["b"] + params["c"]
         return cost_per_unit * num_forms
 
-    def _get_supplier_litho_buyout_cost(self, supplier: str, material: str) -> float:
+    def _get_supplier_litho_buyout_cost(
+        self,
+        supplier: str = Suppliers.FOSTERS,
+        material: str = SupplierMaterials.FOSTERS_PRINT_FORM,
+    ) -> float:
         sheets_per_form = self._get_net_print_forms() // self.print_forms_per_standee
-        return self._get_supplier_cost(supplier, material, self.num_standees) * sheets_per_form
+        return self._get_supplier_cost(supplier, material, sheets_per_form) * self.print_forms_per_standee
 
     def _get_supplier_mount_die_buyout_cost(self, supplier: str, material: str, forms: int | None = None) -> float:
         if forms is None:
