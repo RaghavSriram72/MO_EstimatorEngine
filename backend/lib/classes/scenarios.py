@@ -91,7 +91,7 @@ class Scenario5[T: Scenario5Input](OutsourceProject[T]):
 
     @override
     def calculate_cost(self, input: T) -> None:
-        self.overs = FOSTERS_DEFAULT_OVERS
+        input.num_overs = FOSTERS_DEFAULT_OVERS
         super().calculate_cost(input)
         self.print_form_cost = self._get_supplier_litho_buyout_cost()
         self.freight_cost = input.freight_cost or self.db.get_unit_cost(UnitCostEntries.FULL_OUT_SOURCE)
