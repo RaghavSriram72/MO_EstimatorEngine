@@ -150,6 +150,7 @@ function seedLines(lines: CostLine[], source: Record<string, number>): CostLine[
 function buildScenarioState(
     sources: Record<ScenarioId, Record<string, number>>,
     initialStandees: number,
+    initialScenario: ScenarioId,
 ): {
     params: ScenarioParams;
     perScenario: Record<ScenarioId, PerScenarioState>;
@@ -158,12 +159,12 @@ function buildScenarioState(
     const ids: ScenarioId[] = [1, 2, 3, 4, 5];
     const perScenario = {} as Record<ScenarioId, PerScenarioState>;
     const scenarioLines = {} as Record<ScenarioId, CostLine[]>;
-    const src1 = sources[1] ?? {};
+    const seedSource = sources[initialScenario] ?? sources[1] ?? {};
     const params: ScenarioParams = {
         numStandees: initialStandees,
-        printFormsPerStandee: src1.print_forms_per_standee ?? 1,
-        structureFormsPerStandee: src1.structure_forms_per_standee ?? 0,
-        overs: src1.overs ?? 0,
+        printFormsPerStandee: seedSource.print_forms_per_standee ?? 1,
+        structureFormsPerStandee: seedSource.structure_forms_per_standee ?? 0,
+        overs: seedSource.overs ?? 0,
     };
     for (const id of ids) {
         const src = sources[id] ?? {};
@@ -414,14 +415,14 @@ export default function QuoteBreakdown({
         5: (quoteData["scenario_5"] as Record<string, number>) ?? {},
     };
 
-    const builtInitial = buildScenarioState(initialSources, initialStandees);
+    const builtInitial = buildScenarioState(initialSources, initialStandees, resolveInitialActiveScenario(quoteData, initialActiveScenario));
     const [params, setParams] = useState<ScenarioParams>(() => builtInitial.params);
     const [baseline, setBaseline] = useState<ScenarioParams>(() => builtInitial.params);
     const [perScenario, setPerScenario] = useState<Record<ScenarioId, PerScenarioState>>(() =>
         mergeBreakdownUiIntoPerScenario(builtInitial.perScenario, breakdownUiFromQuoteData(quoteData)),
     );
     const [scenarioLines, setScenarioLines] = useState<Record<ScenarioId, CostLine[]>>(
-        () => buildScenarioState(initialSources, initialStandees).scenarioLines
+        () => buildScenarioState(initialSources, initialStandees, resolveInitialActiveScenario(quoteData, initialActiveScenario)).scenarioLines
     );
     const [scenarioSubtotalOverride, setScenarioSubtotalOverride] = useState<Record<ScenarioId, string>>(() =>
         scenarioSubtotalOverridesFromUi(breakdownUiFromQuoteData(quoteData))
