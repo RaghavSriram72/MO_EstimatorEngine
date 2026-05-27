@@ -25,10 +25,19 @@ type Element = {
     originalWidth?: number;
 };
 
-// Subtotal overrides stored in MongoDB alongside the quote breakdown
+// Subtotal overrides and manual cost-row edits stored in MongoDB alongside the quote breakdown
+export type CostLineOverride = { qty: number; unitCost: number };
+
+export type ScenarioCostLineOverrides = {
+    universal?: Record<string, CostLineOverride>;
+    scenario?: Record<string, CostLineOverride>;
+};
+
 export type QuoteBreakdownUi = {
     universal_subtotal_override?: Record<string, string>;
     scenario_subtotal_override?: Record<string, string>;
+    /** Per scenario id ("1"…"5"): saved qty and $/unit for manually edited cost rows. */
+    cost_line_overrides?: Record<string, ScenarioCostLineOverrides>;
 };
 
 // Full quote object — scenario_1 … scenario_5 blobs + optional UI overrides
@@ -632,6 +641,15 @@ export default function Inputter() {
         setInQuotesWorkspace(true);
     }
 
+    function handleActiveQuoteNumStandeesChange(numStandees: number) {
+        setActiveQuotePayload((prev) => (prev ? { ...prev, num_standees: numStandees } : prev));
+        const activeId = activePersistedQuoteId;
+        if (!activeId) return;
+        setSavedQuoteList((prev) =>
+            prev.map((q) => (q._id === activeId ? { ...q, num_standees: numStandees } : q)),
+        );
+    }
+
     // Called when vision processing completes and returns detected elements
     function handleVisionElementsLoaded(raw: { id: number; width: number; height: number; mask_b64?: string }[]) {
         const mapped: Element[] = raw.map((r, i) => ({
@@ -726,6 +744,7 @@ export default function Inputter() {
                                 persistedQuoteId={activePersistedQuoteId}
                                 quoteOwner={typeof window !== "undefined" ? localStorage.getItem("username") : null}
                                 onBack={clearActiveQuote}
+                                onNumStandeesChange={handleActiveQuoteNumStandeesChange}
                             />
                         ) : (
                             <div className="flex-1 min-h-0 bg-[#F8F8F8]" aria-hidden />

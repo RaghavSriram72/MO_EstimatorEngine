@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { type QuoteData, type QuoteBreakdownUi, type RequestPayload } from "@/pages/Inputter";
+import { type QuoteData, type QuoteBreakdownUi, type CostLineOverride, type ScenarioCostLineOverrides, type RequestPayload } from "@/pages/Inputter";
 import { API_BASE } from "@/lib/config";
 
 type ScenarioId = 1 | 2 | 3 | 4 | 5;
@@ -35,6 +35,8 @@ type Props = {
     persistedQuoteId?: string | null;
     quoteOwner?: string | null;
     onBack: () => void;
+    /** Keeps parent sidebar / payload in sync when standee count is edited. */
+    onNumStandeesChange?: (numStandees: number) => void;
 };
 
 function resolveInitialActiveScenario(quoteData: QuoteData, hint?: ScenarioId): ScenarioId {
@@ -180,8 +182,40 @@ function buildScenarioState(
 function breakdownUiFromQuoteData(q: QuoteData): QuoteBreakdownUi | undefined {
     const ui = q._breakdown_ui;
     if (!ui || typeof ui !== "object" || Array.isArray(ui)) return undefined;
-    if (!("universal_subtotal_override" in ui) && !("scenario_subtotal_override" in ui)) return undefined;
     return ui as QuoteBreakdownUi;
+}
+
+function applyCostLineOverrides(
+    perScenario: Record<ScenarioId, PerScenarioState>,
+    scenarioLines: Record<ScenarioId, CostLine[]>,
+    ui: QuoteBreakdownUi | undefined,
+): { perScenario: Record<ScenarioId, PerScenarioState>; scenarioLines: Record<ScenarioId, CostLine[]> } {
+    const overrides = ui?.cost_line_overrides;
+    if (!overrides || typeof overrides !== "object") {
+        return { perScenario, scenarioLines };
+    }
+    const nextPs = { ...perScenario };
+    const nextSl = { ...scenarioLines };
+    for (const id of [1, 2, 3, 4, 5] as ScenarioId[]) {
+        const o = overrides[String(id)];
+        if (!o) continue;
+        if (o.universal) {
+            nextPs[id] = {
+                ...nextPs[id],
+                universalLines: nextPs[id].universalLines.map((line) => {
+                    const ed = o.universal![line.key];
+                    return ed ? { ...line, qty: ed.qty, unitCost: ed.unitCost } : line;
+                }),
+            };
+        }
+        if (o.scenario) {
+            nextSl[id] = nextSl[id].map((line) => {
+                const ed = o.scenario![line.key];
+                return ed ? { ...line, qty: ed.qty, unitCost: ed.unitCost } : line;
+            });
+        }
+    }
+    return { perScenario: nextPs, scenarioLines: nextSl };
 }
 
 function mergeBreakdownUiIntoPerScenario(
@@ -251,22 +285,46 @@ function serializeScenarioToSource(
 
 function buildBreakdownUiPayloadFromState(
     perScenario: Record<ScenarioId, PerScenarioState>,
+    scenarioLines: Record<ScenarioId, CostLine[]>,
     scenarioSubtotalOverride: Record<ScenarioId, string>,
-): Record<string, Record<string, string>> | null {
+): QuoteBreakdownUi | null {
     const universal_subtotal_override: Record<string, string> = {};
     const scenario_subtotal_override: Record<string, string> = {};
+    const cost_line_overrides: Record<string, ScenarioCostLineOverrides> = {};
+
     for (const id of [1, 2, 3, 4, 5] as ScenarioId[]) {
         const u = perScenario[id]?.universalSubtotalOverride?.trim() ?? "";
         const s = scenarioSubtotalOverride[id]?.trim() ?? "";
         if (u) universal_subtotal_override[String(id)] = u;
         if (s) scenario_subtotal_override[String(id)] = s;
+
+        const universal: Record<string, CostLineOverride> = {};
+        for (const line of perScenario[id]?.universalLines ?? []) {
+            if (line.unit === "standees") continue;
+            universal[line.key] = { qty: line.qty, unitCost: line.unitCost };
+        }
+        const scenario: Record<string, CostLineOverride> = {};
+        for (const line of scenarioLines[id] ?? []) {
+            if (line.unit === "standees") continue;
+            scenario[line.key] = { qty: line.qty, unitCost: line.unitCost };
+        }
+        if (Object.keys(universal).length > 0 || Object.keys(scenario).length > 0) {
+            cost_line_overrides[String(id)] = {
+                ...(Object.keys(universal).length > 0 ? { universal } : {}),
+                ...(Object.keys(scenario).length > 0 ? { scenario } : {}),
+            };
+        }
     }
-    const out: Record<string, Record<string, string>> = {};
+
+    const out: QuoteBreakdownUi = {};
     if (Object.keys(universal_subtotal_override).length > 0) {
         out.universal_subtotal_override = universal_subtotal_override;
     }
     if (Object.keys(scenario_subtotal_override).length > 0) {
         out.scenario_subtotal_override = scenario_subtotal_override;
+    }
+    if (Object.keys(cost_line_overrides).length > 0) {
+        out.cost_line_overrides = cost_line_overrides;
     }
     return Object.keys(out).length > 0 ? out : null;
 }
@@ -401,6 +459,7 @@ export default function QuoteBreakdown({
     persistedQuoteId = null,
     quoteOwner = null,
     onBack,
+    onNumStandeesChange,
 }: Props) {
     const [activeScenario, setActiveScenario] = useState<ScenarioId>(() =>
         resolveInitialActiveScenario(quoteData, initialActiveScenario),
@@ -416,22 +475,29 @@ export default function QuoteBreakdown({
     };
 
     const builtInitial = buildScenarioState(initialSources, initialStandees, resolveInitialActiveScenario(quoteData, initialActiveScenario));
+    const persistedBreakdownUi = breakdownUiFromQuoteData(quoteData);
+    const initialLineState = applyCostLineOverrides(
+        mergeBreakdownUiIntoPerScenario(builtInitial.perScenario, persistedBreakdownUi),
+        builtInitial.scenarioLines,
+        persistedBreakdownUi,
+    );
     const [params, setParams] = useState<ScenarioParams>(() => builtInitial.params);
     const [baseline, setBaseline] = useState<ScenarioParams>(() => builtInitial.params);
-    const [perScenario, setPerScenario] = useState<Record<ScenarioId, PerScenarioState>>(() =>
-        mergeBreakdownUiIntoPerScenario(builtInitial.perScenario, breakdownUiFromQuoteData(quoteData)),
+    const [perScenario, setPerScenario] = useState<Record<ScenarioId, PerScenarioState>>(
+        () => initialLineState.perScenario,
     );
     const [scenarioLines, setScenarioLines] = useState<Record<ScenarioId, CostLine[]>>(
-        () => builtInitial.scenarioLines
+        () => initialLineState.scenarioLines,
     );
     const [scenarioSubtotalOverride, setScenarioSubtotalOverride] = useState<Record<ScenarioId, string>>(() =>
-        scenarioSubtotalOverridesFromUi(breakdownUiFromQuoteData(quoteData))
+        scenarioSubtotalOverridesFromUi(persistedBreakdownUi),
     );
     const [isSavingQuote, setIsSavingQuote] = useState(false);
     const [saveQuoteError, setSaveQuoteError] = useState<string | null>(null);
     const [recalculateError, setRecalculateError] = useState<string | null>(null);
     const [universalCostsExpanded, setUniversalCostsExpanded] = useState(false);
     const [scenarioCostsExpanded, setScenarioCostsExpanded] = useState(false);
+    const [manualDirty, setManualDirty] = useState(false);
 
     const { universalLines, universalSubtotalOverride } = perScenario[activeScenario];
     const { numStandees, printFormsPerStandee, structureFormsPerStandee, overs } = params;
@@ -443,7 +509,7 @@ export default function QuoteBreakdown({
         overs !== baseline.overs;
 
     const canPersistQuote = Boolean(persistedQuoteId?.trim() && quoteOwner?.trim());
-    const needsSave = canPersistQuote && isDirty;
+    const needsSave = canPersistQuote && (isDirty || manualDirty);
 
     async function persistQuoteSnapshots(
         sharedParams: ScenarioParams,
@@ -460,7 +526,7 @@ export default function QuoteBreakdown({
             if (quoteData[`scenario_${id}`] === undefined) continue;
             breakdown[`scenario_${id}`] = serializeScenarioToSource(id, sharedParams, ps, sl, initialSources);
         }
-        const ui = buildBreakdownUiPayloadFromState(ps, sso);
+        const ui = buildBreakdownUiPayloadFromState(ps, sl, sso);
         if (ui) breakdown._breakdown_ui = ui;
         const body = {
             quote_name: (quoteName ?? "").trim() || "Untitled quote",
@@ -503,6 +569,7 @@ export default function QuoteBreakdown({
             );
             if (ok) {
                 setBaseline({ ...params });
+                setManualDirty(false);
             } else {
                 setSaveQuoteError("Could not save quote");
             }
@@ -514,6 +581,7 @@ export default function QuoteBreakdown({
     }
 
     function patchActive(patch: Partial<PerScenarioState>) {
+        setManualDirty(true);
         setPerScenario((prev) => ({
             ...prev,
             [activeScenario]: { ...prev[activeScenario], ...patch },
@@ -525,6 +593,7 @@ export default function QuoteBreakdown({
     }
 
     function updateUniversal(key: string, field: "qty" | "unitCost", value: number) {
+        setManualDirty(true);
         setPerScenario((prev) => ({
             ...prev,
             [activeScenario]: {
@@ -537,6 +606,7 @@ export default function QuoteBreakdown({
     }
 
     function updateScenario(key: string, field: "qty" | "unitCost", value: number) {
+        setManualDirty(true);
         setScenarioLines((prev) => ({
             ...prev,
             [activeScenario]: prev[activeScenario].map((l) => (l.key === key ? { ...l, [field]: value } : l)),
@@ -589,6 +659,7 @@ export default function QuoteBreakdown({
             setPerScenario(mergedPs);
             setScenarioLines(mergedSl);
             setScenarioSubtotalOverride(mergedSso);
+            setManualDirty(false);
             if (canPersistQuote) {
                 setIsSavingQuote(true);
                 try {
@@ -690,7 +761,11 @@ export default function QuoteBreakdown({
                             type="number"
                             min={0}
                             value={numStandees}
-                            onChange={(e) => patchParams({ numStandees: parseInt(e.target.value) || 0 })}
+                            onChange={(e) => {
+                                const n = parseInt(e.target.value) || 0;
+                                patchParams({ numStandees: n });
+                                onNumStandeesChange?.(n);
+                            }}
                             disabled={isRecalculating}
                             className={`border-2 border-[#E0E0E0] rounded-sm px-3 py-1.5 text-sm font-black text-[#000005] outline-none focus:border-[#FFC843] w-[140px] text-right transition-colors disabled:opacity-50 ${numStandees !== baseline.numStandees ? "bg-[#FFC843]/20" : "bg-[#F8F8F8]"}`}
                         />
@@ -875,6 +950,7 @@ export default function QuoteBreakdown({
                                             step={0.01}
                                             value={scenarioSubtotalOverride[activeScenario]}
                                             onChange={(e) => {
+                                                setManualDirty(true);
                                                 setScenarioSubtotalOverride((prev) => ({
                                                     ...prev,
                                                     [activeScenario]: e.target.value,
