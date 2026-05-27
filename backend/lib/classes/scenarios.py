@@ -93,11 +93,7 @@ class Scenario5[T: Scenario5Input](OutsourceProject[T]):
     def calculate_cost(self, input: T) -> None:
         self.overs = FOSTERS_DEFAULT_OVERS
         super().calculate_cost(input)
-        self.print_form_cost = self._get_supplier_cost(
-            Suppliers.FOSTERS,
-            SupplierMaterials.FOSTERS_PRINT_FORM,
-            self.num_standees * self.print_forms_per_standee + self.overs,
-        )
+        self.print_form_cost = self._get_supplier_litho_buyout_cost()
         self.freight_cost = input.freight_cost or self.db.get_unit_cost(UnitCostEntries.FULL_OUT_SOURCE)
         if input.die_cost is not None:
             self.die_cost = input.die_cost
