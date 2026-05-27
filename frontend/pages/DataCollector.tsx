@@ -1,109 +1,16 @@
 "use client";
-import Dropdown from "@/components/Dropdown";
-import EditableValueBox from "@/components/EditableValueBox";
-import ConfirmAlert from "@/components/ConfirmAlert";
-import { useState, useEffect, useMemo } from "react";
-import { API_BASE } from "@/lib/config";
+import { useState } from "react";
+import UnitCostsModule  from "@/components/datacollector/UnitCostsModule";
+import StandeeModule    from "@/components/datacollector/StandeeModule";
+import OversModule      from "@/components/datacollector/OversModule";
+import SuppliersModule  from "@/components/datacollector/SuppliersModule";
 
-const SUPPLIER_DISPLAY: Record<string, string> = {
-    pq: "Pacific Quality",
-    fosters: "Foster",
-};
-
-const UNIT_COST_DISPLAY: Record<string, string> = {
-    comp: "Comp",
-    die: "Die",
-    freight: "Freight", 
-    imposition: "Imposition",
-    instruction_sheet: "Instruction Sheet",
-    machine: "Machine",
-    pallet: "Pallet",
-    shipping: "Shipping",
-    standee_material: "Standee Material",
-
-
-};
-
-
-const supplierLabel = (raw: string) => SUPPLIER_DISPLAY[raw] ?? raw;
-const unitTypeLabel = (raw: string) => UNIT_COST_DISPLAY[raw] ?? raw;
-
-// ── Types ──────────────────────────────────────────────────────────────────
-type UnitCostRecord = {
-    _id: string;
-    name: string;
-    cost: number;
-    unit: string;
-    last_updated: string;
-    type: string;
-    display_name: string;
-};
-
-type UnitEditFields = {
-    display_name: string;
-    cost: number;
-    unit: string;
-    type: string;
-};
-
-type StandeeRecord = {
-    _id: string;
-    standee_type: string;
-    [key: string]: number | string;
-};
-
-type OversRecord = {
-    _id: string;
-    lower_bound: number;
-    upper_bound: number | null;
-    overs: number;
-    last_updated: string;
-};
-
-type SupplierMaterial = {
-    material: string;
-    display_name: string;
-};
-
-type SupplierPriceBreak = {
-    amount: number;
-    cost: number;
-};
-
-type SupplierDocument = {
-    _id: string;
-    supplier: string;
-    material: string;
-    material_display_name: string;
-    unit: string;
-    price_breaks: SupplierPriceBreak[];
-    last_updated: string;
-};
-
-// SupplierRecord and per-break edit map removed — we operate on `supplierDraft`.
-
+// Each module tab maps to a self-contained component that owns its own state and API calls.
 type ModuleId = 0 | 1 | 2 | 3;
 
-const STANDEE_TYPES = ["Simple Standee", "Moderate Standee", "Complex Standee"];
+const MODULE_NAV_LABELS   = ["Unit Costs", "Standee Static Costs", "Overs", "Suppliers"] as const;
+const MODULE_TITLE_LABELS = ["Unit", "Standee Static", "Overs", "Supplier"] as const;
 
-function formatDate(iso: string) {
-    if (!iso) return "—";
-    return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-}
-
-function formatFieldLabel(key: string) {
-    return key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-function standeeNumericFields(record: StandeeRecord): [string, number][] {
-    return Object.entries(record).filter(
-        ([k, v]) => k !== "_id" && k !== "standee_type" && typeof v === "number"
-    ) as [string, number][];
-}
-
-// no-op: supplierDraft is edited directly instead of flattening price_breaks.
-
-// ── Component ──────────────────────────────────────────────────────────────
 export default function DataCollector() {
     const [currentModule, setCurrentModule] = useState<ModuleId>(0);
     const [isSaving, setIsSaving] = useState(false);
@@ -482,483 +389,47 @@ export default function DataCollector() {
     // ── Render ─────────────────────────────────────────────────────────────
     return (
         <div className="grid grid-cols-[2fr_5fr_1fr] text-black w-full flex-1 overflow-hidden">
-            <ConfirmAlert
-                visible={pendingDeleteId !== null}
-                message="Delete this overs tier? This cannot be undone."
-                onConfirm={confirmDeleteOversTier}
-                onCancel={() => setPendingDeleteId(null)}
-            />
-            <ConfirmAlert
-                visible={pendingDeletePbIdx !== null}
-                message="Remove this price break?"
-                onConfirm={confirmDeletePriceBreak}
-                onCancel={() => setPendingDeletePbIdx(null)}
-            />
 
-            {/* Sidebar */}
+            {/* ── Left sidebar — module navigation ── */}
             <div className="flex flex-col items-start justify-start pl-10 p-5 gap-3">
                 <div className="text-[1.2em] font-bold">DB Modules</div>
                 <ul className="flex flex-col gap-4 w-full">
                     {([0, 1, 2, 3] as ModuleId[]).map((id) => (
                         <li
                             key={id}
-                            className={`${currentModule === id ? "tab-active" : "tab-inactive"} flex items-center gap-5 w-full cursor-pointer`}
-                            onClick={() => setCurrentModule(id)}
+                            className={`${activeModule === id ? "tab-active" : "tab-inactive"} flex items-center gap-5 w-full cursor-pointer`}
+                            onClick={() => setActiveModule(id)}
                         >
-                            <span>•</span> {["Unit Costs", "Standee Static Costs", "Overs", "Suppliers"][id]}
+                            <span>•</span> {MODULE_NAV_LABELS[id]}
                         </li>
                     ))}
                 </ul>
             </div>
 
-            {/* Main */}
+            {/* ── Main panel ── */}
             <div className="flex flex-col ml-5 p-1 justify-start">
-                {/* Animated title */}
+
+                {/* Animated title — slides when switching modules */}
                 <div className="relative ml-15 pb-3 h-[90px] overflow-hidden">
-                    {(["Unit", "Standee Static", "Overs", "Supplier"] as const).map((label, idx) => (
-                        <div key={idx} className={`absolute inset-0 ${currentModule === idx ? "data-collector-title-active" : "data-collector-title-inactive"}`}>
-                            <div className="text-[3em] font-instrument">Update <span className="italic text-[#FFB604]">{label}</span> Costs</div>
+                    {MODULE_TITLE_LABELS.map((label, idx) => (
+                        <div
+                            key={idx}
+                            className={`absolute inset-0 ${activeModule === idx ? "data-collector-title-active" : "data-collector-title-inactive"}`}
+                        >
+                            <div className="text-[3em] font-instrument">
+                                Update <span className="italic text-[#FFB604]">{label}</span> Costs
+                            </div>
                             <p className="text-xs">Modify Live Data for {label} Cost Records</p>
                         </div>
                     ))}
                 </div>
 
+                {/* Module panel — each module renders its own sections + footer */}
                 <div className="flex flex-col w-[50vw] h-[74vh] border-2 bg-white border-[#EDEAEA] rounded-xl text-[#ABABAB]">
-
-                    {/* ── MODULE 0: Unit Costs ── */}
-                    {currentModule === 0 && (<>
-                        {/* Section 01 */}
-                        <div className="flex flex-col justify-center items-start w-full p-5 border-b-2 border-[#EDEAEA]">
-                            <div className="text-[10px] m-2">01 — RECORD SELECTION</div>
-                            {isLoadingUnit ? (
-                                <div className="text-xs m-2">Loading records...</div>
-                            ) : (
-                                <div className="flex flex-row gap-4 w-full">
-                                    <div className="flex flex-col gap-1 flex-1">
-                                        <div className="text-[10px] ml-1">Type</div>
-                                        <Dropdown
-                                            options={unitTypes.map(unitTypeLabel)}
-                                            currOption={unitTypeLabel(selectedUnitType)}
-                                            onSelect={(label: string) => {
-                                                const raw = unitTypes.find((t) => unitTypeLabel(t) === label) ?? label;
-                                                handleUnitTypeSelect(raw);
-                                            }}
-                                            width="w-full"
-                                        />
-                                    </div>
-                                    <div className="flex flex-col gap-1 flex-[2]">
-                                        <div className="text-[10px] ml-1">Record</div>
-                                        <Dropdown
-                                            options={unitRecordsForType.map((r) => r.display_name)}
-                                            currOption={selectedUnitRecord?.display_name ?? ""}
-                                            onSelect={handleUnitSelect}
-                                            width="w-full"
-                                        />
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Section 02 */}
-                        <div className="flex flex-col justify-evenly items-start w-full p-5 border-b-2 border-[#EDEAEA]">
-                            <div className="text-[10px] m-2">02 — CURRENT VALUES</div>
-                            {selectedUnitRecord ? (
-                                <div className="w-full flex flex-row gap-3">
-                                    <div className="flex flex-col justify-center items-start p-4 border-2 flex-[2] h-[100px] bg-[#FFF3C2] border-[#FFB604] rounded-md">
-                                        <div className="text-xs">COST</div>
-                                        <div className="text-[#FFB604] text-[2.4em] font-instrument">${selectedUnitRecord.cost.toFixed(2)}</div>
-                                    </div>
-                                    <div className="flex flex-col justify-center items-start p-4 border-2 flex-1 h-[100px] border-[#EDEAEA] rounded-md">
-                                        <div className="text-xs">UNIT</div>
-                                        <div className="text-[1.2em] font-instrument">{selectedUnitRecord.unit}</div>
-                                    </div>
-                                    <div className="flex flex-col justify-center items-start p-4 border-2 flex-1 h-[100px] border-[#EDEAEA] rounded-md">
-                                        <div className="text-xs">TYPE</div>
-                                        <div className="text-[1.2em] font-instrument">{selectedUnitRecord.type}</div>
-                                    </div>
-                                    <div className="flex flex-col justify-center items-start p-4 border-2 flex-1 h-[100px] border-[#EDEAEA] rounded-md">
-                                        <div className="text-xs">LAST UPDATED</div>
-                                        <div className="text-[1em] font-instrument">{formatDate(selectedUnitRecord.last_updated)}</div>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="text-xs m-2">Select a record above to view current values.</div>
-                            )}
-                        </div>
-
-                        {/* Section 03 */}
-                        <div className="flex flex-col items-start w-full flex-1 p-5">
-                            <div className="text-[10px] m-2">03 — UPDATE VALUES</div>
-                            {unitEdits ? (
-                                <div className="flex flex-row gap-4 items-start w-full flex-wrap">
-                                    <div className="flex-[2] min-w-[200px]">
-                                        <div className="text-xs font-bold m-2 flex items-center gap-2">
-                                            Display Name
-                                            {unitEdits.display_name !== selectedUnitRecord?.display_name && <span className="text-[9px] text-[#FFB604] font-bold tracking-wider">CHANGED</span>}
-                                        </div>
-                                        <input type="text" value={unitEdits.display_name} onChange={(e) => handleUnitEdit("display_name", e.target.value)} className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors" />
-                                    </div>
-                                    <div className="flex-1 min-w-[110px]">
-                                        <div className="text-xs font-bold m-2 flex items-center gap-2">
-                                            Cost ($)
-                                            {unitEdits.cost !== selectedUnitRecord?.cost && <span className="text-[9px] text-[#FFB604] font-bold tracking-wider">CHANGED</span>}
-                                        </div>
-                                        <input type="number" min={0} step={1} value={unitEdits.cost} onChange={(e) => handleUnitEdit("cost", e.target.value)} className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors" />
-                                    </div>
-                                    <div className="flex-1 min-w-[110px]">
-                                        <div className="text-xs font-bold m-2 flex items-center gap-2">
-                                            Unit
-                                            {unitEdits.unit !== selectedUnitRecord?.unit && <span className="text-[9px] text-[#FFB604] font-bold tracking-wider">CHANGED</span>}
-                                        </div>
-                                        <input type="text" value={unitEdits.unit} onChange={(e) => handleUnitEdit("unit", e.target.value)} className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors" />
-                                    </div>
-                                    <div className="flex-1 min-w-[110px]">
-                                        <div className="text-xs font-bold m-2 flex items-center gap-2">
-                                            Type
-                                            {unitEdits.type !== selectedUnitRecord?.type && <span className="text-[9px] text-[#FFB604] font-bold tracking-wider">CHANGED</span>}
-                                        </div>
-                                        <input type="text" value={unitEdits.type} onChange={(e) => handleUnitEdit("type", e.target.value)} className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors" />
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="text-xs m-2">Select a record above to edit values.</div>
-                            )}
-                        </div>
-                    </>)}
-
-                    {/* ── MODULE 1: Standee Static Costs ── */}
-                    {currentModule === 1 && (<>
-                        {/* Section 01 */}
-                        <div className="flex flex-col justify-center items-start w-full p-5 border-b-2 border-[#EDEAEA]">
-                            <div className="text-[10px] m-2">01 — STANDEE TYPE SELECTION</div>
-                            <Dropdown options={STANDEE_TYPES} currOption={standeeType} onSelect={setStandeeType} width="w-[420px]" />
-                        </div>
-
-                        {/* Section 02 — editable value boxes */}
-                        <div className="flex flex-col items-start w-full flex-1 p-5 overflow-y-auto">
-                            <div className="flex items-center gap-2 m-2">
-                                <span className="text-[10px]">02 — VALUES</span>
-                                {standeeEdits && (
-                                    <span className="text-[10px] font-bold text-[#FFB604] px-1.5 py-0.5 tracking-wide">
-                                        Click Any Value to Edit
-                                    </span>
-                                )}
-                            </div>
-                            {isLoadingStandee ? (
-                                <div className="text-xs m-2">Loading...</div>
-                            ) : standeeEdits && standeeRecord ? (
-                                <div className="w-full grid grid-cols-3 gap-2">
-                                    {standeeNumericFields(standeeRecord).map(([key, origVal]) => (
-                                        <EditableValueBox
-                                            key={key}
-                                            label={formatFieldLabel(key)}
-                                            value={standeeEdits[key]}
-                                            originalValue={origVal}
-                                            onChange={(val) => handleStandeeEdit(key, val)}
-                                        />
-                                    ))}
-                                </div>
-                            ) : (
-                                <div className="text-xs m-2">Select a standee type above to edit values.</div>
-                            )}
-                        </div>
-                    </>)}
-
-                    {/* ── MODULE 2: Overs ── */}
-                    {currentModule === 2 && (<>
-                        {/* Section 01 */}
-                        <div className="flex flex-col justify-center items-start w-full p-5 border-b-2 border-[#EDEAEA]">
-                            <div className="text-[10px] m-2">01 — QUANTITY TIERS</div>
-                            {isLoadingOvers ? (
-                                <div className="text-xs m-2">Loading records...</div>
-                            ) : (
-                                <div className="text-xs m-2 text-[#ABABAB]">
-                                    {oversRecords.length} tiers loaded. Leave Upper Bound blank for an open-ended tier.
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Section 02 — tier rows */}
-                        <div className="flex flex-col items-start w-full flex-1 p-5 overflow-y-auto">
-                            <div className="flex items-center gap-2 m-2">
-                                <span className="text-[10px]">02 — TIER VALUES</span>
-                                {isOversDirty && (
-                                    <span className="text-[10px] font-bold text-[#FFB604] px-1.5 py-0.5 tracking-wide">
-                                        Unsaved Changes
-                                    </span>
-                                )}
-                            </div>
-                            {isLoadingOvers ? (
-                                <div className="text-xs m-2">Loading...</div>
-                            ) : (oversRecords.length > 0 && oversEdits) || pendingNewOvers.length > 0 ? (
-                                <>
-                                    <div className="flex flex-row gap-3 w-full mb-1 px-1">
-                                        <div className="text-[9px] flex-1 font-bold tracking-wider">LOWER BOUND</div>
-                                        <div className="text-[9px] flex-1 font-bold tracking-wider">UPPER BOUND</div>
-                                        <div className="text-[9px] flex-1 font-bold tracking-wider">OVERS (%)</div>
-                                        <div className="text-[9px] w-[120px] shrink-0 font-bold tracking-wider">LAST UPDATED</div>
-                                        <div className="w-[34px] shrink-0" />
-                                    </div>
-                                    <div className="w-full flex flex-col gap-2">
-                                        {oversRecords.map((rec) => {
-                                            const e = oversEdits?.[rec._id];
-                                            if (!e) return null;
-                                            const lbChanged = e.lower_bound !== rec.lower_bound;
-                                            const ubChanged = e.upper_bound !== rec.upper_bound;
-                                            const ovChanged = e.overs !== rec.overs;
-                                            const anyChanged = lbChanged || ubChanged || ovChanged;
-                                            return (
-                                                <div key={rec._id} className="flex flex-row items-center gap-3">
-                                                    <div className="flex flex-col flex-1">
-                                                        {lbChanged && <span className="text-[8px] text-[#FFB604] font-bold mb-0.5">CHANGED</span>}
-                                                        <input
-                                                            type="number" min={0} step={1}
-                                                            value={e.lower_bound}
-                                                            onChange={(ev) => handleOversEdit(rec._id, "lower_bound", ev.target.value)}
-                                                            className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
-                                                        />
-                                                    </div>
-                                                    <div className="flex flex-col flex-1">
-                                                        {ubChanged && <span className="text-[8px] text-[#FFB604] font-bold mb-0.5">CHANGED</span>}
-                                                        <input
-                                                            type="number" min={0} step={1}
-                                                            placeholder="∞"
-                                                            value={e.upper_bound ?? ""}
-                                                            onChange={(ev) => handleOversEdit(rec._id, "upper_bound", ev.target.value)}
-                                                            className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
-                                                        />
-                                                    </div>
-                                                    <div className="flex flex-col flex-1">
-                                                        {ovChanged && <span className="text-[8px] text-[#FFB604] font-bold mb-0.5">CHANGED</span>}
-                                                        <input
-                                                            type="number" min={0} step={1}
-                                                            value={e.overs}
-                                                            onChange={(ev) => handleOversEdit(rec._id, "overs", ev.target.value)}
-                                                            className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
-                                                        />
-                                                    </div>
-                                                    <div className="flex justify-center items-center p-2 border-2 w-[120px] shrink-0 border-[#EDEAEA] rounded-md h-[34px]">
-                                                        <div className="text-[0.75em] font-instrument text-black">{formatDate(rec.last_updated)}</div>
-                                                    </div>
-                                                    <button
-                                                        onClick={() => setPendingDeleteId(rec._id)}
-                                                        className="shrink-0 h-[34px] w-[34px] text-xs font-bold border-2 border-[#EDEAEA] rounded-md text-[#ABABAB] hover:border-red-300 hover:text-red-400 transition-colors"
-                                                    >
-                                                        ✕
-                                                    </button>
-                                                </div>
-                                            );
-                                        })}
-                                        {pendingNewOvers.map((row, idx) => (
-                                            <div key={`new-${idx}`} className="flex flex-row items-center gap-3">
-                                                <div className="flex flex-col flex-1">
-                                                    <span className="text-[8px] text-[#FFB604] font-bold mb-0.5">NEW</span>
-                                                    <input
-                                                        type="number" min={0} step={1}
-                                                        value={row.lower_bound}
-                                                        onChange={(ev) => handlePendingOversEdit(idx, "lower_bound", ev.target.value)}
-                                                        className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
-                                                    />
-                                                </div>
-                                                <div className="flex flex-col flex-1">
-                                                    <span className="text-[8px] text-[#FFB604] font-bold mb-0.5">NEW</span>
-                                                    <input
-                                                        type="number" min={0} step={1}
-                                                        placeholder="∞"
-                                                        value={row.upper_bound}
-                                                        onChange={(ev) => handlePendingOversEdit(idx, "upper_bound", ev.target.value)}
-                                                        className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
-                                                    />
-                                                </div>
-                                                <div className="flex flex-col flex-1">
-                                                    <span className="text-[8px] text-[#FFB604] font-bold mb-0.5">NEW</span>
-                                                    <input
-                                                        type="number" min={0} step={1}
-                                                        value={row.overs}
-                                                        onChange={(ev) => handlePendingOversEdit(idx, "overs", ev.target.value)}
-                                                        className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
-                                                    />
-                                                </div>
-                                                <div className="flex justify-center items-center p-2 border-2 w-[120px] shrink-0 border-[#EDEAEA] rounded-md h-[34px]">
-                                                    <div className="text-[0.75em] font-instrument text-black">—</div>
-                                                </div>
-                                                <button
-                                                    onClick={() => handleDeletePendingOvers(idx)}
-                                                    className="shrink-0 h-[34px] w-[34px] text-xs font-bold border-2 border-[#EDEAEA] rounded-md text-[#ABABAB] hover:border-red-300 hover:text-red-400 transition-colors"
-                                                >
-                                                    ✕
-                                                </button>
-                                            </div>
-                                        ))}
-                                    </div>
-                                    <button
-                                        onClick={handleAddOversRow}
-                                        className="mt-2 cursor-pointer px-4 h-[34px] text-xs font-bold border-2 border-dashed border-[#EDEAEA] rounded-md text-[#ABABAB] hover:border-[#FFB604] hover:text-[#FFB604] transition-colors"
-                                    >
-                                        + ADD ROW
-                                    </button>
-                                </>
-                            ) : (
-                                <div className="flex flex-col gap-2 m-2">
-                                    <div className="text-xs text-[#ABABAB]">No overs records found.</div>
-                                    <button
-                                        onClick={handleAddOversRow}
-                                        className="self-start cursor-pointer px-4 h-[34px] text-xs font-bold border-2 border-dashed border-[#EDEAEA] rounded-md text-[#ABABAB] hover:border-[#FFB604] hover:text-[#FFB604] transition-colors"
-                                    >
-                                        + ADD ROW
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                    </>)}
-
-                    {/* ── MODULE 3: Suppliers ── */}
-                    {currentModule === 3 && (<>
-                        {/* Section 01 — supplier + material selection */}
-                        <div className="flex flex-col justify-center items-start w-full p-5 border-b-2 border-[#EDEAEA]">
-                            <div className="text-[10px] m-2">01 — SUPPLIER & MATERIAL</div>
-                            <div className="flex flex-row gap-4 w-full">
-                                <div className="flex flex-col gap-1 flex-1">
-                                    <div className="text-[10px] ml-1">Supplier</div>
-                                    <Dropdown
-                                        options={supplierOptions}
-                                        currOption={supplierLabel(selectedSupplier)}
-                                        onSelect={(displayName: string) => {
-                                            const raw = supplierNames.find((s) => supplierLabel(s) === displayName) ?? displayName;
-                                            setSelectedSupplier(raw);
-                                        }}
-                                        width="w-full"
-                                    />
-                                </div>
-                                <div className="flex flex-col gap-1 flex-[2]">
-                                    <div className="text-[10px] ml-1">Material</div>
-                                    <Dropdown
-                                        options={materialOptions}
-                                        currOption={supplierMaterials.find((m) => m.material === selectedMaterial)?.display_name ?? ""}
-                                        onSelect={(displayName: string) => {
-                                            const match = supplierMaterials.find((m) => m.display_name === displayName);
-                                            if (match) setSelectedMaterial(match.material);
-                                        }}
-                                        width="w-full"
-                                    />
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Section 02 — cost data points */}
-                        <div className="flex flex-col items-start w-full flex-1 p-5 overflow-y-auto">
-                            <div className="flex items-center gap-2 m-2">
-                                <span className="text-[10px]">02 — COST DATA POINTS</span>
-                                {isSupplierDirty && (
-                                    <span className="text-[10px] font-bold text-[#FFB604] px-1.5 py-0.5 tracking-wide">
-                                        Unsaved Changes
-                                    </span>
-                                )}
-                            </div>
-                            {!selectedSupplier || !selectedMaterial ? (
-                                <div className="text-xs m-2">Select a supplier and material above to view cost data points.</div>
-                            ) : isLoadingSupplier ? (
-                                <div className="text-xs m-2">Loading...</div>
-                            ) : supplierDraft && supplierDraft.price_breaks && supplierDraft.price_breaks.length > 0 ? (
-                                <>
-                                    <div className="flex flex-row gap-3 w-full mb-1 px-1">
-                                        <div className="text-[9px] flex-1 font-bold tracking-wider">AMOUNT</div>
-                                        <div className="text-[9px] flex-[2] font-bold tracking-wider">COST</div>
-                                        <div className="text-[9px] flex-1 font-bold tracking-wider">UNIT</div>
-                                        <div className="text-[9px] w-[120px] shrink-0 font-bold tracking-wider">LAST UPDATED</div>
-                                    </div>
-                                    <div className="w-full flex flex-col gap-2">
-                                        {supplierDraft.price_breaks.map((pb, idx) => {
-                                            const orig = supplierDoc?.price_breaks?.[idx];
-                                            const amtChanged = !!orig && pb.amount !== orig.amount;
-                                            const costChanged = !!orig && pb.cost !== orig.cost;
-                                            const unitChanged = !!supplierDoc && supplierDraft.unit !== supplierDoc.unit;
-                                            const isNew = !orig;
-                                            return (
-                                                <div key={idx} className="flex flex-row items-center gap-3">
-                                                    <div className="flex flex-col flex-1">
-                                                        {(amtChanged || isNew) && <span className="text-[8px] text-[#FFB604] font-bold mb-0.5">{isNew ? "NEW" : "CHANGED"}</span>}
-                                                        <input
-                                                            type="number" min={0} step={1}
-                                                            value={pb.amount}
-                                                            onChange={(ev) => handleSupplierEdit(idx, "amount", ev.target.value)}
-                                                            className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
-                                                        />
-                                                    </div>
-                                                    <div className="flex flex-col flex-[2]">
-                                                        {(costChanged || isNew) && <span className="text-[8px] text-[#FFB604] font-bold mb-0.5">{isNew ? "NEW" : "CHANGED"}</span>}
-                                                        <input
-                                                            type="number" min={0} step={1}
-                                                            value={pb.cost}
-                                                            onChange={(ev) => handleSupplierEdit(idx, "cost", ev.target.value)}
-                                                            className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
-                                                        />
-                                                    </div>
-                                                    <div className="flex flex-col flex-1">
-                                                        {(unitChanged || isNew) && <span className="text-[8px] text-[#FFB604] font-bold mb-0.5">{isNew ? "NEW" : "CHANGED"}</span>}
-                                                        <input
-                                                            type="text"
-                                                            value={supplierDraft.unit}
-                                                            onChange={(ev) => handleSupplierEdit(idx, "unit", ev.target.value)}
-                                                            className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
-                                                        />
-                                                    </div>
-                                                    <div className="flex justify-center items-center p-2 border-2 w-[120px] shrink-0 border-[#EDEAEA] rounded-md h-[34px]">
-                                                        <div className="text-[0.75em] font-instrument text-black">{isNew ? "—" : formatDate(supplierDoc?.last_updated ?? "")}</div>
-                                                    </div>
-                                                    <button
-                                                        onClick={() => setPendingDeletePbIdx(idx)}
-                                                        className="shrink-0 h-[34px] px-3 text-xs font-bold border-2 border-[#EDEAEA] rounded-md text-[#ABABAB] hover:border-red-300 hover:text-red-400 transition-colors"
-                                                    >
-                                                        ✕
-                                                    </button>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                    <button
-                                        onClick={handleAddPriceBreak}
-                                        className="mt-2 px-4 h-[34px] text-xs cursor-pointer font-bold border-2 border-dashed border-[#EDEAEA] rounded-md text-[#ABABAB] hover:border-[#FFB604] hover:text-[#FFB604] transition-colors"
-                                    >
-                                        + ADD ROW
-                                    </button>
-                                </>
-                            ) : (
-                                <div className="flex flex-col gap-2 m-2">
-                                    <div className="text-xs text-[#ABABAB]">No records found for this combination.</div>
-                                    <button
-                                        onClick={handleAddPriceBreak}
-                                        className="self-start cursor-pointer px-4 h-[34px] text-xs font-bold border-2 border-dashed border-[#EDEAEA] rounded-md text-[#ABABAB] hover:border-[#FFB604] hover:text-[#FFB604] transition-colors"
-                                    >
-                                        + ADD ROW
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                    </>)}
-
-                    {/* Shared footer buttons */}
-                    <div className="flex w-full flex-row items-center px-4 py-3 gap-4 border-t-2 border-[#EDEAEA] shrink-0">
-                        <div
-                            onClick={handleClear}
-                            className="text-xs text-center font-black text-[#B1B3B6] border-2 border-[#E0E0E0] py-3 rounded-sm flex-1 cursor-pointer hover:bg-[#F4F4F4] hover:text-[#000005] hover:border-[#B1B3B6] transition-all duration-200 uppercase tracking-widest"
-                        >
-                            CLEAR
-                        </div>
-                        <div
-                            onClick={activeIsDirty && !isSaving ? activeHandleSubmit : undefined}
-                            className={`group flex flex-row justify-center gap-4 text-xs font-black py-3 rounded-sm flex-[2] transition-all duration-200 ease-in-out uppercase tracking-widest ${
-                                activeIsDirty && !isSaving
-                                    ? "bg-[#FFC843] text-[#000005] hover:bg-[#000005] hover:text-white cursor-pointer"
-                                    : "bg-[#E0E0E0] text-[#B1B3B6] cursor-not-allowed"
-                            }`}
-                        >
-                            {isSaving ? "SAVING..." : "SUBMIT UPDATE"}
-                            {activeIsDirty && !isSaving && (
-                                <img src="/submitarrow.svg" alt="" className="transition-all duration-300 ease-in-out group-hover:translate-x-1 group-hover:invert" />
-                            )}
-                        </div>
-                    </div>
+                    {activeModule === 0 && <UnitCostsModule />}
+                    {activeModule === 1 && <StandeeModule />}
+                    {activeModule === 2 && <OversModule />}
+                    {activeModule === 3 && <SuppliersModule />}
                 </div>
             </div>
         </div>
