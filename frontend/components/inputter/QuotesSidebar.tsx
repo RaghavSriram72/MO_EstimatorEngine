@@ -1,4 +1,6 @@
 "use client";
+import { useState } from "react";
+import ConfirmAlert from "@/components/ConfirmAlert";
 
 export type SavedQuoteListItem = {
     _id: string;
@@ -44,7 +46,22 @@ export default function QuotesSidebar({
     onDeleteQuote,
     onBack,
 }: Props) {
+    const [pendingDelete, setPendingDelete] = useState<{ id: string; label: string } | null>(null);
+
+    function confirmDelete() {
+        if (!pendingDelete) return;
+        onDeleteQuote(pendingDelete.id, pendingDelete.label);
+        setPendingDelete(null);
+    }
+
     return (
+        <>
+        <ConfirmAlert
+            visible={pendingDelete !== null}
+            message={`Delete "${pendingDelete?.label ?? ""}"? This cannot be undone.`}
+            onConfirm={confirmDelete}
+            onCancel={() => setPendingDelete(null)}
+        />
         <aside className="shrink-0 w-[220px] flex flex-col border-r-2 border-[#E0E0E0] bg-white px-3 py-5 gap-3 min-h-0">
             <div className="text-[10px] font-black uppercase tracking-widest text-[#000005]">
                 <span className="text-[#FFC843]">// </span>QUOTES
@@ -118,7 +135,7 @@ export default function QuotesSidebar({
                                 type="button"
                                 aria-label={`Delete quote ${label}`}
                                 disabled={deletingQuoteId !== null}
-                                onClick={(e) => { e.stopPropagation(); onDeleteQuote(q._id, label); }}
+                                onClick={(e) => { e.stopPropagation(); setPendingDelete({ id: q._id, label }); }}
                                 className="shrink-0 w-8 flex items-center justify-center text-[12px] font-bold text-[#B1B3B6] hover:text-red-600 hover:bg-red-50 border-l-2 border-[#E0E0E0] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                             >
                                 ✕
@@ -135,5 +152,6 @@ export default function QuotesSidebar({
                 ← TO ESTIMATOR
             </button>
         </aside>
+        </>
     );
 }
