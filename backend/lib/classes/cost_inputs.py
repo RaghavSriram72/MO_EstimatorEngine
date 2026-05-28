@@ -19,6 +19,10 @@ class BaseInput:  # project
 
 @dataclass
 class InHouseInput(BaseInput):
+    """Inputs used by in-house production scenarios."""
+
+    imposition_hours: float | None = None
+    print_machine: str = UnitCostEntries.RHO_512R
     print_hours: float | None = None
     rollx_hours: float | None = None
     zund_hours: float | None = None
