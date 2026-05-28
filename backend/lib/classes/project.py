@@ -220,7 +220,6 @@ class InHouseProject[T: InHouseInput](Project[T]):
     rollx_cost: float
     shipping_box_cost: float
     label_cost: float
-    kitting_and_assembly_cost: float
 
     @property
     def total_cost(self) -> float:
@@ -235,7 +234,6 @@ class InHouseProject[T: InHouseInput](Project[T]):
             + self.rollx_cost
             + self.shipping_box_cost
             + self.label_cost
-            + self.kitting_and_assembly_cost
         )
 
     @override
@@ -263,7 +261,6 @@ class InHouseProject[T: InHouseInput](Project[T]):
         self.rollx_cost = self._get_machine_cost(UnitCostEntries.ROLLX, self.rollx_hours)
 
         self.shipping_box_cost, self.label_cost = self._get_shipping_box_and_label_cost()
-        self.kitting_and_assembly_cost = self._get_kitting_and_assembly_cost()
 
 
 class OutsourceProject[T: OutsourceInput](Project[T]):
