@@ -1,0 +1,146 @@
+[
+    {
+        "id": 0,
+        "cluster": 0,
+        "cluster_center_bgr": [
+            198,
+            50,
+            164
+        ],
+        "x": 29,
+        "y": 430,
+        "width": 406,
+        "height": 126,
+        "rotated_width": 124.99998474121094,
+        "rotated_height": 404.99993896484375,
+        "rotation_angle": -90.0,
+        "area": 47604.5,
+        "perimeter": 1065.698484301567
+    },
+    {
+        "id": 1,
+        "cluster": 1,
+        "cluster_center_bgr": [
+            7,
+            207,
+            37
+        ],
+        "x": 104,
+        "y": 370,
+        "width": 17,
+        "height": 60,
+        "rotated_width": 59.0,
+        "rotated_height": 16.0,
+        "rotation_angle": -90.0,
+        "area": 623.0,
+        "perimeter": 141.79898953437805
+    },
+    {
+        "id": 2,
+        "cluster": 1,
+        "cluster_center_bgr": [
+            7,
+            207,
+            37
+        ],
+        "x": 46,
+        "y": 352,
+        "width": 26,
+        "height": 78,
+        "rotated_width": 77.0,
+        "rotated_height": 25.0,
+        "rotation_angle": -90.0,
+        "area": 1675.0,
+        "perimeter": 200.1421353816986
+    },
+    {
+        "id": 3,
+        "cluster": 1,
+        "cluster_center_bgr": [
+            7,
+            207,
+            37
+        ],
+        "x": 391,
+        "y": 351,
+        "width": 27,
+        "height": 79,
+        "rotated_width": 78.0,
+        "rotated_height": 26.0,
+        "rotation_angle": -90.0,
+        "area": 1451.5,
+        "perimeter": 236.3847759962082
+    },
+    {
+        "id": 4,
+        "cluster": 1,
+        "cluster_center_bgr": [
+            7,
+            207,
+            37
+        ],
+        "x": 46,
+        "y": 22,
+        "width": 372,
+        "height": 408,
+        "rotated_width": 407.0,
+        "rotated_height": 371.0,
+        "rotation_angle": -90.0,
+        "area": 77550.0,
+        "perimeter": 2042.8914773464203
+    },
+    {
+        "id": 5,
+        "cluster": 2,
+        "cluster_center_bgr": [
+            2,
+            1,
+            1
+        ],
+        "x": 0,
+        "y": 0,
+        "width": 442,
+        "height": 565,
+        "rotated_width": 563.9998779296875,
+        "rotated_height": 440.99993896484375,
+        "rotation_angle": -90.0,
+        "area": 248669.5,
+        "perimeter": 2016.2426406145096
+    },
+    {
+        "id": 6,
+        "cluster": 3,
+        "cluster_center_bgr": [
+            18,
+            250,
+            251
+        ],
+        "x": 292,
+        "y": 91,
+        "width": 140,
+        "height": 338,
+        "rotated_width": 135.25535583496094,
+        "rotated_height": 339.4559631347656,
+        "rotation_angle": -6.188615798950195,
+        "area": 32020.0,
+        "perimeter": 915.2447279691696
+    },
+    {
+        "id": 7,
+        "cluster": 4,
+        "cluster_center_bgr": [
+            9,
+            43,
+            247
+        ],
+        "x": 33,
+        "y": 69,
+        "width": 162,
+        "height": 361,
+        "rotated_width": 361.0167236328125,
+        "rotated_height": 159.9308624267578,
+        "rotation_angle": -88.63607025146484,
+        "area": 38582.5,
+        "perimeter": 1174.8254618644714
+    }
+]

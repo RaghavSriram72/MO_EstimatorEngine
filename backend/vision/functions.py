@@ -375,17 +375,17 @@ def save_csv(results, filename):
 
 def main():
 
-    image = load_image(INPUT_IMAGE_PATH)
+    image = load_image(INPUT_IMAGE_PATH )
 
-    segmented_image, annotated_image, results = process_image(
+    segmented_image, annotated_image, results, _ = process_image(
         image
     )
 
-    cv2.imwrite("kmeans_segmented.png", segmented_image)
-    cv2.imwrite(OUTPUT_IMAGE, annotated_image)
+    cv2.imwrite(SEGMENTED_IMAGE_OUTPUT_PATH, segmented_image)
+    cv2.imwrite(ANNOTATED_IMAGE_OUTPUT_PATH, annotated_image)
 
     #save_json(results, OUTPUT_JSON)
-    #save_csv(results, OUTPUT_CSV)
+    save_csv(results, RESULTS_FILE)
 
     print("\nDetected Objects")
     print("=" * 70)
@@ -397,15 +397,14 @@ def main():
             f"Cluster: {obj['cluster']} | "
             f"W: {obj['width']:4d} | "
             f"H: {obj['height']:4d} | "
-            f"Area: {obj['area']:8.1f} | "
             f"Perimeter: {obj['perimeter']:8.1f}"
         )
 
     print("\nOutput files:")
     print("  - kmeans_segmented.png")
-    print(f"  - {OUTPUT_IMAGE}")
-    print(f"  - {OUTPUT_JSON}")
-    print(f"  - {OUTPUT_CSV}")
+    # print(f"  - {OUTPUT_IMAGE}")
+    # print(f"  - {OUTPUT_JSON}")
+    # print(f"  - {OUTPUT_CSV}")
 
     # Display windows
     cv2.imshow("KMeans Segmentation", segmented_image)

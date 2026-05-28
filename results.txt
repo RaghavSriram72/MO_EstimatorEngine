@@ -1,0 +1,3 @@
+   class_id  width_px  height_px  perimeter_px  area_px
+0        15       153        338    957.595021  36195.0
+1        15       121        281    733.931024  25006.0

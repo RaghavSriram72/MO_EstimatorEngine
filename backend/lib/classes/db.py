@@ -68,6 +68,8 @@ class MidnightOilDB:
         self.standee_collection = self.db["standee_static_costs"]
         self.print_blank_collection = self.db["print_blank_ratio"]
         self.overs_collection = self.db["overs"]
+        self.packout_collection = self.db["packout"]
+        self.work_center_costs_collection = self.db["work_center_costs"]
         self.suppliers_collection = self.db["suppliers"]
         self.users_collection = self.db["users"]
         self.projects_collection = self.db["projects"]
@@ -132,7 +134,7 @@ class MidnightOilDB:
         """Return one project document if it exists and belongs to ``owner``."""
         try:
             oid = ObjectId(project_id)
-        except (InvalidId, TypeError):
+        except InvalidId, TypeError:
             return None
         row = self.projects_collection.find_one({"_id": oid, "owner": owner})
         if row is None:
@@ -145,7 +147,7 @@ class MidnightOilDB:
         """Update an existing project MongoDB entry."""
         try:
             oid = ObjectId(project_id)
-        except (InvalidId, TypeError):
+        except InvalidId, TypeError:
             return False
         allowed = {"project_name", "num_standees", "standee_type", "elements"}
         update_doc = {k: v for k, v in fields.items() if k in allowed}
@@ -159,7 +161,7 @@ class MidnightOilDB:
         """Delete project entry if it exists and belongs to the owner asking to delete it."""
         try:
             oid = ObjectId(project_id)
-        except (InvalidId, TypeError):
+        except InvalidId, TypeError:
             return False
         result = self.projects_collection.delete_one({"_id": oid, "owner": owner})
         if result.deleted_count > 0:
@@ -182,7 +184,7 @@ class MidnightOilDB:
         """Return one quote document if it exists and belongs to ``owner``."""
         try:
             qid = ObjectId(quote_id)
-        except (InvalidId, TypeError):
+        except InvalidId, TypeError:
             return None
         row = self.quotes_collection.find_one({"_id": qid, "owner": owner})
         if row is None:
@@ -199,7 +201,7 @@ class MidnightOilDB:
         """Return all quote documents for ``project_id`` that belong to ``owner``, newest ``_id`` first."""
         try:
             pid = ObjectId(project_id)
-        except (InvalidId, TypeError):
+        except InvalidId, TypeError:
             return []
         cursor = self.quotes_collection.find({"project_id": pid, "owner": owner}).sort("_id", -1)
         out: list[dict[str, Any]] = []
@@ -217,7 +219,7 @@ class MidnightOilDB:
         """Update allowed fields on a quote owned by ``owner``."""
         try:
             qid = ObjectId(quote_id)
-        except (InvalidId, TypeError):
+        except InvalidId, TypeError:
             return False
         allowed = {"quote_name", "breakdown", "num_standees", "scenario", "standee_type", "elements"}
         update_doc_final = {k: v for k, v in fields.items() if k in allowed}
@@ -231,7 +233,7 @@ class MidnightOilDB:
         """Delete one quote if it exists and belongs to ``owner``."""
         try:
             qid = ObjectId(quote_id)
-        except (InvalidId, TypeError):
+        except InvalidId, TypeError:
             return False
         result = self.quotes_collection.delete_one({"_id": qid, "owner": owner})
         return result.deleted_count > 0
@@ -240,7 +242,7 @@ class MidnightOilDB:
         """Remove all quotes linked to ``project_id`` for ``owner``. Returns deleted count."""
         try:
             oid = ObjectId(project_id)
-        except (InvalidId, TypeError):
+        except InvalidId, TypeError:
             return 0
         result = self.quotes_collection.delete_many({"project_id": oid, "owner": owner})
         return result.deleted_count
@@ -479,7 +481,84 @@ class MidnightOilDB:
         result = self.overs_collection.delete_one({"_id": oid})
         if result.deleted_count == 0:
             raise ValueError(f"Overs record not found for id '{record_id}'")
+
+    def get_packout(self, standees: int, forms: int, complexity: str) -> float:
+        """Return the packout cost for a given quantity of standees, forms, and complexity."""
+        result = self.packout_collection.find_one(
+            {
+                "$and": [
+                    {"standees_lower_bound": {"$lte": standees}},
+                    {"$or": [{"standees_upper_bound": None}, {"standees_upper_bound": {"$gte": standees}}]},
+                    {"forms_lower_bound": {"$lte": forms}},
+                    {"$or": [{"forms_upper_bound": None}, {"forms_upper_bound": {"$gte": forms}}]},
+                    {"complexity": {"$regex": f"^{complexity}$", "$options": "i"}},
+                ]
+            }
+        )
+        if result and "packout" in result:
+            return float(result["packout"])
+        else:
+            raise ValueError(f"Packout not found for standees {standees}, forms {forms}, and complexity {complexity}")
+
+    def get_all_packout(self) -> list[dict]:
+        """Return all packout costs sorted by lower_bound."""
+        records = []
+        for r in sorted(self._cache["packout"], key=lambda x: (x["standees_lower_bound"], x["forms_lower_bound"])):
+            r["_id"] = str(r["_id"])
+            if "last_updated" in r and hasattr(r["last_updated"], "isoformat"):
+                r["last_updated"] = r["last_updated"].isoformat()
+            records.append(r)
+        return records
+
+    def upsert_packout(
+        self,
+        record_id: str | None,
+        standees_lower_bound: int,
+        standees_upper_bound: int | None,
+        forms_lower_bound: int,
+        forms_upper_bound: int | None,
+        complexity: str,
+        packout: int,
+    ) -> str:
+        """Upsert a packout tier record. Generates a new _id when record_id is None."""
+        if record_id is not None:
+            try:
+                oid = ObjectId(record_id)
+            except Exception:
+                raise ValueError(f"Invalid packout record id '{record_id}'")
+        else:
+            oid = ObjectId()
+
+        self.packout_collection.update_one(
+            {"_id": oid},
+            {
+                "$set": {
+                    "standees_lower_bound": standees_lower_bound,
+                    "standees_upper_bound": standees_upper_bound,
+                    "forms_lower_bound": forms_lower_bound,
+                    "forms_upper_bound": forms_upper_bound,
+                    "complexity": complexity,
+                    "packout": packout,
+                    "last_updated": datetime.now(UTC),
+                }
+            },
+            upsert=True,
+        )
+
         self._load_cache()
+        return str(oid)
+
+    def delete_packout(self, record_id: str) -> None:
+        """Delete a packout tier record by _id."""
+        try:
+            oid = ObjectId(record_id)
+        except Exception:
+            raise ValueError(f"Invalid packout record id '{record_id}'")
+
+        result = self.packout_collection.delete_one({"_id": oid})
+
+        if result.deleted_count == 0:
+            raise ValueError(f"Packout record not found for id '{record_id}'")
 
 
 def _hash_password(password: str) -> str:

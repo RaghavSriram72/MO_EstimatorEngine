@@ -54,11 +54,15 @@ class Scenario3[T: Scenario3Input](InHouseProject[T]):
         self.pallet_labor_cost = self.db.get_unit_cost(UnitCostEntries.PALLET_LABOR) * self.pallet_count
         self.pallet_cost = self.pallet_material_cost + self.pallet_labor_cost
         self.freight_cost = input.freight_cost or self.db.get_unit_cost(UnitCostEntries.EXTERNAL_ASSEMBLY)
+        self.packout = (
+            self.db.get_packout(self.num_standees, self.print_forms_per_standee, self.standee_key.split()[0])
+            * self.num_standees
+        )
 
     @property
     def total_cost(self) -> float:
         """Calculate the total cost of the project, including both universal and scenario-specific costs."""
-        return super().total_cost + self.instruction_sheet_cost + self.pallet_cost + self.freight_cost
+        return super().total_cost + self.instruction_sheet_cost + self.pallet_cost + self.freight_cost + self.packout
 
 
 class Scenario4[T: Scenario4Input](OutsourceProject[T]):
@@ -79,8 +83,11 @@ class Scenario4[T: Scenario4Input](OutsourceProject[T]):
         self.pallet_labor_cost = self.db.get_unit_cost(UnitCostEntries.PALLET_LABOR) * self.pallet_count
         self.pallet_cost = self.pallet_material_cost + self.pallet_labor_cost
         self.freight_cost = input.freight_cost or self.db.get_unit_cost(UnitCostEntries.EXTERNAL_MOUNT_ASSEMBLY)
-        if input.die_cost is not None:
-            self.die_cost = input.die_cost
+        self.die_cost = input.die_cost or self._get_die_cost()
+        self.packout = (
+            self.db.get_packout(self.num_standees, self.print_forms_per_standee, self.standee_key.split()[0])
+            * self.num_standees
+        )
 
     @property
     def total_cost(self) -> float:
@@ -92,6 +99,8 @@ class Scenario4[T: Scenario4Input](OutsourceProject[T]):
             + self.print_cost
             + self.pallet_cost
             + self.freight_cost
+            + self.die_cost
+            + self.packout
         )
 
 
@@ -104,10 +113,13 @@ class Scenario5[T: Scenario5Input](OutsourceProject[T]):
         super().calculate_cost(input)
         self.print_form_cost = self._get_supplier_litho_buyout_cost()
         self.freight_cost = input.freight_cost or self.db.get_unit_cost(UnitCostEntries.FULL_OUT_SOURCE)
-        if input.die_cost is not None:
-            self.die_cost = input.die_cost
+        self.die_cost = input.die_cost or self._get_die_cost()
+        self.packout = (
+            self.db.get_packout(self.num_standees, self.print_forms_per_standee, self.standee_key.split()[0])
+            * self.num_standees
+        )
 
     @property
     def total_cost(self) -> float:
         """Calculate the total cost of the project, including both universal and scenario-specific costs."""
-        return super().total_cost + self.freight_cost
+        return super().total_cost + self.freight_cost + self.die_cost + self.packout
