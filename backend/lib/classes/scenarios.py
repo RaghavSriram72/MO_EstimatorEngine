@@ -7,7 +7,7 @@ from lib.classes.cost_inputs import (
     Scenario4Input,
     Scenario5Input,
 )
-from lib.classes.db_keys import SupplierMaterials, Suppliers, UnitCostEntries
+from lib.classes.db_keys import UnitCostEntries
 from lib.classes.project import InHouseProject, OutsourceProject
 
 FOSTERS_DEFAULT_OVERS = 100
@@ -20,17 +20,26 @@ class Scenario1[T: Scenario1Input](InHouseProject[T]):
     def calculate_cost(self, input: T) -> None:
         super().calculate_cost(input)
         self.instruction_sheet_cost = self._get_instruction_sheet_cost()
+        self.kitting_and_assembly_cost = self._get_kitting_and_assembly_cost()
 
     @property
     def total_cost(self) -> float:
         """Calculate the total cost of the project, including both universal and scenario-specific costs."""
-        return super().total_cost + self.instruction_sheet_cost
+        return super().total_cost + self.instruction_sheet_cost + self.kitting_and_assembly_cost
 
 
 class Scenario2[T: Scenario2Input](InHouseProject[T]):
     """Scenario 2: Internal Print, Internal Finishing, Assembled."""
 
-    pass
+    @override
+    def calculate_cost(self, input: T) -> None:
+        super().calculate_cost(input)
+        self.kitting_and_assembly_cost = self._get_kitting_and_assembly_cost()
+
+    @property
+    def total_cost(self) -> float:
+        """Calculate the total cost of the project, including both universal and scenario-specific costs."""
+        return super().total_cost + self.kitting_and_assembly_cost
 
 
 class Scenario3[T: Scenario3Input](InHouseProject[T]):
@@ -45,7 +54,7 @@ class Scenario3[T: Scenario3Input](InHouseProject[T]):
         self.pallet_labor_cost = self.db.get_unit_cost(UnitCostEntries.PALLET_LABOR) * self.pallet_count
         self.pallet_cost = self.pallet_material_cost + self.pallet_labor_cost
         self.freight_cost = input.freight_cost or self.db.get_unit_cost(UnitCostEntries.EXTERNAL_ASSEMBLY)
-        
+
     @property
     def total_cost(self) -> float:
         """Calculate the total cost of the project, including both universal and scenario-specific costs."""
