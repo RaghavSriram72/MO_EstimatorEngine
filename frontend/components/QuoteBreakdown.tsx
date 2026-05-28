@@ -693,6 +693,7 @@ export default function QuoteBreakdown({
             ? parsedScenarioOv
             : scenarioLinesSum;
     const grandTotal = universalTotal + scenarioTotal;
+    const costPerStandee = numStandees > 0 ? grandTotal / numStandees : null;
 
     const availableScenarios: ScenarioId[] = [1, 2, 3, 4, 5].filter(
         (id) => quoteData[`scenario_${id}`] !== undefined,
@@ -971,10 +972,20 @@ export default function QuoteBreakdown({
 
                     {/* Grand total */}
                     <div className="shrink-0 sticky bottom-0 flex items-center justify-between bg-[#000005] text-white rounded-sm px-5 py-4">
-                        <span className="text-sm font-black uppercase tracking-widest">Total Estimated Cost</span>
-                        <span className="text-2xl font-black text-[#FFC843]">
-                            ${fmt(grandTotal)}
-                        </span>
+                        <div className="flex flex-col gap-0.5">
+                            <span className="text-sm font-black uppercase tracking-widest">Total Estimated Cost</span>
+                            {costPerStandee !== null && (
+                                <span className="text-[10px] font-bold text-[#B1B3B6] uppercase tracking-widest">
+                                    Cost per standee ({numStandees})
+                                </span>
+                            )}
+                        </div>
+                        <div className="flex flex-col items-end gap-0.5">
+                            <span className="text-2xl font-black text-[#FFC843]">${fmt(grandTotal)}</span>
+                            {costPerStandee !== null && (
+                                <span className="text-sm font-black text-white tabular-nums">${fmt(costPerStandee)}</span>
+                            )}
+                        </div>
                     </div>
 
                 </div>
