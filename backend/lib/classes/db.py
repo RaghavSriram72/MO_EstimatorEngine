@@ -134,7 +134,7 @@ class MidnightOilDB:
         """Return one project document if it exists and belongs to ``owner``."""
         try:
             oid = ObjectId(project_id)
-        except InvalidId, TypeError:
+        except (InvalidId, TypeError):
             return None
         row = self.projects_collection.find_one({"_id": oid, "owner": owner})
         if row is None:
@@ -147,7 +147,7 @@ class MidnightOilDB:
         """Update an existing project MongoDB entry."""
         try:
             oid = ObjectId(project_id)
-        except InvalidId, TypeError:
+        except (InvalidId, TypeError):
             return False
         allowed = {"project_name", "num_standees", "standee_type", "elements"}
         update_doc = {k: v for k, v in fields.items() if k in allowed}
@@ -161,7 +161,7 @@ class MidnightOilDB:
         """Delete project entry if it exists and belongs to the owner asking to delete it."""
         try:
             oid = ObjectId(project_id)
-        except InvalidId, TypeError:
+        except (InvalidId, TypeError):
             return False
         result = self.projects_collection.delete_one({"_id": oid, "owner": owner})
         if result.deleted_count > 0:
@@ -184,7 +184,7 @@ class MidnightOilDB:
         """Return one quote document if it exists and belongs to ``owner``."""
         try:
             qid = ObjectId(quote_id)
-        except InvalidId, TypeError:
+        except (InvalidId, TypeError):
             return None
         row = self.quotes_collection.find_one({"_id": qid, "owner": owner})
         if row is None:
@@ -201,7 +201,7 @@ class MidnightOilDB:
         """Return all quote documents for ``project_id`` that belong to ``owner``, newest ``_id`` first."""
         try:
             pid = ObjectId(project_id)
-        except InvalidId, TypeError:
+        except (InvalidId, TypeError):
             return []
         cursor = self.quotes_collection.find({"project_id": pid, "owner": owner}).sort("_id", -1)
         out: list[dict[str, Any]] = []
@@ -219,7 +219,7 @@ class MidnightOilDB:
         """Update allowed fields on a quote owned by ``owner``."""
         try:
             qid = ObjectId(quote_id)
-        except InvalidId, TypeError:
+        except (InvalidId, TypeError):
             return False
         allowed = {"quote_name", "breakdown", "num_standees", "scenario", "standee_type", "elements"}
         update_doc_final = {k: v for k, v in fields.items() if k in allowed}
@@ -233,7 +233,7 @@ class MidnightOilDB:
         """Delete one quote if it exists and belongs to ``owner``."""
         try:
             qid = ObjectId(quote_id)
-        except InvalidId, TypeError:
+        except (InvalidId, TypeError):
             return False
         result = self.quotes_collection.delete_one({"_id": qid, "owner": owner})
         return result.deleted_count > 0
@@ -242,7 +242,7 @@ class MidnightOilDB:
         """Remove all quotes linked to ``project_id`` for ``owner``. Returns deleted count."""
         try:
             oid = ObjectId(project_id)
-        except InvalidId, TypeError:
+        except (InvalidId, TypeError):
             return 0
         result = self.quotes_collection.delete_many({"project_id": oid, "owner": owner})
         return result.deleted_count

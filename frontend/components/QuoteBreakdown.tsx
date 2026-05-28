@@ -77,13 +77,15 @@ const SCENARIO_LINE_DEFS: Record<string, LineDef> = {
     shipping_box_cost:      { label: "Shipping Box",         unit: "standees" },
     label_cost:             { label: "Labels",               unit: "standees" },
     instruction_sheet_cost: { label: "Instruction Sheet",    unit: "standees" },
-    freight_cost:           { label: "Freight Cost",         unit: "flat"     },
+    freight_cost:               { label: "Freight Cost",            unit: "flat"     },
+    kitting_and_assembly_cost:  { label: "Kitting & Assembly",      unit: "standees" },
+    packout:                    { label: "Packout",                 unit: "standees" },
 };
 
 const SCENARIO_KEYS: Record<ScenarioId, string[]> = {
-    1: ["corrugate_cost", "print_form_cost", "print_cost", "rollx_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost"],
-    2: ["corrugate_cost", "print_form_cost", "print_cost", "rollx_cost", "zund_cut_cost", "shipping_box_cost", "label_cost"],
-    3: ["corrugate_cost", "print_form_cost", "print_cost", "rollx_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "pallet_material_cost", "pallet_labor_cost", "freight_cost"],
+    1: ["corrugate_cost", "print_form_cost", "print_cost", "rollx_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "kitting_and_assembly_cost"],
+    2: ["corrugate_cost", "print_form_cost", "print_cost", "rollx_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "kitting_and_assembly_cost"],
+    3: ["corrugate_cost", "print_form_cost", "print_cost", "rollx_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "pallet_material_cost", "pallet_labor_cost", "freight_cost", "packout"],
     4: ["corrugate_cost", "print_form_cost", "print_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "pallet_material_cost", "pallet_labor_cost", "freight_cost", "die_cost"],
     5: ["corrugate_cost", "print_form_cost", "label_cost", "instruction_sheet_cost", "freight_cost", "die_cost"],
 };
@@ -109,8 +111,10 @@ const QTY_FROM_SOURCE: Partial<Record<string, (s: Record<string, number>) => num
     zund_cut_cost:          (s) => s.zund_hours            ?? 1,
     shipping_box_cost:      (s) => s.num_standees         ?? 1,
     label_cost:             (s) => s.num_standees         ?? 1,
-    instruction_sheet_cost: (s) => s.num_standees         ?? 1,
-    pallet_material_cost:   (s) => s.pallet_count         ?? 1,
+    instruction_sheet_cost:     (s) => s.num_standees ?? 1,
+    kitting_and_assembly_cost:  (s) => s.num_standees ?? 1,
+    packout:                    (s) => s.num_standees ?? 1,
+    pallet_material_cost:       (s) => s.pallet_count  ?? 1,
     pallet_labor_cost:      (s) => s.pallet_count         ?? 1,
 };
 
@@ -644,6 +648,7 @@ export default function QuoteBreakdown({
                 setRecalculateError("Recalculate failed — check console for details");
                 return;
             }
+            console.log(`[recalculate] scenario_${sid}:`, data?.[`scenario_${sid}`]);
             const src: Record<string, number> = (data[`scenario_${sid}`] as Record<string, number>) ?? {};
             const newUniversalLines = seedLines(buildLines(Object.keys(UNIVERSAL_LINE_DEFS), UNIVERSAL_LINE_DEFS), src);
             const newScenarioLines  = seedLines(buildLines(SCENARIO_KEYS[sid], SCENARIO_LINE_DEFS), src);

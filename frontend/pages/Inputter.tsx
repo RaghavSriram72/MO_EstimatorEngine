@@ -538,6 +538,7 @@ export default function Inputter() {
             if (!res.ok) { console.error("Quote error:", data); return; }
 
             const quoteResult = data as Record<string, unknown>;
+            console.log(`[generateQuote] scenario_${newQuoteScenario}:`, quoteResult[`scenario_${newQuoteScenario}`]);
             setActiveQuotePayload(corePayload);
             setActiveQuoteScenario(newQuoteScenario);
             setActiveQuoteName(quoteName);
