@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { type QuoteData, type QuoteBreakdownUi, type CostLineOverride, type ScenarioCostLineOverrides, type RequestPayload } from "@/pages/Inputter";
 import { API_BASE } from "@/lib/config";
 
@@ -502,6 +502,26 @@ export default function QuoteBreakdown({
     const [universalCostsExpanded, setUniversalCostsExpanded] = useState(false);
     const [scenarioCostsExpanded, setScenarioCostsExpanded] = useState(false);
     const [manualDirty, setManualDirty] = useState(false);
+    const [contributionMargin, setContributionMargin] = useState("");
+
+    // ── Save toast (mirrors the estimator-form toast pattern) ──────────────
+    const [toast, setToast] = useState<{ message: string; type: "save" | "delete" } | null>(null);
+    const [toastVisible, setToastVisible] = useState(false);
+
+    useEffect(() => {
+        if (toast) {
+            const showId   = setTimeout(() => setToastVisible(true), 20);
+            const hideId   = setTimeout(() => setToastVisible(false), 2500);
+            const removeId = setTimeout(() => setToast(null), 2800);
+            return () => { clearTimeout(showId); clearTimeout(hideId); clearTimeout(removeId); };
+        }
+    }, [toast]);
+
+    function showToast(message: string, type: "save" | "delete") {
+        setToastVisible(false);
+        setToast(null);
+        setTimeout(() => setToast({ message, type }), 10);
+    }
 
     const { universalLines, universalSubtotalOverride } = perScenario[activeScenario];
     const { numStandees, printFormsPerStandee, structureFormsPerStandee, overs } = params;
@@ -574,6 +594,7 @@ export default function QuoteBreakdown({
             if (ok) {
                 setBaseline({ ...params });
                 setManualDirty(false);
+                showToast("Quote saved", "save");
             } else {
                 setSaveQuoteError("Could not save quote");
             }
