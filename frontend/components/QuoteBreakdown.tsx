@@ -722,6 +722,12 @@ export default function QuoteBreakdown({
     const costPerStandee = numStandees > 0 ? grandTotal / numStandees : null;
 
     const marginPctRaw = parseFloat(contributionMargin);
+    const marginValid  = Number.isFinite(marginPctRaw) && marginPctRaw >= 0 && marginPctRaw < 100;
+    const marginPct    = marginValid ? marginPctRaw : 0;
+    const sellPrice    = marginPct > 0 ? grandTotal / (1 - marginPct / 100) : grandTotal;
+    const marginDollars = sellPrice - grandTotal;
+    const sellPerStandee = numStandees > 0 ? sellPrice / numStandees : null;
+
     const availableScenarios: ScenarioId[] = [1, 2, 3, 4, 5].filter(
         (id) => quoteData[`scenario_${id}`] !== undefined,
     ) as ScenarioId[];
@@ -729,6 +735,23 @@ export default function QuoteBreakdown({
     return (
         <div className="flex flex-col w-full flex-1 min-h-0 overflow-hidden text-[#000005] bg-[#F8F8F8]">
             {toast && (
+                <div
+                    className={`fixed top-6 left-1/2 z-50 -translate-x-1/2 transition-all duration-300 ease-out ${
+                        toastVisible ? "translate-y-0 opacity-100" : "-translate-y-6 opacity-0"
+                    }`}
+                >
+                    <div className={`flex items-center gap-3 rounded-sm border-2 px-5 py-3 shadow-2xl ${
+                        toast.type === "delete" ? "border-red-400 bg-[#000005]" : "border-[#FFC843] bg-[#000005]"
+                    }`}>
+                        <span className={`text-[10px] font-black uppercase tracking-widest ${
+                            toast.type === "delete" ? "text-red-400" : "text-[#FFC843]"
+                        }`}>
+                            {toast.type === "delete" ? "// DELETED" : "// SAVED"}
+                        </span>
+                        <span className="text-xs font-semibold text-white">{toast.message}</span>
+                    </div>
+                </div>
+            )}
             <div className="flex flex-col flex-1 min-h-0 overflow-hidden px-8 py-6 gap-5">
 
                 {/* Header: quote name, title, scenario tabs, back */}
@@ -998,20 +1021,65 @@ export default function QuoteBreakdown({
                         </div>
                     </div>
 
-                    <div className="shrink-0 sticky bottom-0 flex items-center justify-between bg-[#000005] text-white rounded-sm px-5 py-4">
-                        <div className="flex flex-col gap-0.5">
-                            <span className="text-sm font-black uppercase tracking-widest">Total Estimated Cost</span>
-                            {costPerStandee !== null && (
-                                <span className="text-[10px] font-bold text-[#B1B3B6] uppercase tracking-widest">
-                                    Cost per standee ({numStandees})
-                                </span>
-                            )}
                     {/* Grand total + contribution margin */}
+                    <div className="shrink-0 sticky bottom-0 flex flex-wrap items-center justify-between gap-x-6 gap-y-4 bg-[#000005] text-white rounded-sm px-5 py-4">                        <div className="flex flex-col gap-1">
+                            <span className="text-[10px] font-black text-[#B1B3B6] uppercase tracking-widest">Contribution Margin</span>
+                            <div className="flex items-center gap-1.5">
+                                <input
+                                    type="number"
+                                    min={0}
+                                    max={99.99}
+                                    step={0.5}
+                                    value={contributionMargin}
+                                    onChange={(e) => setContributionMargin(e.target.value)}
+                                    placeholder="0"
+                                    className="border-2 border-[#2A2A30] rounded-sm px-2 py-1 text-sm font-black text-white bg-[#15151A] outline-none focus:border-[#FFC843] w-[90px] text-right transition-colors"
+                                />
+                                <span className="text-sm font-black text-[#FFC843]">%</span>
+                            </div>
+                            <span className="text-[10px] font-bold text-[#B1B3B6] uppercase tracking-widest">
+                                {marginPct > 0 ? `Margin $${fmt(marginDollars)}` : "Markup on cost"}
+                            </span>
                         </div>
-                            <span className="text-2xl font-black text-[#FFC843]">${fmt(grandTotal)}</span>
-                            {costPerStandee !== null && (
-                                <span className="text-sm font-black text-white tabular-nums">${fmt(costPerStandee)}</span>
-                            )}
+
+                        <div className="h-12 w-px bg-[#2A2A30]" />
+
+                        {/* Total estimated cost */}
+                        <div className="flex items-center gap-3">
+                            <div className="flex flex-col gap-0.5">
+                                <span className="text-sm font-black uppercase tracking-widest">Total Cost</span>
+                                {costPerStandee !== null && (
+                                    <span className="text-[10px] font-bold text-[#B1B3B6] uppercase tracking-widest">
+                                        Per standee ({numStandees})
+                                    </span>
+                                )}
+                            </div>
+                            <div className="flex flex-col items-end gap-0.5">
+                                <span className="text-xl font-black text-white tabular-nums">${fmt(grandTotal)}</span>
+                                {costPerStandee !== null && (
+                                    <span className="text-xs font-black text-[#B1B3B6] tabular-nums">${fmt(costPerStandee)}</span>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="h-12 w-px bg-[#2A2A30]" />
+
+                        {/* Sell price after contribution margin */}
+                        <div className="flex items-center gap-3">
+                            <div className="flex flex-col gap-0.5">
+                                <span className="text-sm font-black uppercase tracking-widest text-[#FFC843]">Sell Price</span>
+                                {sellPerStandee !== null && (
+                                    <span className="text-[10px] font-bold text-[#B1B3B6] uppercase tracking-widest">
+                                        Per standee ({numStandees})
+                                    </span>
+                                )}
+                            </div>
+                            <div className="flex flex-col items-end gap-0.5">
+                                <span className="text-2xl font-black text-[#FFC843] tabular-nums">${fmt(sellPrice)}</span>
+                                {sellPerStandee !== null && (
+                                    <span className="text-xs font-black text-white tabular-nums">${fmt(sellPerStandee)}</span>
+                                )}
+                            </div>
                         </div>
                     </div>
 
