@@ -1,5 +1,5 @@
 "use client";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { API_BASE } from "@/lib/config";
 
 type VisionElement = { id: number; width: number; height: number; mask_b64?: string };
@@ -18,7 +18,23 @@ export default function UploadBlueModal({ open, onClose, onElementsLoaded }: Pro
     const [error, setError] = useState<string | null>(null);
     const inputRef = useRef<HTMLInputElement>(null);
 
-    if (!open) return null;
+    // mounted keeps the DOM node alive during the exit animation
+    const [mounted, setMounted] = useState(false);
+    const [visible, setVisible] = useState(false);
+
+    useEffect(() => {
+        if (open) {
+            setMounted(true);
+            const id = setTimeout(() => setVisible(true), 10);
+            return () => clearTimeout(id);
+        } else {
+            setVisible(false);
+            const id = setTimeout(() => setMounted(false), 320);
+            return () => clearTimeout(id);
+        }
+    }, [open]);
+
+    if (!mounted) return null;
 
     function acceptFile(f: File) {
         setFile(f);
@@ -65,8 +81,14 @@ export default function UploadBlueModal({ open, onClose, onElementsLoaded }: Pro
     }
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-            <div className="bg-white rounded-sm border-2 border-[#E0E0E0] shadow-xl w-full max-w-2xl mx-4 flex flex-col gap-0 overflow-hidden min-h-[600px]">
+        <div
+            className={`fixed inset-0 z-50 flex items-end justify-center pb-6 transition-[background-color] duration-300 ${
+                visible ? "bg-black/50" : "bg-black/0"
+            }`}
+        >
+            <div className={`bg-white rounded-sm border-2 border-[#E0E0E0] shadow-xl w-full max-w-2xl mx-4 flex flex-col gap-0 overflow-hidden min-h-[600px] ${
+                visible ? "modal-slide-up" : "modal-slide-down"
+            }`}>
 
                 {/* Header */}
                 <div className="flex items-center justify-between px-10 py-4 border-b-2 border-[#E0E0E0]">

@@ -185,6 +185,19 @@ body {
 }
 
 
+/* ── Modal slide-from-bottom animations ── */
+@utility modal-slide-up {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.35s ease-out, transform 0.35s ease-out;
+}
+
+@utility modal-slide-down {
+  opacity: 0;
+  transform: translateY(100%);
+  transition: opacity 0.3s ease-in, transform 0.3s ease-in;
+}
+
 /* ── Scrollbar ── */
 *::-webkit-scrollbar {
   width: 8px;

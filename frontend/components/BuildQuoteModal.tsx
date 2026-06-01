@@ -1,5 +1,5 @@
 "use client";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Dropdown from "@/components/Dropdown";
 
 type QuoteScenarioId = 1 | 2 | 3 | 4 | 5;
@@ -39,20 +39,35 @@ export default function BuildQuoteModal({
     canSubmit,
     onSubmit,
 }: Props) {
+    const [mounted, setMounted] = useState(false);
+    const [visible, setVisible] = useState(false);
+
+    useEffect(() => {
+        if (open) {
+            setMounted(true);
+            const id = setTimeout(() => setVisible(true), 10);
+            return () => clearTimeout(id);
+        } else {
+            setVisible(false);
+            const id = setTimeout(() => setMounted(false), 320);
+            return () => clearTimeout(id);
+        }
+    }, [open]);
+
     useEffect(() => {
         if (!open) return;
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === "Escape") onClose();
-        };
+        const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
         window.addEventListener("keydown", onKey);
         return () => window.removeEventListener("keydown", onKey);
     }, [open, onClose]);
 
-    if (!open) return null;
+    if (!mounted) return null;
 
     return (
         <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-[#000005]/40 px-4"
+            className={`fixed inset-0 z-50 flex items-center justify-center px-4 transition-[background-color] duration-300 ${
+                visible ? "bg-[#000005]/40" : "bg-[#000005]/0"
+            }`}
             role="presentation"
             onClick={onClose}
         >
@@ -60,7 +75,9 @@ export default function BuildQuoteModal({
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="build-quote-title"
-                className="w-full max-w-md border-2 border-[#000005] bg-white rounded-sm p-6 flex flex-col gap-5"
+                className={`w-full max-w-md border-2 border-[#000005] bg-white rounded-sm p-6 flex flex-col gap-5 ${
+                    visible ? "modal-slide-up" : "modal-slide-down"
+                }`}
                 onClick={(e) => e.stopPropagation()}
             >
                 <div>
