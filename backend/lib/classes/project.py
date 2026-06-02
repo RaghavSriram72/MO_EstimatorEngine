@@ -55,13 +55,11 @@ class Project[T: BaseInput]:
 
     def calculate_cost(self, input: T) -> None:
         """Calculate the total cost of the project, including both universal and scenario-specific costs."""
-        self.num_standees = input.num_standees or self.num_standees
         db = self.db
+        self.num_standees = input.num_standees or self.num_standees
         # corrugate cost calculation
         self.print_forms_per_standee = input.print_forms_per_standee or len(self.print_forms)
-        self.structure_forms_per_standee = input.structure_forms_per_standee or db.get_structure_forms_per_standee(
-            self.print_forms_per_standee
-        )
+        self.structure_forms_per_standee = input.structure_forms_per_standee or self._get_structure_forms_per_standee()
         self.blank_forms_per_standee = self.print_forms_per_standee + self.structure_forms_per_standee
 
         # hardware cost calculation
@@ -77,6 +75,12 @@ class Project[T: BaseInput]:
         self.color_comp_cost = db.get_unit_cost(UnitCostEntries.COLOR_COMP) * self.color_comp_count
 
     # Helpers
+    def _get_structure_forms_per_standee(self) -> float:
+        try:
+            return self.db.get_structure_forms_per_standee(self.print_forms_per_standee)
+        except ValueError:
+            return self.print_forms_per_standee * 1.5  # default to 50% more structure forms
+
     def _get_print_form_cost(self, print_material_name: str) -> float:
         print_form_material = self.db.get_unit_cost_entry(print_material_name)
         print_form_unit = print_form_material["unit"]  # linear_foot
@@ -102,8 +106,8 @@ class Project[T: BaseInput]:
             print_form_cost += hi_tack_cost
         return print_form_cost
 
-    def _get_print_form_linear_inches(self) -> int:
-        return int(PRINT_FORM_LENGTH) * self.print_form_total
+    def _get_print_form_linear_inches(self) -> float:
+        return PRINT_FORM_LENGTH * self.print_form_total
 
     def _setup_time(self, unit_cost_entry: dict, forms: int) -> float:
         return unit_cost_entry["setup_time"] * forms
@@ -135,7 +139,9 @@ class Project[T: BaseInput]:
         return (
             print_zund_hours
             + structure_zund_hours
-            + self._setup_time(self.db.get_unit_cost_entry(UnitCostEntries.ZUND_CUTTER), self.blank_forms_per_standee)
+            + self._setup_time(
+                self.db.get_unit_cost_entry(UnitCostEntries.ZUND_CUTTER), round(self.blank_forms_per_standee)
+            )
         )
 
     def _get_shipping_box_and_label_cost(self) -> tuple[float, float]:
@@ -171,7 +177,7 @@ class Project[T: BaseInput]:
     def _get_kitting_and_assembly_cost(self) -> float:
         return self.db.get_standee_data(self.standee_key, "kitting_and_assembly") * self.num_standees
 
-    def _get_supplier_cost(self, supplier: str, material: str, num_forms: int) -> float:
+    def _get_supplier_cost(self, supplier: str, material: str, num_forms: float) -> float:
         params = self.db.get_curve_params(supplier, material)
         if params is None:
             raise ValueError(f"No pricing data found for supplier={supplier!r} material={material!r}")
@@ -192,20 +198,20 @@ class Project[T: BaseInput]:
             forms = self.print_forms_per_standee
         return self._get_supplier_cost(supplier, material, self.num_standees) * forms
 
-    def _get_base_corrugate_forms(self) -> int:
+    def _get_base_corrugate_forms(self) -> float:
         return self.blank_forms_per_standee * self.num_standees
 
-    def _get_net_corrugate_forms(self) -> int:
+    def _get_net_corrugate_forms(self) -> float:
         return self._get_base_corrugate_forms() + self.print_forms_per_standee * self.overs
 
     def _get_corrugate_cost(self) -> float:
         corrugate_cost = self.db.get_unit_cost(UnitCostEntries.CORRUGATE)
         return self._get_net_corrugate_forms() * corrugate_cost
 
-    def _get_base_print_forms(self) -> int:
+    def _get_base_print_forms(self) -> float:
         return self.print_forms_per_standee * self.num_standees
 
-    def _get_net_print_forms(self) -> int:
+    def _get_net_print_forms(self) -> float:
         return self._get_base_print_forms() + self.overs * self.print_forms_per_standee
 
 

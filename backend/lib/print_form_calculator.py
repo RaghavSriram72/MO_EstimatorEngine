@@ -6,7 +6,7 @@ from lib.classes import Complexity, Element, Form
 from lib.globals import FORM_LENGTH, FORM_WIDTH, PADDING
 
 
-def print_form_calculator(initial_elements: list[Element], num_standees: int):
+def print_form_calculator(initial_elements: list[Element]):
     """
     Tool to calculate number of forms to fit elements.
 
@@ -122,6 +122,7 @@ def _split_element(element):
             length=split_length,
             width=split_width,
             linear_inches=split_linear_inches,
+            complexity=element.complexity,
         )
         for i in range(num_splits)
     ]
@@ -154,10 +155,9 @@ if __name__ == "__main__":
         Element(name="Base", width=120, length=18, complexity=Complexity.SIMPLE),
         Element(name="Base Lug", width=31, length=9, complexity=Complexity.SIMPLE),
     ]
-    num_standees = 10
-    elements, forms = print_form_calculator(input_elements, num_standees)
+    elements, forms = print_form_calculator(input_elements)
     print(f"Forms per standee: {len(forms)}")
-    print(f"Total forms: {len(forms) * num_standees}")
+    print(f"Total forms: {len(forms) * 10}")
     for bin in forms:
         print(
             f"""Form {bin}: {[element.name for element in forms[bin].elements]}, complexity: {forms[bin].complexity}"""

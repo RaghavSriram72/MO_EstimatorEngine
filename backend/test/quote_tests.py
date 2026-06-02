@@ -39,7 +39,7 @@ class TestStaticCostCalculator(unittest.TestCase):
         elements = [
             Element(name="monkey", length=80.1012, width=74.9667, complexity=Complexity.SIMPLE),
         ]
-        _, bin_dict = print_form_calculator(elements, 1)
+        _, bin_dict = print_form_calculator(elements)
         project = Scenario1(
             TestStaticCostCalculator.db,
             name="Primate standee (test)",
@@ -94,7 +94,7 @@ class TestStaticCostCalculator(unittest.TestCase):
             Element(name="Base", width=120, length=18, complexity=Complexity.SIMPLE),
             Element(name="Base Lug", width=31, length=9, complexity=Complexity.SIMPLE),
         ]
-        _, bin_dict = print_form_calculator(elements, 1)
+        _, bin_dict = print_form_calculator(elements)
         project = Scenario4(
             TestStaticCostCalculator.db,
             name="Sonic standee (test)",
@@ -131,7 +131,7 @@ class TestStaticCostCalculator(unittest.TestCase):
             Element(name="MBJ W/GUN", length=72.97, width=24, complexity=Complexity.COMPLEX),
             Element(name="BASE", length=18.96, width=68.04, complexity=Complexity.SIMPLE),
         ]
-        _, bin_dict = print_form_calculator(elements, 1)
+        _, bin_dict = print_form_calculator(elements)
         project = Scenario1(
             TestStaticCostCalculator.db,
             name="Sinner standee (test)",
@@ -164,7 +164,7 @@ if __name__ == "__main__":
     elements = [
         Element(name="monkey", length=80.1012, width=74.9667, complexity=Complexity.SIMPLE),
     ]
-    _, bin_dict = print_form_calculator(elements, 1)
+    _, bin_dict = print_form_calculator(elements)
     db = MidnightOilDB().connect()
     scenarios = [
         scenario(

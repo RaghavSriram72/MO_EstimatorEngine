@@ -283,6 +283,23 @@ class MidnightOilDB:
             self._load_cache()
         except Exception as e:
             raise ValueError(f"Failed to update entry for '{cost_name}': {str(e)}")
+    
+    def insert_unit_cost_entry(self, cost_name: str, cost_type: str, display_name: str, cost: float, **kwargs) -> None:
+        """Insert a new unit cost entry."""
+        try:
+            self.unit_costs_collection.insert_one(
+                {
+                    "name": cost_name,
+                    "type": cost_type,
+                    "display_name": display_name,
+                    "cost": cost,
+                    "last_updated": datetime.now(UTC),
+                    **kwargs,
+                }
+            )
+            self._load_cache()
+        except Exception as e:
+            raise ValueError(f"Failed to insert entry for '{cost_name}': {str(e)}")
 
     def get_standee_record(self, standee_category: str) -> dict:
         """Return the full standee static cost document for a given category."""

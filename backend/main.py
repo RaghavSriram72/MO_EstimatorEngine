@@ -153,7 +153,7 @@ def _scenario_cost_input(sid: int, payload: QuoteRequest):
 
 
 def _compute_quote_scenarios(db: MidnightOilDB, elements: list[Element], payload: QuoteRequest) -> dict[str, Any]:
-    _, bin_dict = print_form_calculator(elements, payload.num_standees)
+    _, bin_dict = print_form_calculator(elements)
     print_forms = list(bin_dict.values())
 
     scenarios_to_run = [payload.scenario] if payload.scenario is not None else [1, 2, 3, 4, 5]
