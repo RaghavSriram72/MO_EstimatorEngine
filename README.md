@@ -1,6 +1,6 @@
 # Midnight Oil Estimator Engine
 
-An intelligent chatbot that instantly generates accurate quotes for standees — guiding customers through size, material, and quantity to deliver fast, consistent pricing.
+A cost estimator engine that utilizes bin packing and regression to estimate costs based on user provided data in a quick and efficient manner.
 
 ---
 
@@ -11,6 +11,7 @@ Make sure you have the following installed:
 - [Node.js](https://nodejs.org/) (v18+)
 - [Python](https://www.python.org/) (v3.9+)
 - [pip](https://pip.pypa.io/en/stable/)
+- [uv] (https://docs.astral.sh/uv/getting-started/)
 
 ---
 
@@ -32,14 +33,14 @@ Navigate to the `backend` folder and set up a virtual environment:
 
 ```bash
 cd backend
-python -m venv venv
+uv venv
 ```
 
 Activate the virtual environment:
 
 ```bash
 # macOS / Linux
-source venv/bin/activate
+source .venv/bin/activate
 
 # Windows
 venv\Scripts\activate
@@ -48,13 +49,13 @@ venv\Scripts\activate
 Install dependencies:
 
 ```bash
-pip install -r requirements.txt
+uv sync
 ```
 
 Start the FastAPI development server:
 
 ```bash
-uvicorn main:app --reload
+uvicorn main:app --reload --host X.X.X.X --port XXXX # last two are optional
 ```
 
 The API will be available at `API_BASE` as inputted into the .env file.
@@ -83,8 +84,12 @@ The frontend will be available at `http://localhost:3000`.
 
 ## Environment Variables
 
-In the `backend` folder create a `.env` file and add the following lines 
+In the `backend` folder create a `.env` file and add the following lines:
 ```md
 MONGO_URI = (Provided URI in google doc)
 ```
 
+In the `frontend` folder create a `.env.local` file and add the following lines:
+```md
+API_URL=http://<host>:<port> # host and port as specified above. Defaults to `localhost` and `8000` respectively
+```
