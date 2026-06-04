@@ -12,8 +12,6 @@ from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
 from scipy.optimize import curve_fit
 
-from lib.globals import UNIT_MAP
-
 
 def _fit_supplier_curve(amounts: list[float], costs: list[float]) -> dict[str, float]:
     """Fit a power-law curve to supplier price breaks and return params plus R²."""
@@ -373,11 +371,11 @@ class MidnightOilDB:
             None,
         )
 
-    def get_supplier_material_records(self, supplier: str, material: str) -> dict[str, Any] | None:
+    def get_supplier_material_records(self, supplier: str, material: str) -> dict[str, Any]:
         """Return one supplier/material document with serialized price_breaks."""
         doc = self._get_supplier_doc(supplier, material)
         if doc is None:
-            return None
+            raise ValueError(f"Supplier material record not found for supplier={supplier!r} material={material!r}")
 
         last_updated = doc.get("last_updated")
         if last_updated is not None and hasattr(last_updated, "isoformat"):
@@ -416,7 +414,7 @@ class MidnightOilDB:
         ordered_breaks = sorted(price_breaks, key=lambda row: row["amount"])
 
         amounts = [row["amount"] for row in ordered_breaks]
-        costs = [row["cost"] * UNIT_MAP[unit] for row in ordered_breaks]
+        costs = [row["cost"] for row in ordered_breaks]
         curve_params = _fit_supplier_curve(amounts, costs)
 
         self.suppliers_collection.replace_one(

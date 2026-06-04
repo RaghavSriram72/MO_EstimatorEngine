@@ -178,12 +178,13 @@ class Project[T: BaseInput]:
         return self.db.get_standee_data(self.standee_key, "kitting_and_assembly") * self.num_standees
 
     def _get_supplier_cost(self, supplier: str, material: str, num_forms: float) -> float:
+        unit = self.db.get_supplier_material_records(supplier, material)["unit"]
         params = self.db.get_curve_params(supplier, material)
         if params is None:
             raise ValueError(f"No pricing data found for supplier={supplier!r} material={material!r}")
 
         cost_per_unit = params["a"] * num_forms ** params["b"] + params["c"]
-        return cost_per_unit * num_forms
+        return cost_per_unit * UNIT_MAP[unit] * num_forms
 
     def _get_supplier_litho_buyout_cost(
         self,
@@ -191,7 +192,7 @@ class Project[T: BaseInput]:
         material: str = SupplierMaterials.FOSTERS_PRINT_FORM,
     ) -> float:
         sheets_per_form = self._get_net_print_forms() // self.print_forms_per_standee
-        unit_cost = self._get_supplier_cost(supplier, material, sheets_per_form)
+        unit_cost = self._get_supplier_cost(supplier, material, sheets_per_form) / sheets_per_form
         self.sheets_per_form = sheets_per_form
         self.supplier = supplier
         self.material = material
