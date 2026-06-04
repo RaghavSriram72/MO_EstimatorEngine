@@ -12,6 +12,8 @@ from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
 from scipy.optimize import curve_fit
 
+from lib.globals import UNIT_MAP
+
 
 def _fit_supplier_curve(amounts: list[float], costs: list[float]) -> dict[str, float]:
     """Fit a power-law curve to supplier price breaks and return params plus R²."""
@@ -375,7 +377,7 @@ class MidnightOilDB:
         """Return one supplier/material document with serialized price_breaks."""
         doc = self._get_supplier_doc(supplier, material)
         if doc is None:
-            raise ValueError(f"Supplier material record not found for supplier={supplier!r} material={material!r}")
+            raise ValueError(f"Supplier material not found for supplier={supplier!r} material={material!r}")
 
         last_updated = doc.get("last_updated")
         if last_updated is not None and hasattr(last_updated, "isoformat"):

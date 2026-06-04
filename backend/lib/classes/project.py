@@ -197,7 +197,7 @@ class Project[T: BaseInput]:
         self.supplier = supplier
         self.material = material
         self.print_sheet_unit_cost = unit_cost
-        return unit_cost * self.print_forms_per_standee
+        return unit_cost * sheets_per_form * self.print_forms_per_standee
 
     def _get_supplier_mount_die_buyout_cost(self, supplier: str, material: str, forms: int | None = None) -> float:
         if forms is None:
