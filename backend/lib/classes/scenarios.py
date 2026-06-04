@@ -75,6 +75,7 @@ class Scenario4[T: Scenario4Input](OutsourceProject[T]):
         imposition_rate = self.db.get_unit_cost(UnitCostEntries.IMPOSITION_LABOR)
         self.imposition_cost = imposition_rate * self.imposition_hours
         self.print_form_cost = self._get_print_form_cost(UnitCostEntries.SHEET_95)
+        self.print_material = UnitCostEntries.SHEET_95
         print_linear_inches = self._get_print_form_linear_inches()
         self.print_hours = input.print_hours or self._get_machine_time(UnitCostEntries.RHO_1312, print_linear_inches)
         self.print_cost = self._get_machine_cost(UnitCostEntries.RHO_1312, self.print_hours)
@@ -111,6 +112,7 @@ class Scenario5[T: Scenario5Input](OutsourceProject[T]):
     def calculate_cost(self, input: T) -> None:
         input.num_overs = FOSTERS_DEFAULT_OVERS
         super().calculate_cost(input)
+        # sets material, supplier, and print_form_unit_cost (needs to change)
         self.print_form_cost = self._get_supplier_litho_buyout_cost()
         self.freight_cost = input.freight_cost or self.db.get_unit_cost(UnitCostEntries.FULL_OUT_SOURCE)
         self.die_cost = input.die_cost or self._get_die_cost()

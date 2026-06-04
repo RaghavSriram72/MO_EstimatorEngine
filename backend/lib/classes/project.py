@@ -191,7 +191,12 @@ class Project[T: BaseInput]:
         material: str = SupplierMaterials.FOSTERS_PRINT_FORM,
     ) -> float:
         sheets_per_form = self._get_net_print_forms() // self.print_forms_per_standee
-        return self._get_supplier_cost(supplier, material, sheets_per_form) * self.print_forms_per_standee
+        unit_cost = self._get_supplier_cost(supplier, material, sheets_per_form)
+        self.sheets_per_form = sheets_per_form
+        self.supplier = supplier
+        self.material = material
+        self.print_sheet_unit_cost = unit_cost
+        return unit_cost * self.print_forms_per_standee
 
     def _get_supplier_mount_die_buyout_cost(self, supplier: str, material: str, forms: int | None = None) -> float:
         if forms is None:
@@ -247,6 +252,7 @@ class InHouseProject[T: InHouseInput](Project[T]):
         super().calculate_cost(input)
         self.corrugate_cost = self._get_corrugate_cost()
         self.print_form_cost = self._get_print_form_cost(UnitCostEntries.ROLL_BUSMARK)
+        self.print_material = UnitCostEntries.ROLL_BUSMARK
 
         self.imposition_hours = input.imposition_hours or self.print_forms_per_standee
         imposition_rate = self.db.get_unit_cost(UnitCostEntries.IMPOSITION_LABOR)
@@ -260,6 +266,7 @@ class InHouseProject[T: InHouseInput](Project[T]):
             self._get_machine_time(input.print_machine, self._get_print_form_linear_inches())
         )
         self.print_cost = self._get_machine_cost(input.print_machine, self.print_hours)
+        self.print_machine = input.print_machine
 
         self.rollx_hours = input.rollx_hours or (
             self._get_machine_time(UnitCostEntries.ROLLX, self._get_print_form_linear_inches())
