@@ -57,6 +57,7 @@ class OutsourceInput(BaseInput):
     print_hours: float | None = None
     corrugate_supplier: str = Suppliers.PQ
     corrugate_material: str = SupplierMaterials.B_WHITE
+    mount_material: str = SupplierMaterials.B_WHITE
     pallet_count: int | None = None
     freight_cost: float | None = None
     die_cost: float | None = None

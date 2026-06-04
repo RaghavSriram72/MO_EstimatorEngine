@@ -113,7 +113,7 @@ class Scenario5[T: Scenario5Input](OutsourceProject[T]):
         input.num_overs = FOSTERS_DEFAULT_OVERS
         super().calculate_cost(input)
         # sets material, supplier, and print_form_unit_cost (needs to change)
-        self.print_form_cost = self._get_supplier_litho_buyout_cost()
+        self.litho_buyout_cost = self._get_supplier_litho_buyout_cost()
         self.freight_cost = input.freight_cost or self.db.get_unit_cost(UnitCostEntries.FULL_OUT_SOURCE)
         self.die_cost = input.die_cost or self._get_die_cost()
         self.packout = (
