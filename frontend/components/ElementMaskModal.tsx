@@ -33,7 +33,7 @@ export default function ElementMaskModal({ open, onClose, maskImage, elementLabe
 
     return (
         <div
-            className={`fixed inset-0 z-50 flex items-end justify-center pb-6 transition-[background-color] duration-300 ${
+            className={`fixed inset-0 z-50 flex items-center justify-center transition-[background-color] duration-300 ${
                 visible ? "bg-black/60" : "bg-black/0"
             }`}
         >

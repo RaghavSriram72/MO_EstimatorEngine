@@ -11,6 +11,8 @@ type CostLine = {
     unit: string;
     qty: number;
     unitCost: number;
+    readonlyQty?: boolean;
+    rawTotal?: number; // when set, lineTotal uses this directly instead of qty × unitCost
 };
 
 type ScenarioParams = {
@@ -55,7 +57,7 @@ const SCENARIO_META: Record<ScenarioId, { short: string; sub: string }> = {
     5: { short: "External",  sub: "Full Outsource" },
 };
 
-type LineDef = { label: string; unit: string };
+type LineDef = { label: string; unit: string; readonlyQty?: boolean };
 
 const UNIVERSAL_LINE_DEFS: Record<string, LineDef> = {
     imposition_cost:         { label: "Imposition Labor",     unit: "hrs"      },
@@ -80,17 +82,21 @@ const SCENARIO_LINE_DEFS: Record<string, LineDef> = {
     freight_cost:               { label: "Freight Cost",            unit: "flat"     },
     kitting_and_assembly_cost:  { label: "Kitting & Assembly",      unit: "standees" },
     packout:                    { label: "Packout",                 unit: "standees" },
+    litho_buyout_cost:          { label: "Litho Buyout",            unit: "sheets",   readonlyQty: true },
+    mount_die_buyout_cost:      { label: "Mount & Die Cut Buyout",        unit: "standees", readonlyQty: true },
 };
 
 const SCENARIO_KEYS: Record<ScenarioId, string[]> = {
     1: ["corrugate_cost", "print_form_cost", "print_cost", "rollx_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "kitting_and_assembly_cost"],
     2: ["corrugate_cost", "print_form_cost", "print_cost", "rollx_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "kitting_and_assembly_cost"],
     3: ["corrugate_cost", "print_form_cost", "print_cost", "rollx_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "pallet_material_cost", "pallet_labor_cost", "freight_cost", "packout"],
-    4: ["corrugate_cost", "print_form_cost", "print_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "pallet_material_cost", "pallet_labor_cost", "freight_cost", "die_cost"],
-    5: ["corrugate_cost", "print_form_cost", "label_cost", "instruction_sheet_cost", "freight_cost", "die_cost"],
+    4: ["mount_die_buyout_cost", "print_form_cost", "print_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "pallet_material_cost", "pallet_labor_cost", "freight_cost", "die_cost"],
+    5: ["mount_die_buyout_cost", "litho_buyout_cost", "label_cost", "instruction_sheet_cost", "freight_cost", "die_cost"],
 };
 
+
 function lineTotal(l: CostLine) {
+    if (l.rawTotal !== undefined) return l.rawTotal;
     return l.unit === "flat" ? l.unitCost : l.qty * l.unitCost;
 }
 
@@ -114,8 +120,17 @@ const QTY_FROM_SOURCE: Partial<Record<string, (s: Record<string, number>) => num
     instruction_sheet_cost:     (s) => s.num_standees ?? 1,
     kitting_and_assembly_cost:  (s) => s.num_standees ?? 1,
     packout:                    (s) => s.num_standees ?? 1,
+    litho_buyout_cost:          (s) => s.litho_sheets_per_form ?? 1,
+    mount_die_buyout_cost:      (s) => s.num_standees ?? 1,
     pallet_material_cost:       (s) => s.pallet_count  ?? 1,
-    pallet_labor_cost:      (s) => s.pallet_count         ?? 1,
+    pallet_labor_cost:          (s) => s.pallet_count  ?? 1,
+};
+
+// For lines where the backend provides a pre-computed unit cost instead of deriving total / qty.
+// When this is set, the backend total is also stored as rawTotal so lineTotal stays accurate.
+const UNIT_COST_FROM_SOURCE: Partial<Record<string, (s: Record<string, number>) => number>> = {
+    litho_buyout_cost:     (s) => s.litho_buyout_unit_cost     ?? 0,
+    mount_die_buyout_cost: (s) => s.mount_die_buyout_unit_cost ?? 0,
 };
 
 /** Persist edited row quantities back into scenario source fields (see QTY_FROM_SOURCE). */
@@ -133,10 +148,11 @@ const LINE_KEY_TO_QTY_SOURCE: Partial<Record<string, string>> = {
 function buildLines(keys: string[], defs: Record<string, LineDef>): CostLine[] {
     return keys.map((key) => ({
         key,
-        label:    defs[key]?.label ?? key,
-        unit:     defs[key]?.unit  ?? "units",
-        qty:      1,
-        unitCost: 0,
+        label:       defs[key]?.label       ?? key,
+        unit:        defs[key]?.unit        ?? "units",
+        readonlyQty: defs[key]?.readonlyQty ?? false,
+        qty:         1,
+        unitCost:    0,
     }));
 }
 
@@ -146,10 +162,15 @@ function seedLines(lines: CostLine[], source: Record<string, number>): CostLine[
         const isFlat = line.unit === "flat";
         if (isFlat) return { ...line, unitCost: total };
 
-        const getQty = QTY_FROM_SOURCE[line.key];
-        const rawQty = getQty ? getQty(source) : 1;
-        const qty    = rawQty > 0 ? rawQty : 1;
-        return { ...line, qty, unitCost: total / qty };
+        const getQty     = QTY_FROM_SOURCE[line.key];
+        const rawQty     = getQty ? getQty(source) : 1;
+        const qty        = rawQty > 0 ? rawQty : 1;
+        const getUnitCost = UNIT_COST_FROM_SOURCE[line.key];
+        const unitCost    = getUnitCost ? getUnitCost(source) : total / qty;
+        // When unit cost is pre-computed, qty × unitCost won't equal the backend total,
+        // so store rawTotal to use in lineTotal instead.
+        const rawTotal    = getUnitCost ? total : undefined;
+        return { ...line, qty, unitCost, rawTotal };
     });
 }
 
@@ -349,8 +370,9 @@ function CostRow({
     line: CostLine;
     onChange: (key: string, field: "qty" | "unitCost", value: number) => void;
 }) {
-    const isFlat     = line.unit === "flat";
-    const isStandees = line.unit === "standees";
+    const isFlat      = line.unit === "flat";
+    const isStandees  = line.unit === "standees";
+    const isReadonlyQty = isStandees || !!line.readonlyQty;
     const total      = lineTotal(line);
 
     return (
@@ -373,7 +395,7 @@ function CostRow({
                 {!isFlat && (
                     <div className="flex flex-col items-end gap-0.5">
                         <span className="text-[9px] text-[#B1B3B6] uppercase font-bold tracking-wider">{line.unit}</span>
-                        {isStandees ? (
+                        {isReadonlyQty ? (
                             <span className="w-[68px] px-2 py-1 text-xs font-semibold text-[#000005] text-right">
                                 {line.qty}
                             </span>

@@ -82,7 +82,7 @@ export default function UploadBlueModal({ open, onClose, onElementsLoaded }: Pro
 
     return (
         <div
-            className={`fixed inset-0 z-50 flex items-end justify-center pb-6 transition-[background-color] duration-300 ${
+            className={`fixed inset-0 z-50 flex items-center justify-center transition-[background-color] duration-300 ${
                 visible ? "bg-black/50" : "bg-black/0"
             }`}
         >
