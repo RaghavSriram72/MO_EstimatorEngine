@@ -191,7 +191,7 @@ class Project[T: BaseInput]:
         supplier: str = Suppliers.FOSTERS,
         material: str = SupplierMaterials.FOSTERS_PRINT_FORM,
     ) -> float:
-        sheets_per_form = self._get_net_print_forms() // self.print_forms_per_standee
+        sheets_per_form = self.num_standees + self.overs # for every form I need one sheet per standee plus one per over
         unit_cost = self._get_supplier_cost(supplier, material, sheets_per_form)
         self.litho_sheets_per_form = sheets_per_form
         self.supplier = supplier
