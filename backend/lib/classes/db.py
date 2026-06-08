@@ -62,7 +62,7 @@ class MidnightOilDB:
     def connect(self):
         """Establish a connection to the MongoDB database."""
         self._cache: dict[str, list] = {}
-        self.client = MongoClient(self.uri, server_api=ServerApi("1"))
+        self.client = MongoClient(self.uri, server_api=ServerApi("1"), tz_aware=True)
         self.db = self.client["DB"]
         self.unit_costs_collection = self.db["unit_costs"]
         self.standee_collection = self.db["standee_static_costs"]
@@ -283,7 +283,7 @@ class MidnightOilDB:
             self._load_cache()
         except Exception as e:
             raise ValueError(f"Failed to update entry for '{cost_name}': {str(e)}")
-    
+
     def insert_unit_cost_entry(self, cost_name: str, cost_type: str, display_name: str, cost: float, **kwargs) -> None:
         """Insert a new unit cost entry."""
         try:
