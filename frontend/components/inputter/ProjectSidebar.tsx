@@ -12,6 +12,18 @@ export type ProjectSummary = {
 const SIDEBAR_INPUT_CLASS =
     "w-full text-[11px] font-semibold text-[#000005] placeholder:text-[#B1B3B6] border-2 border-[#E0E0E0] rounded-sm px-2 py-2 outline-none focus-visible:border-[#FFC843] focus-visible:ring-2 focus-visible:ring-[#FFC843]";
 
+const STANDEE_BADGE: Record<string, string> = {
+    Simple:   "bg-[#E8F5E9] text-[#2E7D32]",
+    Moderate: "bg-[#E3F2FD] text-[#1565C0]",
+    Complex:  "bg-[#FFF3E0] text-[#E65100]",
+};
+
+const IconTrash = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+    </svg>
+);
+
 type Props = {
     activeProjectId: string | null;
     projects: ProjectSummary[];
@@ -54,9 +66,12 @@ export default function ProjectSidebar({
             onCancel={() => setPendingDelete(null)}
         />
         <aside className="shrink-0 w-[220px] flex flex-col border-r-2 border-[#E0E0E0] bg-white px-3 py-5 gap-3">
-            <div className="text-[10px] font-black uppercase tracking-widest text-[#000005]">
-                <span className="text-[#FFC843]">// </span>PROJECTS
-            </div>
+            <div className="flex flex-col gap-0.5 pl-3">
+                    <span className="text-[11px] font-bold tracking-[0.2em] uppercase text-[#B1B3B6]">Your Work</span>
+                    <div className="flex items-center gap-2">
+                        <span className="text-[1.25em] font-bold text-[#000005]">Projects</span>
+                    </div>
+                </div>
             <button
                 type="button"
                 onClick={onNewProject}
@@ -86,37 +101,47 @@ export default function ProjectSidebar({
                 {!isLoading && hasProjects && projects.length === 0 && searchQuery.trim() && !error && (
                     <div className="text-[11px] text-[#B1B3B6] font-semibold px-1">No projects match your search.</div>
                 )}
-                {projects.map((p) => (
-                    <div
-                        key={p._id}
-                        className={`flex items-stretch gap-1 rounded-sm border-2 transition-all duration-200 ${
-                            activeProjectId === p._id
-                                ? "border-[#FFC843] bg-[#FFFBF0]"
-                                : "border-[#E0E0E0] bg-[#F8F8F8] hover:border-[#B1B3B6]"
-                        }`}
-                    >
-                        <button
-                            type="button"
-                            onClick={() => onLoadProject(p._id)}
-                            className="min-w-0 flex-1 text-left px-2 py-2 outline-none focus-visible:ring-2 focus-visible:ring-[#FFC843]"
+                {projects.map((p) => {
+                    const isActive = activeProjectId === p._id;
+                    return (
+                        <div
+                            key={p._id}
+                            className={`flex items-stretch rounded-md border transition-all duration-200 overflow-hidden ${
+                                isActive
+                                    ? "border-[#FFC843] bg-[#FFFBEE] shadow-sm"
+                                    : "border-[#E8E8E8] bg-white hover:border-[#C8C8C8] hover:shadow-sm"
+                            }`}
                         >
-                            <div className="text-[11px] font-black text-[#000005] uppercase tracking-tight line-clamp-2">
-                                {p.project_name || "Untitled"}
-                            </div>
-                            <div className="text-[9px] text-[#B1B3B6] font-bold mt-0.5 uppercase tracking-wider">
-                                {p.num_standees} × {p.standee_type}
-                            </div>
-                        </button>
-                        <button
-                            type="button"
-                            aria-label={`Delete project ${p.project_name || "Untitled"}`}
-                            onClick={(e) => { e.stopPropagation(); setPendingDelete({ id: p._id, label: p.project_name || "Untitled" }); }}
-                            className="shrink-0 w-8 flex items-center justify-center text-[12px] font-bold text-[#B1B3B6] hover:text-red-600 hover:bg-red-50 border-l-2 border-[#E0E0E0] transition-colors"
-                        >
-                            ✕
-                        </button>
-                    </div>
-                ))}
+                            {/* Left accent bar */}
+                            <div className={`w-[3px] shrink-0 transition-all duration-200 ${isActive ? "bg-[#FFC843]" : "bg-transparent"}`} />
+
+                            <button
+                                type="button"
+                                onClick={() => onLoadProject(p._id)}
+                                className="min-w-0 flex-1 text-left px-2.5 py-2.5 outline-none focus-visible:ring-2 focus-visible:ring-[#FFC843]"
+                            >
+                                <div className="text-[13px] font-bold text-[#000005] tracking-tight line-clamp-2 leading-tight">
+                                    {p.project_name || "Untitled"}
+                                </div>
+                                <div className="flex items-center gap-1.5 mt-1.5">
+                                    <span className="text-[9px] text-[#B1B3B6] font-semibold">{p.num_standees} standees</span>
+                                    <span className={`text-[8.5px] font-bold px-1.5 py-0.5 rounded-full ${STANDEE_BADGE[p.standee_type] ?? "bg-[#F0F0F0] text-[#888]"}`}>
+                                        {p.standee_type}
+                                    </span>
+                                </div>
+                            </button>
+
+                            <button
+                                type="button"
+                                aria-label={`Delete project ${p.project_name || "Untitled"}`}
+                                onClick={(e) => { e.stopPropagation(); setPendingDelete({ id: p._id, label: p.project_name || "Untitled" }); }}
+                                className="shrink-0 w-7 flex items-center justify-center text-[#DEDEDE] hover:text-red-400 hover:bg-red-50 border-l border-[#F0F0F0] transition-colors"
+                            >
+                                <IconTrash />
+                            </button>
+                        </div>
+                    );
+                })}
             </div>
         </aside>
         </>

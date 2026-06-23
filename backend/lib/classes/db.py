@@ -101,7 +101,7 @@ class MidnightOilDB:
     def create_user(self, username: str, password: str) -> bool:
         """Create a new user if the username doesn't already exist."""
         if self.check_username_exists(username):
-            return False  # Username already exists
+            return False
 
         self.users_collection.insert_one(
             {
@@ -109,7 +109,7 @@ class MidnightOilDB:
                 "password_hash": _hash_password(password),
             }
         )
-        return True  # User created successfully
+        return True
 
     def get_user(self, username: str):
         """Retrieve a user document by username."""

@@ -89,8 +89,6 @@ def _verify_password(password: str, stored_hash: str) -> bool:
     except (ValueError, TypeError):
         return False
 
-
-@app.get("/")
 async def root():
     """Simple root endpoint to verify the server is running."""
     return {"message": "Hello from FastAPI"}
@@ -295,6 +293,7 @@ async def get_standee_static_costs(standee_type: str):
     """Return the full static cost record for a given standee type."""
     try:
         db = _ensure_db()
+        print(f"Fetching standee static costs for type: {standee_type}")
         return {"data": db.get_standee_record(standee_type)}
     except ValueError as e:
         return JSONResponse(status_code=404, content={"error": str(e)})
@@ -563,15 +562,10 @@ async def delete_project(
 async def create_account(payload: AccountRequest):
     """Create a new user account with a username and password."""
     db = _ensure_db()
-    username = payload.username
-    password = payload.password
-
-    # Check if username already exists
-    if db.check_username_exists(username):
+    if db.check_username_exists(payload.username):
         return JSONResponse(status_code=400, content={"error": "Username already exists"})
 
-    # Create new user
-    success = db.create_user(username, password)
+    success = db.create_user(payload.username, payload.password)
     if success:
         return JSONResponse(status_code=201, content={"message": "Account created successfully"})
     else:

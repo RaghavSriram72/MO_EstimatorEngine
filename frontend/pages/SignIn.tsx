@@ -12,6 +12,9 @@ export default function SignIn({setUser}: any) {
     const [newUsername, setNewUsername] = useState("");
     const [newPassword, setNewPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
+    const [showSignInPassword, setShowSignInPassword] = useState(false);
+    const [showNewPassword, setShowNewPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
     const [alertMessage, setAlertMessage] = useState("");
     const [alertCode, setAlertCode] = useState(0);
@@ -26,13 +29,12 @@ export default function SignIn({setUser}: any) {
     }
 
     function handleCreateAccount() {
-        if (newPassword !== confirmPassword) {
-            triggerAlert("Passwords do not match!", 1);
+        if (newUsername === "" || newPassword === "" || confirmPassword === "") {
+            triggerAlert("Please fill all fields", 1);
             return;
         }
-
-        if (newUsername == "" || newPassword == "" || confirmPassword == "") {
-            triggerAlert("Please fill all fields", 1);
+        if (newPassword !== confirmPassword) {
+            triggerAlert("Passwords do not match!", 1);
             return;
         }
 
@@ -75,6 +77,16 @@ export default function SignIn({setUser}: any) {
     const inputCls = "border-2 w-full border-[#E0E0E0] rounded-sm py-2 px-3 bg-[#F8F8F8] focus:outline-none focus:border-[#FFC843] text-[#000005] font-semibold text-sm transition-colors";
     const labelCls = "block text-[#000005] font-bold mb-2 text-xs uppercase tracking-wider";
 
+    const EyeIcon = ({ show }: { show: boolean }) => show ? (
+        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/>
+        </svg>
+    ) : (
+        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+        </svg>
+    );
+
     return (
         <div className="flex flex-col h-screen bg-white text-[#000005]">
             <Alert message={alertMessage} code={alertCode} visible={showAlert} />
@@ -109,13 +121,18 @@ export default function SignIn({setUser}: any) {
                             </div>
                             <div className="mb-4">
                                 <label htmlFor="signin-password" className={labelCls}>Password</label>
-                                <input
-                                    type="password"
-                                    id="signin-password"
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                    className={inputCls}
-                                />
+                                <div className="relative">
+                                    <input
+                                        type={showSignInPassword ? "text" : "password"}
+                                        id="signin-password"
+                                        value={password}
+                                        onChange={(e) => setPassword(e.target.value)}
+                                        className={inputCls + " pr-10"}
+                                    />
+                                    <button type="button" onClick={() => setShowSignInPassword(p => !p)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#B1B3B6] hover:text-[#000005] transition-colors">
+                                        <EyeIcon show={showSignInPassword} />
+                                    </button>
+                                </div>
                             </div>
                             <div className="flex flex-row justify-between items-center mt-6">
                                 <button
@@ -136,7 +153,7 @@ export default function SignIn({setUser}: any) {
                     </div>
 
                     {/* Create Account panel */}
-                    <div className={`absolute inset-0 w-full bg-white border-2 border-[#E0E0E0] p-8 rounded-sm transition-all duration-300 ease-in-out ${currentScreen === 1 ? "opacity-100 translate-y-0 pointer-events-auto" : "opacity-0 translate-y-6 pointer-events-none"}`}>
+                    <div className={`absolute inset-0 w-full h-full bg-white border-2 border-[#E0E0E0] p-8 rounded-sm transition-all duration-300 ease-in-out ${currentScreen === 1 ? "opacity-100 translate-y-0 pointer-events-auto" : "opacity-0 translate-y-6 pointer-events-none"}`}>
                         <div className="mb-6">
                             <div className="text-xs font-bold text-[#FFC843] tracking-widest uppercase mb-1">// NEW USER</div>
                             <h2 className="text-3xl font-black text-[#000005] uppercase tracking-tight">Create Account</h2>
@@ -156,23 +173,33 @@ export default function SignIn({setUser}: any) {
                             </div>
                             <div className="mb-4">
                                 <label htmlFor="signup-password" className={labelCls}>Password</label>
-                                <input
-                                    type="password"
-                                    id="signup-password"
-                                    value={newPassword}
-                                    onChange={(e) => setNewPassword(e.target.value)}
-                                    className={inputCls}
-                                />
+                                <div className="relative">
+                                    <input
+                                        type={showNewPassword ? "text" : "password"}
+                                        id="signup-password"
+                                        value={newPassword}
+                                        onChange={(e) => setNewPassword(e.target.value)}
+                                        className={inputCls + " pr-10"}
+                                    />
+                                    <button type="button" onClick={() => setShowNewPassword(p => !p)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#B1B3B6] hover:text-[#000005] transition-colors">
+                                        <EyeIcon show={showNewPassword} />
+                                    </button>
+                                </div>
                             </div>
                             <div className="mb-4">
                                 <label htmlFor="signup-confirm-password" className={labelCls}>Confirm Password</label>
-                                <input
-                                    type="password"
-                                    id="signup-confirm-password"
-                                    value={confirmPassword}
-                                    onChange={(e) => setConfirmPassword(e.target.value)}
-                                    className={inputCls}
-                                />
+                                <div className="relative">
+                                    <input
+                                        type={showConfirmPassword ? "text" : "password"}
+                                        id="signup-confirm-password"
+                                        value={confirmPassword}
+                                        onChange={(e) => setConfirmPassword(e.target.value)}
+                                        className={inputCls + " pr-10"}
+                                    />
+                                    <button type="button" onClick={() => setShowConfirmPassword(p => !p)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#B1B3B6] hover:text-[#000005] transition-colors">
+                                        <EyeIcon show={showConfirmPassword} />
+                                    </button>
+                                </div>
                             </div>
                             <div className="flex flex-row justify-between items-center mt-6">
                                 <button
