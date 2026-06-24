@@ -4,12 +4,13 @@ import UnitCostsModule  from "@/components/datacollector/UnitCostsModule";
 import StandeeModule    from "@/components/datacollector/StandeeModule";
 import OversModule      from "@/components/datacollector/OversModule";
 import SuppliersModule  from "@/components/datacollector/SuppliersModule";
+import PackoutModule    from "@/components/datacollector/PackoutModule";
 
 // Each module tab maps to a self-contained component that owns its own state and API calls.
-type ModuleId = 0 | 1 | 2 | 3;
+type ModuleId = 0 | 1 | 2 | 3 | 4;
 
-const MODULE_NAV_LABELS   = ["Unit Costs", "Standee Static Costs", "Overs", "Suppliers"] as const;
-const MODULE_TITLE_LABELS = ["Unit", "Standee Static", "Overs", "Supplier"] as const;
+const MODULE_NAV_LABELS   = ["Unit Costs", "Standee Static Costs", "Overs", "Suppliers", "Packout"] as const;
+const MODULE_TITLE_LABELS = ["Unit", "Standee Static", "Overs", "Supplier", "Packout"] as const;
 
 const MODULE_ICONS = [
     // DollarSign — Unit Costs
@@ -43,7 +44,7 @@ export default function DataCollector() {
 
                 {/* Nav items */}
                 <ul className="flex flex-col gap-1 w-full">
-                    {([0, 1, 2, 3] as ModuleId[]).map((id) => (
+                    {([0, 1, 2, 3, 4] as ModuleId[]).map((id) => (
                         <li
                             key={id}
                             onClick={() => setActiveModule(id)}
@@ -89,6 +90,7 @@ export default function DataCollector() {
                     {activeModule === 1 && <StandeeModule />}
                     {activeModule === 2 && <OversModule />}
                     {activeModule === 3 && <SuppliersModule />}
+                    {activeModule === 4 && <PackoutModule />}
                 </div>
             </div>
         </div>

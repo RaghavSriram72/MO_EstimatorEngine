@@ -83,6 +83,7 @@ class MidnightOilDB:
         self._cache["print_blank_ratio"] = list(self.db["print_blank_ratio"].find())
         self._cache["overs"] = list(self.db["overs"].find())
         self._cache["suppliers"] = list(self.db["suppliers"].find())
+        self._cache["packout"] = list(self.db["packout"].find())
 
     def close(self):
         """Close the MongoDB connection."""

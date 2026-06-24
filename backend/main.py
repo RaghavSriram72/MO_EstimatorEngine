@@ -373,6 +373,70 @@ async def update_overs(record_id: str, payload: UpdateOversRequest):
         return JSONResponse(status_code=404, content={"error": str(e)})
 
 
+@app.get("/packout")
+async def get_packout():
+    """Return all packout tier records sorted by standees then forms lower bound."""
+    db = _ensure_db()
+    return {"data": db.get_all_packout()}
+
+
+class UpdatePackoutRequest(BaseModel):
+    """Payload for creating or updating a packout tier record."""
+
+    standees_lower_bound: int
+    standees_upper_bound: int | None
+    forms_lower_bound: int
+    forms_upper_bound: int | None
+    complexity: str
+    packout: int
+
+
+@app.post("/packout")
+async def add_packout(payload: UpdatePackoutRequest):
+    """Insert a new packout tier record."""
+    db = _ensure_db()
+    new_id = db.upsert_packout(
+        None,
+        payload.standees_lower_bound,
+        payload.standees_upper_bound,
+        payload.forms_lower_bound,
+        payload.forms_upper_bound,
+        payload.complexity,
+        payload.packout,
+    )
+    return {"message": "Created successfully", "id": new_id}
+
+
+@app.delete("/packout/{record_id}")
+async def delete_packout(record_id: str):
+    """Delete a packout tier record by id."""
+    db = _ensure_db()
+    try:
+        db.delete_packout(record_id)
+        return {"message": "Deleted successfully"}
+    except ValueError as e:
+        return JSONResponse(status_code=404, content={"error": str(e)})
+
+
+@app.patch("/packout/{record_id}")
+async def update_packout(record_id: str, payload: UpdatePackoutRequest):
+    """Update all fields on an existing packout tier record."""
+    db = _ensure_db()
+    try:
+        db.upsert_packout(
+            record_id,
+            payload.standees_lower_bound,
+            payload.standees_upper_bound,
+            payload.forms_lower_bound,
+            payload.forms_upper_bound,
+            payload.complexity,
+            payload.packout,
+        )
+        return {"message": "Updated successfully"}
+    except ValueError as e:
+        return JSONResponse(status_code=404, content={"error": str(e)})
+
+
 @app.get("/suppliers")
 async def get_suppliers():
     """Return all distinct supplier names."""

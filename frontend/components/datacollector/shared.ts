@@ -38,6 +38,7 @@ export type UnitCostRecord = {
     last_updated: string;
     type: string;
     display_name: string;
+    throughput?: number;
 };
 
 export type UnitEditFields = {
@@ -45,6 +46,7 @@ export type UnitEditFields = {
     cost: number;
     unit: string;
     type: string;
+    throughput?: number;
 };
 
 // GET /standee-static-costs?standee_type=...
@@ -75,6 +77,36 @@ export type PendingOversRow = {
     lower_bound: string;
     upper_bound: string;
     overs: string;
+};
+
+// GET/POST/PATCH/DELETE /packout
+export type PackoutRecord = {
+    _id: string;
+    standees_lower_bound: number;
+    standees_upper_bound: number | null;
+    forms_lower_bound: number;
+    forms_upper_bound: number | null;
+    complexity: string;
+    packout: number;
+    last_updated: string;
+};
+
+export type PackoutEditFields = {
+    standees_lower_bound: number;
+    standees_upper_bound: number | null;
+    forms_lower_bound: number;
+    forms_upper_bound: number | null;
+    complexity: string;
+    packout: number;
+};
+
+export type PendingPackoutRow = {
+    standees_lower_bound: string;
+    standees_upper_bound: string;
+    forms_lower_bound: string;
+    forms_upper_bound: string;
+    complexity: string;
+    packout: string;
 };
 
 // GET /suppliers/:supplier/materials

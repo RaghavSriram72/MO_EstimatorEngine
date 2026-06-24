@@ -1,6 +1,5 @@
 "use client";
 import { useState, useEffect } from "react";
-import Dropdown from "@/components/Dropdown";
 import EditableValueBox from "@/components/EditableValueBox";
 import ModuleFooter from "./ModuleFooter";
 import {
@@ -9,7 +8,7 @@ import {
 } from "./shared";
 
 export default function StandeeModule() {
-    const [standeeType, setStandeeType]     = useState("");
+    const [standeeType, setStandeeType]     = useState("Simple Standee");
     const [savedRecord, setSavedRecord]     = useState<StandeeRecord | null>(null);
     const [editedFields, setEditedFields]   = useState<Record<string, number> | null>(null);
     const [isLoading, setIsLoading]         = useState(false);
@@ -83,12 +82,22 @@ export default function StandeeModule() {
             {/* 01 — pick standee type */}
             <div className="flex flex-col justify-center items-start w-full p-5 border-b-2 border-[#EDEAEA]">
                 <div className="text-[10px] m-2">01 — STANDEE TYPE SELECTION</div>
-                <Dropdown
-                    options={STANDEE_TYPES}
-                    currOption={standeeType}
-                    onSelect={setStandeeType}
-                    width="w-[420px]"
-                />
+                <div className="flex flex-row gap-2 ml-2">
+                    {STANDEE_TYPES.map((t) => (
+                        <button
+                            key={t}
+                            type="button"
+                            onClick={() => setStandeeType(t)}
+                            className={`px-4 py-1.5 rounded-full text-xs font-bold border-2 transition-colors cursor-pointer ${
+                                standeeType === t
+                                    ? "bg-[#FFC843] border-[#FFC843] text-[#000005]"
+                                    : "border-[#EDEAEA] text-[#ABABAB] hover:border-[#FFC843] hover:text-[#000005]"
+                            }`}
+                        >
+                            {t}
+                        </button>
+                    ))}
+                </div>
             </div>
 
             {/* 02 — editable cost fields; click any box to edit inline */}
