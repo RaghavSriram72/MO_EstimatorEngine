@@ -88,7 +88,7 @@ export default function ProjectSidebar({
                 className={SIDEBAR_INPUT_CLASS}
                 autoComplete="off"
             />
-            <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-1.5">
+            <div className="flex-1  min-h-0 overflow-y-auto flex flex-col gap-1.5">
                 {isLoading && projects.length === 0 && (
                     <div className="text-[11px] text-[#B1B3B6] font-semibold px-1">Loading…</div>
                 )}
@@ -105,20 +105,21 @@ export default function ProjectSidebar({
                     const isActive = activeProjectId === p._id;
                     return (
                         <div
+
                             key={p._id}
-                            className={`flex items-stretch rounded-md border transition-all duration-200 overflow-hidden ${
+                            className={`flex  items-stretch rounded-md border transition-all duration-200 overflow-hidden ${
                                 isActive
-                                    ? "border-[#FFC843] bg-[#FFFBEE] shadow-sm"
-                                    : "border-[#E8E8E8] bg-white hover:border-[#C8C8C8] hover:shadow-sm"
+                                    ? "border-[#FFC843] bg-[#FFFBEE] shadow-sm hover:cursor-pointer"
+                                    : "border-[#E8E8E8] bg-white hover:border-[#C8C8C8] hover:shadow-sm hover:cursor-pointer" 
                             }`}
                         >
                             {/* Left accent bar */}
-                            <div className={`w-[3px] shrink-0 transition-all duration-200 ${isActive ? "bg-[#FFC843]" : "bg-transparent"}`} />
+                            <div className={`w-[3px]  shrink-0 transition-all duration-200 ${isActive ? "bg-[#FFC843]" : "bg-transparent"}`} />
 
                             <button
                                 type="button"
                                 onClick={() => onLoadProject(p._id)}
-                                className="min-w-0 flex-1 text-left px-2.5 py-2.5 outline-none focus-visible:ring-2 focus-visible:ring-[#FFC843]"
+                                className="cursor-pointer min-w-0 flex-1 text-left px-2.5 py-2.5 outline-none focus-visible:ring-2 focus-visible:ring-[#FFC843]"
                             >
                                 <div className="text-[13px] font-bold text-[#000005] tracking-tight line-clamp-2 leading-tight">
                                     {p.project_name || "Untitled"}
@@ -135,7 +136,7 @@ export default function ProjectSidebar({
                                 type="button"
                                 aria-label={`Delete project ${p.project_name || "Untitled"}`}
                                 onClick={(e) => { e.stopPropagation(); setPendingDelete({ id: p._id, label: p.project_name || "Untitled" }); }}
-                                className="shrink-0 w-7 flex items-center justify-center text-[#DEDEDE] hover:text-red-400 hover:bg-red-50 border-l border-[#F0F0F0] transition-colors"
+                                className="cursor-pointer shrink-0 w-7 flex items-center justify-center text-[#DEDEDE] hover:text-red-400 hover:bg-red-50 border-l border-[#F0F0F0] transition-colors"
                             >
                                 <IconTrash />
                             </button>

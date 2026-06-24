@@ -39,12 +39,20 @@ export default function UnitCostsModule() {
         const rec = recordsForType.find((r) => r.display_name === displayName);
         if (!rec) return;
         setSelectedName(rec.name);
-        setEditedFields({ display_name: rec.display_name, cost: rec.cost, unit: rec.unit, type: rec.type });
+        setEditedFields({
+            display_name: rec.display_name,
+            cost: rec.cost,
+            unit: rec.unit,
+            type: rec.type,
+            ...(rec.type === "machine" ? { throughput: rec.throughput ?? 0 } : {}),
+        });
     }
+
+    const numericFields = new Set<keyof UnitEditFields>(["cost", "throughput"]);
 
     function updateField(field: keyof UnitEditFields, value: string) {
         setEditedFields((prev) =>
-            prev ? { ...prev, [field]: field === "cost" ? parseFloat(value) || 0 : value } : null,
+            prev ? { ...prev, [field]: numericFields.has(field) ? parseFloat(value) || 0 : value } : null,
         );
     }
 
@@ -53,7 +61,8 @@ export default function UnitCostsModule() {
         (editedFields.cost !== savedRecord.cost ||
             editedFields.unit !== savedRecord.unit ||
             editedFields.type !== savedRecord.type ||
-            editedFields.display_name !== savedRecord.display_name);
+            editedFields.display_name !== savedRecord.display_name ||
+            editedFields.throughput !== savedRecord.throughput);
 
     async function saveChanges() {
         if (!savedRecord || !editedFields || !hasUnsavedChanges) return;
@@ -62,6 +71,7 @@ export default function UnitCostsModule() {
         if (editedFields.unit !== savedRecord.unit) changedFields.unit = editedFields.unit;
         if (editedFields.type !== savedRecord.type) changedFields.type = editedFields.type;
         if (editedFields.display_name !== savedRecord.display_name) changedFields.display_name = editedFields.display_name;
+        if (editedFields.throughput !== undefined && editedFields.throughput !== savedRecord.throughput) changedFields.throughput = editedFields.throughput;
         setIsSaving(true);
         try {
             // PATCH /unit-costs/:name → save only the changed fields
@@ -81,6 +91,7 @@ export default function UnitCostsModule() {
                     cost: updatedRec.cost,
                     unit: updatedRec.unit,
                     type: updatedRec.type,
+                    ...(updatedRec.type === "machine" ? { throughput: updatedRec.throughput ?? 0 } : {}),
                 });
             }
         } catch (e) { console.error(e); }
@@ -144,6 +155,12 @@ export default function UnitCostsModule() {
                             <div className="text-xs">TYPE</div>
                             <div className="text-[1.2em] font-instrument">{savedRecord.type}</div>
                         </div>
+                        {savedRecord.type === "machine" && (
+                            <div className="flex flex-col justify-center items-start p-4 border-2 flex-1 h-[100px] border-[#EDEAEA] rounded-md">
+                                <div className="text-xs">THROUGHPUT</div>
+                                <div className="text-[1.2em] font-instrument">{savedRecord.throughput}</div>
+                            </div>
+                        )}
                         <div className="flex flex-col justify-center items-start p-4 border-2 flex-1 h-[100px] border-[#EDEAEA] rounded-md">
                             <div className="text-xs">LAST UPDATED</div>
                             <div className="text-[1em] font-instrument">{formatDate(savedRecord.last_updated)}</div>
@@ -217,6 +234,24 @@ export default function UnitCostsModule() {
                                 className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
                             />
                         </div>
+                        {savedRecord?.type === "machine" && (
+                            <div className="flex-1 min-w-[110px]">
+                                <div className="text-xs font-bold m-2 flex items-center gap-2">
+                                    Throughput
+                                    {editedFields.throughput !== savedRecord?.throughput && (
+                                        <span className="text-[9px] text-[#FFB604] font-bold tracking-wider">CHANGED</span>
+                                    )}
+                                </div>
+                                <input
+                                    type="number"
+                                    min={0}
+                                    step={1}
+                                    value={editedFields.throughput}
+                                    onChange={(e) => updateField("throughput", e.target.value)}
+                                    className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
+                                />
+                            </div>
+                        )}
                     </div>
                 ) : (
                     <div className="text-xs m-2">Select a record above to edit values.</div>
