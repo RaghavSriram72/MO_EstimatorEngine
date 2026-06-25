@@ -149,7 +149,7 @@ export default function ElementsManager({ elements, setElements }: Props) {
                 elementLabel={viewMask?.label ?? ""}
             />
             {/* Add new element — single compact row */}
-            <div className="flex items-end gap-2 w-full shrink-0 rounded-sm border-2 border-[#E0E0E0] bg-[#FAFAFA] px-3 py-2">
+            <div className="flex items-end gap-2 bg-white w-full shrink-0 rounded-sm border-2 border-[#E0E0E0] bg-[#FAFAFA] px-3 py-2">
                 <div className="min-w-0 w-20">
                     <div className="text-[9px] font-bold mb-0.5 text-[#B1B3B6] uppercase tracking-wider">Length</div>
                     <input

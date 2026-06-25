@@ -1,7 +1,9 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { type QuoteData, type QuoteBreakdownUi, type CostLineOverride, type ScenarioCostLineOverrides, type RequestPayload } from "@/pages/Inputter";
 import { API_BASE } from "@/lib/config";
+import { COST_LINE_TOOLTIPS } from "@/lib/costLineTooltips";
 
 type ScenarioId = 1 | 2 | 3 | 4 | 5;
 
@@ -363,6 +365,48 @@ function standeeTypeToPersistLabel(n: number): "Simple" | "Moderate" | "Complex"
     return m[n] ?? "Simple";
 }
 
+function InfoTooltip({ text }: { text: string }) {
+    const [visible, setVisible] = useState(false);
+    const [pos, setPos] = useState({ x: 0, y: 0 });
+    const iconRef = useRef<HTMLSpanElement>(null);
+
+    function handleMouseEnter() {
+        if (iconRef.current) {
+            const rect = iconRef.current.getBoundingClientRect();
+            const tooltipW = 208; // w-52
+            const x = Math.min(
+                Math.max(rect.left + rect.width / 2, tooltipW / 2 + 8),
+                window.innerWidth - tooltipW / 2 - 8,
+            );
+            setPos({ x, y: rect.top - 8 });
+        }
+        setVisible(true);
+    }
+
+    return (
+        <span
+            ref={iconRef}
+            className="inline-flex items-center shrink-0"
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={() => setVisible(false)}
+        >
+            <span className="w-3.5 h-3.5 rounded-full border cursor-pointer border-[#B1B3B6] text-[#B1B3B6] flex items-center justify-center text-[9px] font-black cursor-default select-none hover:border-[#FFC843] hover:text-[#FFC843] transition-colors leading-none">
+                i
+            </span>
+            {visible && typeof document !== "undefined" && createPortal(
+                <span
+                    style={{ left: pos.x, top: pos.y, transform: "translate(-50%, -100%)" }}
+                    className="fixed z-[9999] w-55 bg-[#000005] text-white text-[10px] font-semibold rounded-sm px-2.5 py-2 shadow-lg leading-snug pointer-events-none"
+                >
+                    {text}
+                    <span className="absolute left-1/2 -translate-x-1/2 top-full border-4 border-transparent border-t-[#000005]" />
+                </span>,
+                document.body,
+            )}
+        </span>
+    );
+}
+
 function CostRow({
     line,
     onChange,
@@ -370,10 +414,11 @@ function CostRow({
     line: CostLine;
     onChange: (key: string, field: "qty" | "unitCost", value: number) => void;
 }) {
-    const isFlat      = line.unit === "flat";
-    const isStandees  = line.unit === "standees";
+    const isFlat        = line.unit === "flat";
+    const isStandees    = line.unit === "standees";
     const isReadonlyQty = isStandees || !!line.readonlyQty;
-    const total      = lineTotal(line);
+    const total         = lineTotal(line);
+    const tooltip       = COST_LINE_TOOLTIPS[line.key];
 
     return (
         <div className="grid grid-cols-[1fr_auto] items-center gap-6 py-2.5 border-b border-[#F0F0F0] last:border-0">
@@ -389,6 +434,7 @@ function CostRow({
                         flat
                     </span>
                 )}
+                {tooltip && <InfoTooltip text={tooltip} />}
             </div>
 
             <div className="flex items-center gap-3">
@@ -920,12 +966,10 @@ export default function QuoteBreakdown({
                 <div className={`flex flex-col flex-1 min-h-0 overflow-y-auto gap-4 transition-opacity duration-200 ${isRecalculating ? "opacity-40 pointer-events-none" : ""}`}>
 
                     {/* Universal costs */}
-                    <div className="border-2 border-[#E0E0E0] rounded-sm bg-white p-4">
-                        <button
-                            type="button"
-                            className="group w-full flex items-center justify-between gap-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-[#FFC843] rounded-sm hover:bg-[#F8F8F8] transition-colors"
+                    <div className="group border-2 border-[#E0E0E0] rounded-sm bg-white p-4">
+                        <div
+                            className="w-full flex items-center justify-between gap-3 cursor-pointer"
                             onClick={() => setUniversalCostsExpanded((v) => !v)}
-                            aria-expanded={universalCostsExpanded}
                         >
                             <span className="text-[10px] font-black text-[#000005] uppercase tracking-widest">
                                 <span className="text-[#FFC843]">// </span>Universal Costs
@@ -944,7 +988,7 @@ export default function QuoteBreakdown({
                                     ▾
                                 </span>
                             </span>
-                        </button>
+                        </div>
                         <div className={`grid transition-all duration-300 ease-in-out ${universalCostsExpanded ? "grid-rows-[1fr] mt-3" : "grid-rows-[0fr]"}`}>
                             <div className="overflow-hidden">
                                 {universalLines.map((line) => (
@@ -979,12 +1023,10 @@ export default function QuoteBreakdown({
                     </div>
 
                     {/* Scenario costs */}
-                    <div className="border-2 border-[#E0E0E0] rounded-sm bg-white p-4">
-                        <button
-                            type="button"
-                            className="group w-full flex items-center justify-between gap-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-[#FFC843] rounded-sm hover:bg-[#F8F8F8] transition-colors"
+                    <div className="group border-2 border-[#E0E0E0] rounded-sm bg-white p-4">
+                        <div
+                            className="w-full flex items-center justify-between gap-3 cursor-pointer"
                             onClick={() => setScenarioCostsExpanded((v) => !v)}
-                            aria-expanded={scenarioCostsExpanded}
                         >
                             <span className="text-[10px] font-black text-[#000005] uppercase tracking-widest">
                                 <span className="text-[#FFC843]">// </span>Scenario {activeScenario} Costs
@@ -1003,7 +1045,7 @@ export default function QuoteBreakdown({
                                     ▾
                                 </span>
                             </span>
-                        </button>
+                        </div>
                         <div className={`grid transition-all duration-300 ease-in-out ${scenarioCostsExpanded ? "grid-rows-[1fr] mt-3" : "grid-rows-[0fr]"}`}>
                             <div className="overflow-hidden">
                                 {scenarioLines[activeScenario].map((line) => (
@@ -1055,7 +1097,7 @@ export default function QuoteBreakdown({
                                     value={contributionMargin}
                                     onChange={(e) => setContributionMargin(e.target.value)}
                                     placeholder="0"
-                                    className="border-2 border-[#2A2A30] rounded-sm px-2 py-1 text-sm font-black text-white bg-[#15151A] outline-none focus:border-[#FFC843] w-[90px] text-right transition-colors"
+                                    className="border-2 border-[#2A2A30] rounded-sm px-2 py-1 text-sm font-black text-white bg-[#15151A] outline-none focus:border-[#FFC843] w-[90px] text-right transition-colors [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                                 />
                                 <span className="text-sm font-black text-[#FFC843]">%</span>
                             </div>

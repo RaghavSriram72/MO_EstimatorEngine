@@ -65,7 +65,7 @@ export default function ProjectSidebar({
             onConfirm={confirmDelete}
             onCancel={() => setPendingDelete(null)}
         />
-        <aside className="shrink-0 w-[220px] flex flex-col border-r-2 border-[#E0E0E0] bg-white px-3 py-5 gap-3">
+        <aside className="shrink-0 w-[250px] flex flex-col border-r-2 border-[#E0E0E0] bg-white px-3 py-5 gap-3">
             <div className="flex flex-col gap-0.5 pl-3">
                     <span className="text-[11px] font-bold tracking-[0.2em] uppercase text-[#B1B3B6]">Your Work</span>
                     <div className="flex items-center gap-2">

@@ -791,7 +791,7 @@ export default function Inputter() {
             />
 
             {/* Main estimator form */}
-            <div className="flex flex-col items-center flex-1 min-w-0 min-h-0 overflow-hidden px-8 py-6">
+            <div className="flex flex-col items-center flex-1 min-w-0 min-h-0 overflow-hidden px-8 py-6 bg-white">
                 <div className="w-full max-w-2xl mb-4 shrink-0">
                     <div className="text-xs font-bold text-[#FFC843] tracking-widest uppercase mb-1">// ESTIMATOR</div>
                     <div className="text-3xl font-black text-[#000005] uppercase tracking-tight">Quote Estimate</div>
@@ -813,7 +813,7 @@ export default function Inputter() {
                                     value={projectName}
                                     onChange={(e) => setProjectName(e.target.value)}
                                     placeholder="Untitled project"
-                                    className="border-2 border-[#E0E0E0] rounded-sm p-1.5 outline-none text-[#000005] text-xs w-full bg-[#F8F8F8] focus:border-[#FFC843] font-semibold transition-colors"
+                                    className="border-2 bg-white border-[#E0E0E0] rounded-sm p-1.5 outline-none text-[#000005] text-xs w-full bg-[#F8F8F8] focus:border-[#FFC843] font-semibold transition-colors"
                                 />
                             </div>
                             <div className="flex-1 min-w-0">
@@ -834,7 +834,7 @@ export default function Inputter() {
                                     value={standeeCount}
                                     onChange={(e) => setStandeeCount(e.target.value === "" ? "" : Number(e.target.value))}
                                     placeholder="0"
-                                    className="border-2 border-[#E0E0E0] rounded-sm p-1.5 outline-none text-[#000005] text-xs w-full bg-[#F8F8F8] focus:border-[#FFC843] font-semibold transition-colors"
+                                    className="border-2 bg-white border-[#E0E0E0] rounded-sm p-1.5 outline-none text-[#000005] text-xs w-full bg-[#F8F8F8] focus:border-[#FFC843] font-semibold transition-colors"
                                 />
                             </div>
                         </div>

@@ -62,7 +62,7 @@ export default function QuotesSidebar({
             onConfirm={confirmDelete}
             onCancel={() => setPendingDelete(null)}
         />
-        <aside className="shrink-0 w-[220px] flex flex-col border-r-2 border-[#E0E0E0] bg-white px-3 py-5 gap-3 min-h-0">
+        <aside className="shrink-0 w-[250px] flex flex-col border-r-2 border-[#E0E0E0] bg-white px-3 py-5 gap-3 min-h-0">
             <div className="text-[10px] font-black uppercase tracking-widest text-[#000005]">
                 <span className="text-[#FFC843]">// </span>QUOTES
             </div>
