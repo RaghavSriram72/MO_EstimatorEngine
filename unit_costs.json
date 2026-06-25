@@ -10,105 +10,105 @@
     "name": "pallet_labor",
     "type": "pallet",
     "display_name": "Pallet Labor",
-    "cost": 0,
+    "cost": 38,
     "unit": "each"
   },
   {
     "name": "blank_comp",
-    "type": "material",
+    "type": "Comp",
     "display_name": "Blank Comp",
-    "cost": 0,
+    "cost": 750,
     "unit": "each"
   },
   {
     "name": "color_comp",
-    "type": "material",
+    "type": "Comp",
     "display_name": "Color Comp",
-    "cost": 0,
+    "cost": 1500,
     "unit": "each"
   },
   {
     "name": "blank_corrugate",
-    "type": "material",
-    "display_name": "Corrugate",
-    "cost": 0,
+    "type": "standee_material",
+    "display_name": "Blank Corrugate",
+    "cost": 9,
     "unit": "each"
   },
   {
     "name": "sheet_95_pound",
-    "type": "material",
-    "display_name": "95lb Sheet",
-    "cost": 0,
-    "unit": "each"
+    "type": "standee_material",
+    "display_name": "Sheet 95 Pound",
+    "cost": 1297,
+    "unit": "thousand"
   },
   {
     "name": "roll_95_pound",
-    "type": "material",
-    "display_name": "95lb Roll",
-    "cost": 0,
+    "type": "standee_material",
+    "display_name": "Roll 95 Pound",
+    "cost": 0.25,
     "unit": "linear_foot"
   },
   {
     "name": "roll_hi_tack",
-    "type": "material",
-    "display_name": "Hi-Tack Roll",
-    "cost": 0,
+    "type": "standee_material",
+    "display_name": "Roll Hi-Tack",
+    "cost": 2.25,
     "unit": "linear_foot"
   },
   {
     "name": "roll_busmark",
-    "type": "material",
-    "display_name": "Busmark Roll",
-    "cost": 0,
+    "type": "standee_material",
+    "display_name": "Roll Busmark",
+    "cost": 1.56,
     "unit": "linear_foot"
   },
   {
     "name": "die_cost",
-    "type": "material",
+    "type": "die",
     "display_name": "Die Cost",
-    "cost": 0,
+    "cost": 4,
     "unit": "linear_inch"
   },
   {
     "name": "description_label",
-    "type": "material",
+    "type": "shipping",
     "display_name": "Description Label",
-    "cost": 0,
+    "cost": 0.5,
     "unit": "each"
   },
   {
     "name": "shipping_label",
-    "type": "material",
+    "type": "shipping",
     "display_name": "Shipping Label",
-    "cost": 0,
+    "cost": 0.75,
     "unit": "each"
   },
   {
     "name": "shipping_box",
-    "type": "material",
+    "type": "shipping",
     "display_name": "Shipping Box",
-    "cost": 0,
+    "cost": 28,
     "unit": "each"
   },
   {
     "name": "instruction_sheet",
-    "type": "material",
+    "type": "instruction sheet",
     "display_name": "Instruction Sheet",
-    "cost": 0,
+    "cost": 10,
     "unit": "each"
   },
   {
     "name": "imposition_labor",
-    "type": "labor",
+    "type": "imposition",
     "display_name": "Imposition Labor",
-    "cost": 0,
+    "cost": 55,
     "unit": "hour"
   },
   {
     "name": "assembly_kitting",
     "type": "freight",
     "display_name": "External Assembly",
-    "cost": 0,
+    "cost": 750,
     "unit": "each"
   },
   {
@@ -139,30 +139,30 @@
     "name": "roll-x",
     "type": "machine",
     "display_name": "Roll-X",
-    "cost": 10,
+    "cost": 72,
     "unit": "hour",
     "setup_time": 0,
-    "throughput": 50,
+    "throughput": 450,
     "throughput_unit": "linear_inch"
   },
   {
     "name": "durst_rho_512R",
     "type": "machine",
     "display_name": "Durst Rho 512R",
-    "cost": 0,
+    "cost": 63,
     "unit": "hour",
     "setup_time": 0,
-    "throughput": 0,
+    "throughput": 35,
     "throughput_unit": "linear_inch"
   },
   {
     "name": "durst_rho_1312",
     "type": "machine",
     "display_name": "Durst Rho 1312",
-    "cost": 0,
+    "cost": 126,
     "unit": "hour",
     "setup_time": 0,
-    "throughput": 0,
+    "throughput": 124,
     "throughput_unit": "linear_inch"
   }
 ]
