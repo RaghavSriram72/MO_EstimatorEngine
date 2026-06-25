@@ -1,0 +1,41 @@
+[
+  {
+    "standee_type": "Simple Standee",
+    "cutting_die_blank_form_min": 0,
+    "cutting_die_inches_multiplier": 1,
+    "cutting_die_print_form_min": 0,
+    "engineering_design_cost_per_project": 300,
+    "hardware_cost": 2.5,
+    "instruction_sheet_engineering_cost_per_project": 300,
+    "instruction_sheet_total_cost": 1.2,
+    "kitting_and_assembly": 375,
+    "zund_blank_form_minutes": 12,
+    "zund_print_form_minutes": 15
+  },
+  {
+    "standee_type": "Moderate Standee",
+    "cutting_die_blank_form_min": 0,
+    "cutting_die_inches_multiplier": 1.5,
+    "cutting_die_print_form_min": 0,
+    "engineering_design_cost_per_project": 500,
+    "hardware_cost": 7.5,
+    "instruction_sheet_engineering_cost_per_project": 500,
+    "instruction_sheet_total_cost": 1.6,
+    "kitting_and_assembly": 750,
+    "zund_blank_form_minutes": 15,
+    "zund_print_form_minutes": 18
+  },
+  {
+    "standee_type": "Complex Standee",
+    "cutting_die_blank_form_min": 0,
+    "cutting_die_inches_multiplier": 2,
+    "cutting_die_print_form_min": 0,
+    "engineering_design_cost_per_project": 700,
+    "hardware_cost": 15,
+    "instruction_sheet_engineering_cost_per_project": 700,
+    "instruction_sheet_total_cost": 2.4,
+    "kitting_and_assembly": 1125,
+    "zund_blank_form_minutes": 20,
+    "zund_print_form_minutes": 25
+  }
+]

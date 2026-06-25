@@ -1,0 +1,6 @@
+[
+  { "lower_bound": 1,   "upper_bound": 10,   "overs": 3   },
+  { "lower_bound": 10,  "upper_bound": 50,   "overs": 10  },
+  { "lower_bound": 50,  "upper_bound": 200,  "overs": 25  },
+  { "lower_bound": 200, "upper_bound": null, "overs": 100 }
+]

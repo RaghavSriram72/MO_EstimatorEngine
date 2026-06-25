@@ -286,6 +286,9 @@ class UpdateCostRequest(BaseModel):
     unit: str | None = None
     display_name: str | None = None
     type: str | None = None
+    throughput: float | None = None
+    throughput_unit: str | None = None
+    setup_time: float | None = None
 
 
 @app.get("/standee-static-costs")

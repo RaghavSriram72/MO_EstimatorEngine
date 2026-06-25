@@ -1,0 +1,168 @@
+[
+  {
+    "name": "pallet",
+    "type": "pallet",
+    "display_name": "Pallet",
+    "cost": 150,
+    "unit": "each"
+  },
+  {
+    "name": "pallet_labor",
+    "type": "pallet",
+    "display_name": "Pallet Labor",
+    "cost": 0,
+    "unit": "each"
+  },
+  {
+    "name": "blank_comp",
+    "type": "material",
+    "display_name": "Blank Comp",
+    "cost": 0,
+    "unit": "each"
+  },
+  {
+    "name": "color_comp",
+    "type": "material",
+    "display_name": "Color Comp",
+    "cost": 0,
+    "unit": "each"
+  },
+  {
+    "name": "blank_corrugate",
+    "type": "material",
+    "display_name": "Corrugate",
+    "cost": 0,
+    "unit": "each"
+  },
+  {
+    "name": "sheet_95_pound",
+    "type": "material",
+    "display_name": "95lb Sheet",
+    "cost": 0,
+    "unit": "each"
+  },
+  {
+    "name": "roll_95_pound",
+    "type": "material",
+    "display_name": "95lb Roll",
+    "cost": 0,
+    "unit": "linear_foot"
+  },
+  {
+    "name": "roll_hi_tack",
+    "type": "material",
+    "display_name": "Hi-Tack Roll",
+    "cost": 0,
+    "unit": "linear_foot"
+  },
+  {
+    "name": "roll_busmark",
+    "type": "material",
+    "display_name": "Busmark Roll",
+    "cost": 0,
+    "unit": "linear_foot"
+  },
+  {
+    "name": "die_cost",
+    "type": "material",
+    "display_name": "Die Cost",
+    "cost": 0,
+    "unit": "linear_inch"
+  },
+  {
+    "name": "description_label",
+    "type": "material",
+    "display_name": "Description Label",
+    "cost": 0,
+    "unit": "each"
+  },
+  {
+    "name": "shipping_label",
+    "type": "material",
+    "display_name": "Shipping Label",
+    "cost": 0,
+    "unit": "each"
+  },
+  {
+    "name": "shipping_box",
+    "type": "material",
+    "display_name": "Shipping Box",
+    "cost": 0,
+    "unit": "each"
+  },
+  {
+    "name": "instruction_sheet",
+    "type": "material",
+    "display_name": "Instruction Sheet",
+    "cost": 0,
+    "unit": "each"
+  },
+  {
+    "name": "imposition_labor",
+    "type": "labor",
+    "display_name": "Imposition Labor",
+    "cost": 0,
+    "unit": "hour"
+  },
+  {
+    "name": "assembly_kitting",
+    "type": "freight",
+    "display_name": "External Assembly",
+    "cost": 0,
+    "unit": "each"
+  },
+  {
+    "name": "mount_diecut_assembly_kitting",
+    "type": "freight",
+    "display_name": "External Mount & Die Cut Assembly",
+    "cost": 1500,
+    "unit": "each"
+  },
+  {
+    "name": "print_mount_diecut_assembly_kitting",
+    "type": "freight",
+    "display_name": "Full Outsource",
+    "cost": 0,
+    "unit": "each"
+  },
+  {
+    "name": "zund_cutter",
+    "type": "machine",
+    "display_name": "Zund Cutter",
+    "cost": 72,
+    "unit": "hour",
+    "setup_time": 0,
+    "throughput": 8000,
+    "throughput_unit": "linear_inch"
+  },
+  {
+    "name": "roll-x",
+    "type": "machine",
+    "display_name": "Roll-X",
+    "cost": 10,
+    "unit": "hour",
+    "setup_time": 0,
+    "throughput": 50,
+    "throughput_unit": "linear_inch"
+  },
+  {
+    "name": "durst_rho_512R",
+    "type": "machine",
+    "display_name": "Durst Rho 512R",
+    "cost": 0,
+    "unit": "hour",
+    "setup_time": 0,
+    "throughput": 0,
+    "throughput_unit": "linear_inch"
+  },
+  {
+    "name": "durst_rho_1312",
+    "type": "machine",
+    "display_name": "Durst Rho 1312",
+    "cost": 0,
+    "unit": "hour",
+    "setup_time": 0,
+    "throughput": 0,
+    "throughput_unit": "linear_inch"
+  }
+]

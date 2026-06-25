@@ -1,0 +1,41 @@
+[
+  {
+    "supplier": "Foster",
+    "material": "fosters_print_form",
+    "material_display_name": "Foster Print Form",
+    "unit": "thousand",
+    "price_breaks": [
+      { "amount": 150,  "cost": 32844 },
+      { "amount": 250,  "cost": 20384 },
+      { "amount": 400,  "cost": 13398 },
+      { "amount": 600,  "cost": 9498  },
+      { "amount": 1100, "cost": 5922  }
+    ]
+  },
+  {
+    "supplier": "Pacific Quality",
+    "material": "200_b_white_1s",
+    "material_display_name": "200 B White 1/s",
+    "unit": "thousand",
+    "price_breaks": [
+      { "amount": 150,  "cost": 32844 },
+      { "amount": 250,  "cost": 20384 },
+      { "amount": 400,  "cost": 13398 },
+      { "amount": 600,  "cost": 9498  },
+      { "amount": 1100, "cost": 5922  }
+    ]
+  },
+  {
+    "supplier": "Pacific Quality",
+    "material": "200_bk",
+    "material_display_name": "200 BK",
+    "unit": "thousand",
+    "price_breaks": [
+      { "amount": 150,  "cost": 32844 },
+      { "amount": 250,  "cost": 20384 },
+      { "amount": 400,  "cost": 13398 },
+      { "amount": 600,  "cost": 9498  },
+      { "amount": 1100, "cost": 5922  }
+    ]
+  }
+]
