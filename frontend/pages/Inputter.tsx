@@ -197,6 +197,7 @@ export default function Inputter() {
     const [activeQuotePayload, setActiveQuotePayload]         = useState<RequestPayload | null>(null);
     const [activeQuoteScenario, setActiveQuoteScenario]       = useState<QuoteScenarioId>(1);
     const [activeQuoteName, setActiveQuoteName]               = useState<string | null>(null);
+    const [activeQuoteContributionMargin, setActiveQuoteContributionMargin] = useState<number | null>(null);
     const [activePersistedQuoteId, setActivePersistedQuoteId] = useState<string | null>(null);
 
     // ── Build-quote modal state ────────────────────────────────────────────
@@ -542,6 +543,7 @@ export default function Inputter() {
             setActiveQuotePayload(corePayload);
             setActiveQuoteScenario(newQuoteScenario);
             setActiveQuoteName(quoteName);
+            setActiveQuoteContributionMargin(0);
             setActiveQuoteData(quoteDataFromGenerateResponse(quoteResult));
             setInQuotesWorkspace(false);
             setActivePersistedQuoteId(null);
@@ -560,6 +562,7 @@ export default function Inputter() {
                         quote_name: quoteName,
                         scenario: newQuoteScenario,
                         num_standees: newQuoteQuantity as number,
+                        contribution_margin: 0,
                         standee_type: standeeType,
                         elements: elementsForApi(elements),
                         breakdown: breakdownPayload,
@@ -596,6 +599,7 @@ export default function Inputter() {
                 : 1;
         setActiveQuoteScenario(initialScenario);
         setActiveQuoteName(typeof doc.quote_name === "string" ? doc.quote_name : "Quote");
+        setActiveQuoteContributionMargin(typeof doc.contribution_margin === "number" ? doc.contribution_margin : 0);
         setActivePersistedQuoteId(quoteId);
         setActiveQuoteData(qd);
         setActiveQuotePayload(buildPayloadFromPersistedQuote(doc, { elements, standeeType, standeeCount }));
@@ -742,6 +746,7 @@ export default function Inputter() {
                                 requestPayload={activeQuotePayload}
                                 initialActiveScenario={activeQuoteScenario}
                                 quoteName={activeQuoteName}
+                                initialContributionMargin={activeQuoteContributionMargin}
                                 persistedQuoteId={activePersistedQuoteId}
                                 quoteOwner={typeof window !== "undefined" ? localStorage.getItem("username") : null}
                                 onBack={clearActiveQuote}

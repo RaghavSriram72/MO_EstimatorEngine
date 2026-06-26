@@ -35,6 +35,7 @@ type Props = {
     requestPayload: RequestPayload;
     initialActiveScenario?: ScenarioId;
     quoteName?: string | null;
+    initialContributionMargin?: number | null;
     /** When set with ``quoteOwner``, edits can be persisted via PATCH. */
     persistedQuoteId?: string | null;
     quoteOwner?: string | null;
@@ -528,6 +529,7 @@ export default function QuoteBreakdown({
     requestPayload,
     initialActiveScenario,
     quoteName,
+    initialContributionMargin = null,
     persistedQuoteId = null,
     quoteOwner = null,
     onBack,
@@ -570,7 +572,9 @@ export default function QuoteBreakdown({
     const [universalCostsExpanded, setUniversalCostsExpanded] = useState(false);
     const [scenarioCostsExpanded, setScenarioCostsExpanded] = useState(false);
     const [manualDirty, setManualDirty] = useState(false);
-    const [contributionMargin, setContributionMargin] = useState("");
+    const [contributionMargin, setContributionMargin] = useState(() =>
+        initialContributionMargin != null ? String(initialContributionMargin) : "",
+    );
 
     // ── Save toast (mirrors the estimator-form toast pattern) ──────────────
     const [toast, setToast] = useState<{ message: string; type: "save" | "delete" } | null>(null);
@@ -620,9 +624,13 @@ export default function QuoteBreakdown({
         }
         const ui = buildBreakdownUiPayloadFromState(ps, sl, sso);
         if (ui) breakdown._breakdown_ui = ui;
+        const parsedMargin = parseFloat(contributionMargin);
+        const contribution_margin =
+            Number.isFinite(parsedMargin) && parsedMargin >= 0 && parsedMargin < 100 ? parsedMargin : 0;
         const body = {
             quote_name: (quoteName ?? "").trim() || "Untitled quote",
             num_standees: sharedParams.numStandees,
+            contribution_margin,
             scenario: scenarioForMeta,
             standee_type: standeeTypeToPersistLabel(requestPayload.standee_type),
             elements: requestPayload.elements.map((e) => ({
@@ -1095,7 +1103,10 @@ export default function QuoteBreakdown({
                                     max={99.99}
                                     step={0.5}
                                     value={contributionMargin}
-                                    onChange={(e) => setContributionMargin(e.target.value)}
+                                    onChange={(e) => {
+                                        setManualDirty(true);
+                                        setContributionMargin(e.target.value);
+                                    }}
                                     placeholder="0"
                                     className="border-2 border-[#2A2A30] rounded-sm px-2 py-1 text-sm font-black text-white bg-[#15151A] outline-none focus:border-[#FFC843] w-[90px] text-right transition-colors [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                                 />

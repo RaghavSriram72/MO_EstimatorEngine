@@ -223,7 +223,7 @@ class MidnightOilDB:
             qid = ObjectId(quote_id)
         except (InvalidId, TypeError):
             return False
-        allowed = {"quote_name", "breakdown", "num_standees", "scenario", "standee_type", "elements"}
+        allowed = {"quote_name", "breakdown", "num_standees", "scenario", "standee_type", "elements", "contribution_margin"}
         update_doc_final = {k: v for k, v in fields.items() if k in allowed}
         if not update_doc_final:
             return False

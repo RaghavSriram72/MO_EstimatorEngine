@@ -8,6 +8,7 @@
 - ``quote_name`` — str
 - ``scenario`` — int (1–5)
 - ``num_standees`` — int
+- ''contribution_margin'' - float
 - ``standee_type`` — ``Simple`` / ``Moderate`` / ``Complex`` (same as projects)
 - ``elements`` — list of persisted elements (see ``PersistedElement`` in ``persisted_project``)
 - ``breakdown`` — BSON-safe dict containing:
@@ -48,6 +49,7 @@ class PersistedQuoteCreate(BaseModel):
     quote_name: str = Field(..., min_length=1, max_length=512)
     scenario: int = Field(..., ge=1, le=5)
     num_standees: int = Field(..., ge=1)
+    contribution_margin: float = Field(..., ge=0, le=99.99)
     standee_type: ComplexityStr
     elements: list[PersistedElement] = Field(..., min_length=1)
     breakdown: dict[str, Any] = Field(default_factory=dict)
@@ -61,6 +63,7 @@ class PersistedQuoteCreateBody(BaseModel):
     quote_name: str = Field(..., min_length=1, max_length=512)
     scenario: int = Field(..., ge=1, le=5)
     num_standees: int = Field(..., ge=1)
+    contribution_margin: float = Field(..., ge=0, le=99.99)
     standee_type: ComplexityStr
     elements: list[PersistedElement] = Field(..., min_length=1)
     breakdown: dict[str, Any] = Field(default_factory=dict)
@@ -80,6 +83,7 @@ class PersistedQuoteUpdateBody(BaseModel):
 
     quote_name: str = Field(..., min_length=1, max_length=512)
     num_standees: int = Field(..., ge=1)
+    contribution_margin: float = Field(..., ge=0, le=99.99)
     scenario: int = Field(..., ge=1, le=5)
     standee_type: ComplexityStr
     elements: list[PersistedElement] = Field(..., min_length=1)
