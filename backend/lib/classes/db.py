@@ -63,7 +63,8 @@ class MidnightOilDB:
         """Establish a connection to the MongoDB database."""
         self._cache: dict[str, list] = {}
         self.client = MongoClient(self.uri, server_api=ServerApi("1"), tz_aware=True)
-        self.db = self.client["DB"]
+        self.db_name = os.getenv("MONGO_DB_NAME", "DB")
+        self.db = self.client[self.db_name]
         self.unit_costs_collection = self.db["unit_costs"]
         self.standee_collection = self.db["standee_static_costs"]
         self.print_blank_collection = self.db["print_blank_ratio"]

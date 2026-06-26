@@ -1,3 +1,4 @@
+import os
 import unittest
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -6,11 +7,38 @@ from unittest.mock import patch
 
 from bson import ObjectId
 
-from lib.classes.db import MidnightOilDB, _fit_supplier_curve, _hash_password
+# Force every connection in this test module onto a disposable database whose
+# name ends in "_test". This MUST be set before any MidnightOilDB().connect()
+# call. python-dotenv's load_dotenv() does not override existing env vars, so
+# this value wins even if .env defines MONGO_DB_NAME.
+os.environ["MONGO_DB_NAME"] = "DB_test"
+
+from lib.classes.db import MidnightOilDB, _fit_supplier_curve, _hash_password  # noqa: E402
+
+
+def _require_test_db(db: MidnightOilDB) -> None:
+    """Hard safety guard: never run destructive setup against a non-test database.
+
+    Raises if the connected database name does not end with ``_test``. This prevents
+    accidentally dropping/seeding the real application database (named ``DB``).
+    """
+    name = db.db.name
+    if not name.endswith("_test"):
+        raise RuntimeError(
+            f"Refusing to run db_test against database {name!r}: its name must end with '_test'. "
+            "Set MONGO_DB_NAME to a disposable test database before running these tests."
+        )
+
+
+def _reset_test_db(db: MidnightOilDB) -> None:
+    """Drop the connected test database, guarded by :func:`_require_test_db`."""
+    _require_test_db(db)
+    db.client.drop_database(db.db.name)
 
 
 def _seed_db(db: MidnightOilDB) -> None:
-    """Seed the real test database with baseline documents used by the tests."""
+    """Seed the disposable test database with baseline documents used by the tests."""
+    _require_test_db(db)
     d = db.db
     # clean collections
     d.users.delete_many({})
@@ -145,20 +173,14 @@ class TestDbHelpers(unittest.TestCase):
     def setUpClass(cls):
         cls.db = MidnightOilDB().connect()
         # ensure clean slate and seed expected test data
-        try:
-            cls.db.client.drop_database("DB")
-        except Exception:
-            pass
+        _reset_test_db(cls.db)
         _seed_db(cls.db)
         cls.db._load_cache()
         cls.db._cache["packout"] = list(cls.db.db["packout"].find())
 
     @classmethod
     def tearDownClass(cls):
-        try:
-            cls.db.client.drop_database("DB")
-        except Exception:
-            pass
+        _reset_test_db(cls.db)
         cls.db.close()
 
     def setUp(self):
@@ -209,20 +231,14 @@ class TestDbUserAndProjectMethods(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.db = MidnightOilDB().connect()
-        try:
-            cls.db.client.drop_database("DB")
-        except Exception:
-            pass
+        _reset_test_db(cls.db)
         _seed_db(cls.db)
         cls.db._load_cache()
         cls.db._cache["packout"] = list(cls.db.db["packout"].find())
 
     @classmethod
     def tearDownClass(cls):
-        try:
-            cls.db.client.drop_database("DB")
-        except Exception:
-            pass
+        _reset_test_db(cls.db)
         cls.db.close()
 
     def setUp(self):
@@ -291,20 +307,14 @@ class TestDbQuoteMethods(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.db = MidnightOilDB().connect()
-        try:
-            cls.db.client.drop_database("DB")
-        except Exception:
-            pass
+        _reset_test_db(cls.db)
         _seed_db(cls.db)
         cls.db._load_cache()
         cls.db._cache["packout"] = list(cls.db.db["packout"].find())
 
     @classmethod
     def tearDownClass(cls):
-        try:
-            cls.db.client.drop_database("DB")
-        except Exception:
-            pass
+        _reset_test_db(cls.db)
         cls.db.close()
 
     def setUp(self):
@@ -369,20 +379,14 @@ class TestDbCostAndLookupMethods(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.db = MidnightOilDB().connect()
-        try:
-            cls.db.client.drop_database("DB")
-        except Exception:
-            pass
+        _reset_test_db(cls.db)
         _seed_db(cls.db)
         cls.db._load_cache()
         cls.db._cache["packout"] = list(cls.db.db["packout"].find())
 
     @classmethod
     def tearDownClass(cls):
-        try:
-            cls.db.client.drop_database("DB")
-        except Exception:
-            pass
+        _reset_test_db(cls.db)
         cls.db.close()
 
     def setUp(self):
