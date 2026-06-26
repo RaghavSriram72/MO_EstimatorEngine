@@ -1,5 +1,6 @@
 [
   {
+    "_id": { "$oid": "6a3daeba5307f8e3d6344967" },
     "supplier": "fosters",
     "material": "fosters_print_form",
     "material_display_name": "Foster Print Form",
@@ -9,16 +10,21 @@
       { "amount": 250,  "cost": 20384 },
       { "amount": 400,  "cost": 13398 },
       { "amount": 600,  "cost": 9498  },
-      { "amount": 1100, "cost": 5922  }
+      { "amount": 1000, "cost": 6817  },
+      { "amount": 1100, "cost": 5922  },
+      { "amount": 2000, "cost": 4244  },
+      { "amount": 4000, "cost": 2932  }
     ],
     "curve_params": {
-      "a": 0.0,
-      "b": 0.0,
-      "c": 0.0,
-      "r_squared": 0.0
-    }
+      "a": 4759748.429673,
+      "b": -1.005139,
+      "c": 1899.5039,
+      "r_squared": 0.99979
+    },
+    "last_updated": { "$date": "2026-06-26T16:59:14.770Z" }
   },
   {
+    "_id": { "$oid": "6a3daeba5307f8e3d6344968" },
     "supplier": "pq",
     "material": "b_white_1_s",
     "material_display_name": "200 B White 1/s",
@@ -31,29 +37,32 @@
       { "amount": 1100, "cost": 5922  }
     ],
     "curve_params": {
-      "a": 0.0,
-      "b": 0.0,
-      "c": 0.0,
-      "r_squared": 0.0
-    }
+      "a": 4583832.462601,
+      "b": -0.995874,
+      "c": 1642.213044,
+      "r_squared": 0.999999
+    },
+    "last_updated": { "$date": "2026-06-25T22:43:22.170Z" }
   },
   {
+    "_id": { "$oid": "6a3daeba5307f8e3d6344969" },
     "supplier": "pq",
-    "material": "200_bk",
+    "material": "bk_blank_die",
     "material_display_name": "200 BK",
-    "unit": "thousand",
+    "unit": "each",
     "price_breaks": [
-      { "amount": 150,  "cost": 32844 },
-      { "amount": 250,  "cost": 20384 },
+      { "amount": 25,   "cost": 65.32 },
+      { "amount": 50,   "cost": 34.85 },
       { "amount": 400,  "cost": 13398 },
       { "amount": 600,  "cost": 9498  },
       { "amount": 1100, "cost": 5922  }
     ],
-      "curve_params": {
-      "a": 0.0,
-      "b": 0.0,
-      "c": 0.0,
-      "r_squared": 0.0
-    }
+    "curve_params": {
+      "a": 24998196.821755,
+      "b": 0.000109,
+      "c": -25006823.674599,
+      "r_squared": 0.581911
+    },
+    "last_updated": { "$date": "2026-06-26T17:19:50.507Z" }
   }
 ]

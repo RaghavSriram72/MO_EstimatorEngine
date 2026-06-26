@@ -1,9 +1,9 @@
 [
   {
     "standee_type": "Simple Standee",
-    "cutting_die_blank_form_min": 0,
+    "cutting_die_blank_form_min": 1400,
     "cutting_die_inches_multiplier": 1,
-    "cutting_die_print_form_min": 0,
+    "cutting_die_print_form_min": 1200,
     "engineering_design_cost_per_project": 300,
     "hardware_cost": 2.5,
     "instruction_sheet_engineering_cost_per_project": 300,
@@ -14,9 +14,9 @@
   },
   {
     "standee_type": "Moderate Standee",
-    "cutting_die_blank_form_min": 0,
+    "cutting_die_blank_form_min": 1700,
     "cutting_die_inches_multiplier": 1.5,
-    "cutting_die_print_form_min": 0,
+    "cutting_die_print_form_min": 1500,
     "engineering_design_cost_per_project": 500,
     "hardware_cost": 7.5,
     "instruction_sheet_engineering_cost_per_project": 500,
@@ -27,9 +27,9 @@
   },
   {
     "standee_type": "Complex Standee",
-    "cutting_die_blank_form_min": 0,
+    "cutting_die_blank_form_min": 2000,
     "cutting_die_inches_multiplier": 2,
-    "cutting_die_print_form_min": 0,
+    "cutting_die_print_form_min": 1800,
     "engineering_design_cost_per_project": 700,
     "hardware_cost": 15,
     "instruction_sheet_engineering_cost_per_project": 700,

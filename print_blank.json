@@ -6,5 +6,7 @@
   { "print_forms": 7,  "blank_forms": 10.5 },
   { "print_forms": 8,  "blank_forms": 12   },
   { "print_forms": 9,  "blank_forms": 13.5 },
-  { "print_forms": 10, "blank_forms": 15   }
+  { "print_forms": 10, "blank_forms": 15   },
+  { "print_forms": 1, "blank_forms": 2   },
+  { "print_forms": 2, "blank_forms": 4   }
 ]
