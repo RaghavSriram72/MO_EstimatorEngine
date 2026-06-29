@@ -1,68 +1,385 @@
 [
-  {
-    "_id": { "$oid": "6a3daeba5307f8e3d6344967" },
-    "supplier": "fosters",
-    "material": "fosters_print_form",
-    "material_display_name": "Foster Print Form",
-    "unit": "thousand",
-    "price_breaks": [
-      { "amount": 150,  "cost": 32844 },
-      { "amount": 250,  "cost": 20384 },
-      { "amount": 400,  "cost": 13398 },
-      { "amount": 600,  "cost": 9498  },
-      { "amount": 1000, "cost": 6817  },
-      { "amount": 1100, "cost": 5922  },
-      { "amount": 2000, "cost": 4244  },
-      { "amount": 4000, "cost": 2932  }
-    ],
-    "curve_params": {
-      "a": 4759748.429673,
-      "b": -1.005139,
-      "c": 1899.5039,
-      "r_squared": 0.99979
+
+{
+  "supplier": "fosters",
+  "material": "fosters_print_form",
+  "material_display_name": "Foster Print Form",
+  "unit": "thousand",
+  "price_breaks": [
+    {
+      "amount": 150,
+      "cost": 32844
     },
-    "last_updated": { "$date": "2026-06-26T16:59:14.770Z" }
+    {
+      "amount": 250,
+      "cost": 20384
+    },
+    {
+      "amount": 400,
+      "cost": 13398
+    },
+    {
+      "amount": 600,
+      "cost": 9498
+    },
+    {
+      "amount": 1000,
+      "cost": 6817
+    },
+    {
+      "amount": 1100,
+      "cost": 5922
+    },
+    {
+      "amount": 2000,
+      "cost": 4244
+    },
+    {
+      "amount": 4000,
+      "cost": 2932
+    }
+  ],
+  "curve_params": {
+    "a": 4759748.429673,
+    "b": -1.005139,
+    "c": 1899.5039,
+    "r_squared": 0.99979
   },
-  {
-    "_id": { "$oid": "6a3daeba5307f8e3d6344968" },
-    "supplier": "pq",
-    "material": "b_white_1_s",
-    "material_display_name": "200 B White 1/s",
-    "unit": "thousand",
-    "price_breaks": [
-      { "amount": 150,  "cost": 32844 },
-      { "amount": 250,  "cost": 20384 },
-      { "amount": 400,  "cost": 13398 },
-      { "amount": 600,  "cost": 9498  },
-      { "amount": 1100, "cost": 5922  }
-    ],
-    "curve_params": {
-      "a": 4583832.462601,
-      "b": -0.995874,
-      "c": 1642.213044,
-      "r_squared": 0.999999
-    },
-    "last_updated": { "$date": "2026-06-25T22:43:22.170Z" }
-  },
-  {
-    "_id": { "$oid": "6a3daeba5307f8e3d6344969" },
-    "supplier": "pq",
-    "material": "bk_blank_die",
-    "material_display_name": "200 BK",
-    "unit": "each",
-    "price_breaks": [
-      { "amount": 25,   "cost": 65.32 },
-      { "amount": 50,   "cost": 34.85 },
-      { "amount": 400,  "cost": 13398 },
-      { "amount": 600,  "cost": 9498  },
-      { "amount": 1100, "cost": 5922  }
-    ],
-    "curve_params": {
-      "a": 24998196.821755,
-      "b": 0.000109,
-      "c": -25006823.674599,
-      "r_squared": 0.581911
-    },
-    "last_updated": { "$date": "2026-06-26T17:19:50.507Z" }
+  "last_updated": {
+    "$date": "2026-06-26T16:59:14.770Z"
   }
+},
+
+{
+  "supplier": "pq",
+  "material": "b_white_1_s",
+  "material_display_name": "200 B White 1/s",
+  "type": "print",
+  "unit": "each",
+  "price_breaks": [
+    {
+      "amount": 25,
+      "cost": 78.03
+    },
+    {
+      "amount": 50,
+      "cost": 42
+    },
+    {
+      "amount": 75,
+      "cost": 29.96
+    },
+    {
+      "amount": 100,
+      "cost": 25.24
+    },
+    {
+      "amount": 150,
+      "cost": 15.74
+    },
+    {
+      "amount": 200,
+      "cost": 13.66
+    },
+    {
+      "amount": 250,
+      "cost": 13.33
+    },
+    {
+      "amount": 300,
+      "cost": 11.88
+    },
+    {
+      "amount": 400,
+      "cost": 10.71
+    },
+    {
+      "amount": 500,
+      "cost": 10.02
+    },
+    {
+      "amount": 750,
+      "cost": 9
+    },
+    {
+      "amount": 1000,
+      "cost": 8.43
+    },
+    {
+      "amount": 1250,
+      "cost": 8.21
+    },
+    {
+      "amount": 1500,
+      "cost": 7.63
+    },
+    {
+      "amount": 1750,
+      "cost": 7.48
+    },
+    {
+      "amount": 2000,
+      "cost": 7.34
+    }
+  ],
+  "curve_params": {
+    "a": 1994.615984,
+    "b": -1.033136,
+    "c": 6.557937,
+    "r_squared": 0.998233
+  },
+  "last_updated": {
+    "$date": "2026-06-29T16:45:12.035Z"
+  }
+},
+
+{
+  "supplier": "pq",
+  "material": "bk_blank_die",
+  "material_display_name": "200 BK",
+  "type": "print",
+  "unit": "each",
+  "price_breaks": [
+    {
+      "amount": 25,
+      "cost": 65.32
+    },
+    {
+      "amount": 50,
+      "cost": 34.85
+    },
+    {
+      "amount": 75,
+      "cost": 24.84
+    },
+    {
+      "amount": 100,
+      "cost": 20.65
+    },
+    {
+      "amount": 150,
+      "cost": 15.38
+    },
+    {
+      "amount": 200,
+      "cost": 13.36
+    },
+    {
+      "amount": 250,
+      "cost": 12.9
+    },
+    {
+      "amount": 300,
+      "cost": 11.52
+    },
+    {
+      "amount": 400,
+      "cost": 10.37
+    },
+    {
+      "amount": 500,
+      "cost": 9.67
+    },
+    {
+      "amount": 750,
+      "cost": 8.69
+    },
+    {
+      "amount": 1000,
+      "cost": 8.15
+    },
+    {
+      "amount": 1250,
+      "cost": 7.76
+    },
+    {
+      "amount": 1500,
+      "cost": 7.29
+    },
+    {
+      "amount": 1750,
+      "cost": 7.18
+    },
+    {
+      "amount": 2000,
+      "cost": 6.96
+    }
+  ],
+  "curve_params": {
+    "a": 1709.57284,
+    "b": -1.049443,
+    "c": 6.863616,
+    "r_squared": 0.999417
+  },
+  "last_updated": {
+    "$date": "2026-06-29T16:56:19.670Z"
+  }
+},
+
+
+{
+  "supplier": "pq",
+  "material": "b_white_1_s",
+  "material_display_name": "200 B White 1/s",
+  "type": "blank",
+  "unit": "each",
+  "price_breaks": [
+    {
+      "amount": 25,
+      "cost": 66.96
+    },
+    {
+      "amount": 50,
+      "cost": 35.9
+    },
+    {
+      "amount": 75,
+      "cost": 25.46
+    },
+    {
+      "amount": 100,
+      "cost": 21.46
+    },
+    {
+      "amount": 150,
+      "cost": 12.68
+    },
+    {
+      "amount": 200,
+      "cost": 10.97
+    },
+    {
+      "amount": 250,
+      "cost": 10.39
+    },
+    {
+      "amount": 300,
+      "cost": 9.56
+    },
+    {
+      "amount": 400,
+      "cost": 8.57
+    },
+    {
+      "amount": 500,
+      "cost": 8.02
+    },
+    {
+      "amount": 750,
+      "cost": 7.2
+    },
+    {
+      "amount": 1000,
+      "cost": 6.75
+    },
+    {
+      "amount": 1250,
+      "cost": 6.63
+    },
+    {
+      "amount": 1500,
+      "cost": 6.16
+    },
+    {
+      "amount": 1750,
+      "cost": 6.07
+    },
+    {
+      "amount": 2000,
+      "cost": 6.02
+    }
+  ],
+  "curve_params": {
+    "a": 1770.0757,
+    "b": -1.040487,
+    "c": 5.131306,
+    "r_squared": 0.997397
+  },
+  "last_updated": {
+    "$date": "2026-06-29T16:49:47.162Z"
+  }
+},
+
+{
+  "supplier": "pq",
+  "material": "bk_blank_die",
+  "material_display_name": "200 BK",
+  "type": "blank",
+  "unit": "each",
+  "price_breaks": [
+    {
+      "amount": 25,
+      "cost": 54.27
+    },
+    {
+      "amount": 50,
+      "cost": 28.75
+    },
+    {
+      "amount": 75,
+      "cost": 20.34
+    },
+    {
+      "amount": 100,
+      "cost": 16.87
+    },
+    {
+      "amount": 150,
+      "cost": 12.33
+    },
+    {
+      "amount": 200,
+      "cost": 10.67
+    },
+    {
+      "amount": 250,
+      "cost": 10.5
+    },
+    {
+      "amount": 300,
+      "cost": 9.2
+    },
+    {
+      "amount": 400,
+      "cost": 8.23
+    },
+    {
+      "amount": 500,
+      "cost": 7.68
+    },
+    {
+      "amount": 750,
+      "cost": 6.89
+    },
+    {
+      "amount": 1000,
+      "cost": 6.46
+    },
+    {
+      "amount": 1250,
+      "cost": 6.18
+    },
+    {
+      "amount": 1500,
+      "cost": 5.83
+    },
+    {
+      "amount": 1750,
+      "cost": 5.77
+    },
+    {
+      "amount": 2000,
+      "cost": 5.63
+    }
+  ],
+  "curve_params": {
+    "a": 1477.828028,
+    "b": -1.059981,
+    "c": 5.457777,
+    "r_squared": 0.99943
+  },
+  "last_updated": {
+    "$date": "2026-06-29T17:03:16.660Z"
+  }
+}
 ]
