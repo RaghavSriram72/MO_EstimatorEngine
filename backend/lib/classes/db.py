@@ -440,9 +440,9 @@ class MidnightOilDB:
         )
         self._load_cache()
 
-    def get_curve_params(self, supplier: str, material: str) -> dict[str, float] | None:
+    def get_curve_params(self, supplier: str, material: str, material_type: str = "") -> dict[str, float] | None:
         """Return precomputed curve params for a supplier/material pair."""
-        doc = self._get_supplier_doc(supplier, material)
+        doc = self._get_supplier_doc(supplier, material, material_type)
         return doc.get("curve_params") if doc else None
 
     def get_overs(self, quantity: int) -> int:

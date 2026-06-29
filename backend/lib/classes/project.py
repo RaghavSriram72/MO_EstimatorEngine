@@ -178,11 +178,13 @@ class Project[T: BaseInput]:
     def _get_kitting_and_assembly_cost(self) -> float:
         return self.db.get_standee_data(self.standee_key, "kitting_and_assembly") * self.num_standees
 
-    def _get_supplier_cost(self, supplier: str, material: str, num_forms: float) -> float:
-        unit = self.db.get_supplier_material_records(supplier, material)["unit"]
-        params = self.db.get_curve_params(supplier, material)
+    def _get_supplier_cost(self, supplier: str, material: str, num_forms: float, material_type: str = "") -> float:
+        unit = self.db.get_supplier_material_records(supplier, material, material_type)["unit"]
+        params = self.db.get_curve_params(supplier, material, material_type)
         if params is None:
-            raise ValueError(f"No pricing data found for supplier={supplier!r} material={material!r}")
+            raise ValueError(
+                f"No pricing data found for supplier={supplier!r} material={material!r} type={material_type!r}"
+            )
 
         cost_per_unit = params["a"] * num_forms ** params["b"] + params["c"]
         return cost_per_unit * UNIT_MAP[unit]
@@ -200,8 +202,10 @@ class Project[T: BaseInput]:
         self.litho_buyout_unit_cost = unit_cost
         return unit_cost * sheets_per_form * self.print_forms_per_standee
 
-    def _get_supplier_mount_die_buyout_cost(self, supplier: str, material: str, forms: float) -> float:
-        unit_cost = self._get_supplier_cost(supplier, material, self.num_standees)
+    def _get_supplier_mount_die_buyout_cost(
+        self, supplier: str, material: str, forms: float, material_type: str = ""
+    ) -> float:
+        unit_cost = self._get_supplier_cost(supplier, material, self.num_standees, material_type)
         self.mount_die_buyout_unit_cost = unit_cost
         return unit_cost * self.num_standees * forms
 
@@ -308,12 +312,13 @@ class OutsourceProject[T: OutsourceInput](Project[T]):
         super().calculate_cost(input)
         self.corrugate_supplier = input.corrugate_supplier
         self.corrugate_material = input.corrugate_material
-        # ! needs to change to maybe separate mount (print form backing) from strucure buyout.
-        # ! leaving mount_material in input with default to B_WHITE for now. can use if needed for above.
+        is_pq = input.corrugate_supplier == Suppliers.PQ
         self.mount_die_buyout_cost = self._get_supplier_mount_die_buyout_cost(
-            input.corrugate_supplier, input.corrugate_material, self.print_forms_per_standee
+            input.corrugate_supplier, input.corrugate_material, self.print_forms_per_standee,
+            "print" if is_pq else "",
         ) + self._get_supplier_mount_die_buyout_cost(
-            input.corrugate_supplier, input.corrugate_material, self.structure_forms_per_standee
+            input.corrugate_supplier, input.corrugate_material, self.structure_forms_per_standee,
+            "blank" if is_pq else "",
         )
         self.die_cost = self._get_die_cost()
         self.shipping_box_cost = self._get_supplier_mount_die_buyout_cost(
