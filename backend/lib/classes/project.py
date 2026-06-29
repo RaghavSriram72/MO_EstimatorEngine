@@ -116,6 +116,7 @@ class Project[T: BaseInput]:
         machine_entry = self.db.get_unit_cost_entry(machine_name)
         throughput: int = machine_entry["throughput"]
         throughput_unit: str = machine_entry["throughput_unit"]
+        print(machine_name, throughput, throughput_unit, linear_inches)
         machine_time: float = linear_inches / (throughput / UNIT_MAP[throughput_unit]) + self._setup_time(
             machine_entry, self.print_forms_per_standee
         )

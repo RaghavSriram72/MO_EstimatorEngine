@@ -19,11 +19,13 @@ const EyeIcon = ({ show }: { show: boolean }) => show ? (
     </svg>
 );
 
-export default function SignIn() {
+export default function SignUp() {
     const router = useRouter();
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
+    const [confirmPassword, setConfirmPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
+    const [showConfirm, setShowConfirm] = useState(false);
     const [alertMessage, setAlertMessage] = useState("");
     const [alertCode, setAlertCode] = useState(0);
     const [showAlert, setShowAlert] = useState(false);
@@ -36,19 +38,19 @@ export default function SignIn() {
         setTimeout(() => setShowAlert(false), ALERT_DURATION_MS);
     }
 
-    function handleSignIn() {
-        if (!username || !password) { triggerAlert("Please fill fields", 1); return; }
-        fetch(`${API_BASE}/sign-in`, {
+    function handleCreateAccount() {
+        if (!username || !password || !confirmPassword) { triggerAlert("Please fill all fields", 1); return; }
+        if (password !== confirmPassword) { triggerAlert("Passwords do not match!", 1); return; }
+        fetch(`${API_BASE}/create-account`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ username, password }),
         }).then((response) => {
             if (response.ok) {
-                triggerAlert("Sign-in successful!", 0);
-                localStorage.setItem("username", username);
-                setTimeout(() => router.push("/quoteEngine"), ALERT_DURATION_MS + 800);
+                triggerAlert("Account created! Please sign in.", 0);
+                setTimeout(() => router.push("/sign-in"), ALERT_DURATION_MS + 800);
             } else {
-                triggerAlert("Invalid username or password", 1);
+                triggerAlert("Error creating account. Please try again.", 1);
             }
         });
     }
@@ -62,30 +64,39 @@ export default function SignIn() {
             <div className="flex flex-col items-center justify-center flex-1 px-4 bg-[#F8F8F8]">
                 <div className="w-full max-w-md bg-white border-2 border-[#E0E0E0] p-8 rounded-sm">
                     <div className="mb-6">
-                        <div className="text-xs font-bold text-[#FFC843] tracking-widest uppercase mb-1">// ACCESS</div>
-                        <h2 className="text-3xl font-black text-[#000005] uppercase tracking-tight">Sign In</h2>
-                        <p className="text-xs text-[#B1B3B6] mt-1 font-semibold">Access your estimator workspace</p>
+                        <div className="text-xs font-bold text-[#FFC843] tracking-widest uppercase mb-1">// NEW USER</div>
+                        <h2 className="text-3xl font-black text-[#000005] uppercase tracking-tight">Create Account</h2>
+                        <p className="text-xs text-[#B1B3B6] mt-1 font-semibold">Set up your estimator workspace account</p>
                     </div>
-                    <form onSubmit={(e) => { e.preventDefault(); handleSignIn(); }}>
+                    <form onSubmit={(e) => { e.preventDefault(); handleCreateAccount(); }}>
                         <div className="mb-4">
-                            <label htmlFor="signin-username" className={labelCls}>Username</label>
-                            <input type="text" id="signin-username" value={username} onChange={(e) => setUsername(e.target.value)} className={inputCls} />
+                            <label htmlFor="signup-username" className={labelCls}>Username</label>
+                            <input type="text" id="signup-username" value={username} onChange={(e) => setUsername(e.target.value)} className={inputCls} />
                         </div>
                         <div className="mb-4">
-                            <label htmlFor="signin-password" className={labelCls}>Password</label>
+                            <label htmlFor="signup-password" className={labelCls}>Password</label>
                             <div className="relative">
-                                <input type={showPassword ? "text" : "password"} id="signin-password" value={password} onChange={(e) => setPassword(e.target.value)} className={inputCls + " pr-10"} />
+                                <input type={showPassword ? "text" : "password"} id="signup-password" value={password} onChange={(e) => setPassword(e.target.value)} className={inputCls + " pr-10"} />
                                 <button type="button" onClick={() => setShowPassword((p) => !p)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#B1B3B6] hover:text-[#000005] transition-colors">
                                     <EyeIcon show={showPassword} />
                                 </button>
                             </div>
                         </div>
+                        <div className="mb-4">
+                            <label htmlFor="signup-confirm" className={labelCls}>Confirm Password</label>
+                            <div className="relative">
+                                <input type={showConfirm ? "text" : "password"} id="signup-confirm" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className={inputCls + " pr-10"} />
+                                <button type="button" onClick={() => setShowConfirm((p) => !p)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#B1B3B6] hover:text-[#000005] transition-colors">
+                                    <EyeIcon show={showConfirm} />
+                                </button>
+                            </div>
+                        </div>
                         <div className="flex flex-row justify-between items-center mt-6">
                             <button type="submit" className="bg-[#FFC843] hover:bg-[#000005] hover:text-white text-[#000005] font-black py-2 px-6 rounded-sm text-sm uppercase tracking-wider transition-all duration-200">
-                                Sign In
+                                Create Account
                             </button>
-                            <button type="button" onClick={() => router.push("/sign-up")} className="ml-4 text-[#B1B3B6] hover:text-[#000005] cursor-pointer text-xs font-bold uppercase tracking-wider transition-all duration-200">
-                                Create an account?
+                            <button type="button" onClick={() => router.push("/sign-in")} className="ml-4 text-[#B1B3B6] hover:text-[#000005] cursor-pointer text-xs font-bold uppercase tracking-wider transition-all duration-200">
+                                Back to sign in
                             </button>
                         </div>
                     </form>

@@ -1,41 +1,5 @@
-'use client';
-import Image from "next/image";
-import Header from "@/components/Header";
-
-import React, { useRef, useEffect } from "react";
-
-import MidnightAI from "@/pages/MidnightAI";
-import DataCollector from "@/pages/DataCollector";
-import Inputter from "@/pages/Inputter";
-import SignIn from "@/pages/SignIn";
+import { redirect } from "next/navigation";
 
 export default function Home() {
-  const [messages, setMessages] = React.useState<string[]>([]);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [userSignedIn, setUserSignedIn] = React.useState<boolean>(false);
-
-  const [currentScreen, setCurrentScreen] = React.useState("Inputter");
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  useEffect(() => {
-    if (localStorage.getItem("username")) {
-      setUserSignedIn(true);
-    }
-  }, [])
-
-  return (
-    <div className="flex flex-col h-screen w-full bg-white" style={{ fontFamily: "'Proxima Nova', sans-serif" }}>
-      {userSignedIn && (<Header currentScreen={currentScreen} setCurrentScreen={setCurrentScreen}/>)}
-
-      {userSignedIn && currentScreen === "Inputter" ? (
-        <Inputter />
-      ) : (
-        <DataCollector />
-      )}
-      {!userSignedIn && (<SignIn setUser={setUserSignedIn}/>)}
-    </div>
-  );
+    redirect("/quoteEngine");
 }

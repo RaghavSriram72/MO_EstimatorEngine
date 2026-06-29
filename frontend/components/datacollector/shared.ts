@@ -126,6 +126,7 @@ export type SupplierDocument = {
     supplier: string;
     material: string;
     material_display_name: string;
+    material_type: string;
     unit: string;
     price_breaks: SupplierPriceBreak[];
     last_updated: string;

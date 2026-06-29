@@ -358,35 +358,36 @@ class MidnightOilDB:
         return sorted({r["supplier"] for r in self._cache["suppliers"]})
 
     def get_distinct_materials(self, supplier: str) -> list[dict]:
-        """Return distinct materials for a supplier with their display names."""
-        return sorted(
-            [
-                {"material": r["material"], "display_name": r["material_display_name"]}
-                for r in self._cache["suppliers"]
-                if r["supplier"] == supplier
-            ],
-            key=lambda x: x["material"],
-        )
+        """Return distinct materials for a supplier, deduplicated by material key."""
+        seen: dict[str, dict] = {}
+        for r in self._cache["suppliers"]:
+            if r["supplier"] == supplier and r["material"] not in seen:
+                seen[r["material"]] = {
+                    "material": r["material"],
+                    "display_name": r["material_display_name"],
+                }
+        return sorted(seen.values(), key=lambda x: x["material"])
 
-    def _get_supplier_doc(self, supplier: str, material: str) -> dict[str, Any] | None:
-        """Return one supplier/material document from cache."""
-        return next(
-            (r for r in self._cache["suppliers"] if r["supplier"] == supplier and r["material"] == material),
-            None,
-        )
+    def _get_supplier_doc(self, supplier: str, material: str, material_type: str = "") -> dict[str, Any] | None:
+        """Return one supplier/material document from cache, optionally filtered by type."""
+        for r in self._cache["suppliers"]:
+            if r["supplier"] == supplier and r["material"] == material:
+                if not material_type or r.get("type", "") == material_type:
+                    return r
+        return None
 
-    def get_supplier_material_records(self, supplier: str, material: str) -> dict[str, Any]:
+    def get_supplier_material_records(self, supplier: str, material: str, material_type: str = "") -> dict[str, Any]:
         """Return one supplier/material document with serialized price_breaks."""
-        doc = self._get_supplier_doc(supplier, material)
+        doc = self._get_supplier_doc(supplier, material, material_type)
         if doc is None:
-            raise ValueError(f"Supplier material not found for supplier={supplier!r} material={material!r}")
+            raise ValueError(
+                f"Supplier material not found for supplier={supplier!r} material={material!r} type={material_type!r}"
+            )
 
         last_updated = doc.get("last_updated")
         if last_updated is not None and hasattr(last_updated, "isoformat"):
             last_updated = last_updated.isoformat()
 
-        # Return price_breaks as simple amount/cost objects. Older documents may have
-        # embedded `_id` fields; drop them and only expose amount/cost to the frontend.
         serialized_breaks = [
             {
                 "amount": price_break.get("amount"),
@@ -400,6 +401,7 @@ class MidnightOilDB:
             "supplier": doc["supplier"],
             "material": doc["material"],
             "material_display_name": doc["material_display_name"],
+            "material_type": doc.get("type", ""),
             "unit": doc["unit"],
             "price_breaks": serialized_breaks,
             "curve_params": doc.get("curve_params"),
@@ -413,6 +415,7 @@ class MidnightOilDB:
         material_display_name: str,
         unit: str,
         price_breaks: list[dict[str, float]],
+        material_type: str = "",
     ) -> None:
         """Insert or replace a supplier/material document and precompute curve parameters."""
         ordered_breaks = sorted(price_breaks, key=lambda row: row["amount"])
@@ -422,11 +425,12 @@ class MidnightOilDB:
         curve_params = _fit_supplier_curve(amounts, costs)
 
         self.suppliers_collection.replace_one(
-            {"supplier": supplier, "material": material},
+            {"supplier": supplier, "material": material, "type": material_type},
             {
                 "supplier": supplier,
                 "material": material,
                 "material_display_name": material_display_name,
+                "type": material_type,
                 "unit": unit,
                 "price_breaks": ordered_breaks,
                 "curve_params": curve_params,

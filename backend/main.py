@@ -440,6 +440,14 @@ async def update_packout(record_id: str, payload: UpdatePackoutRequest):
         return JSONResponse(status_code=404, content={"error": str(e)})
 
 
+@app.post("/refresh-cache")
+async def refresh_cache():
+    """Reload all MongoDB collections into the in-memory cache."""
+    db = _ensure_db()
+    db._load_cache()
+    return {"message": "Cache refreshed"}
+
+
 @app.get("/suppliers")
 async def get_suppliers():
     """Return all distinct supplier names."""
@@ -455,10 +463,10 @@ async def get_supplier_materials(supplier: str):
 
 
 @app.get("/suppliers/{supplier}/{material}")
-async def get_supplier_material_records(supplier: str, material: str):
+async def get_supplier_material_records(supplier: str, material: str, material_type: str = Query("")):
     """Return one supplier/material document with embedded price breaks."""
     db = _ensure_db()
-    return {"data": db.get_supplier_material_records(supplier, material)}
+    return {"data": db.get_supplier_material_records(supplier, material, material_type)}
 
 
 class UpdateSupplierMaterialRequest(BaseModel):
@@ -467,6 +475,7 @@ class UpdateSupplierMaterialRequest(BaseModel):
     unit: str
     price_breaks: list[dict[str, float]]
     display_name: str
+    material_type: str = ""
 
 
 @app.patch("/suppliers/{supplier}/{material}")
@@ -474,7 +483,7 @@ async def update_supplier_material(supplier: str, material: str, payload: Update
     """Update the unit or cost fields for a supplier/material document."""
     db = _ensure_db()
     try:
-        db.upsert_supplier_material(supplier, material, payload.display_name, payload.unit, payload.price_breaks)
+        db.upsert_supplier_material(supplier, material, payload.display_name, payload.unit, payload.price_breaks, payload.material_type)
         return {"message": "Updated successfully"}
     except ValueError as e:
         return JSONResponse(status_code=404, content={"error": str(e)})

@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 
 export default function UserDisplay() {
+    const router = useRouter();
     const [isOpen, setIsOpen] = useState(false);
     const [username, setUsername] = useState("Guest");
     const containerRef = useRef<HTMLDivElement>(null);
@@ -25,7 +27,7 @@ export default function UserDisplay() {
     const handleSignOut = () => {
         localStorage.removeItem("username");
         setIsOpen(false);
-        window.location.reload();
+        router.push("/sign-in");
     };
 
     return (

@@ -8,25 +8,26 @@ import {
     supplierLabel, formatDate,
 } from "./shared";
 
-const SUPPLIER_DISPLAY: Record<string, string> = {
-    pq: "Pacific Quality",
-    fosters: "Foster",
-};
+const PQ_TYPES = [
+    { value: "print", label: "Print" },
+    { value: "blank", label: "Blank" },
+];
 
 export default function SuppliersModule() {
-    const [supplierNames, setSupplierNames]         = useState<string[]>([]);
-    const [selectedSupplier, setSelectedSupplier]   = useState("");
-    const [materials, setMaterials]                 = useState<SupplierMaterial[]>([]);
-    const [selectedMaterial, setSelectedMaterial]   = useState("");
+    const [supplierNames, setSupplierNames]           = useState<string[]>([]);
+    const [selectedSupplier, setSelectedSupplier]     = useState("");
+    const [materials, setMaterials]                   = useState<SupplierMaterial[]>([]);
+    const [selectedMaterial, setSelectedMaterial]     = useState("");
+    const [selectedType, setSelectedType]             = useState("");
     // savedDoc = what's currently in MongoDB; draftDoc = locally edited copy
-    const [savedDoc, setSavedDoc]                   = useState<SupplierDocument | null>(null);
-    const [draftDoc, setDraftDoc]                   = useState<SupplierDocument | null>(null);
+    const [savedDoc, setSavedDoc]                     = useState<SupplierDocument | null>(null);
+    const [draftDoc, setDraftDoc]                     = useState<SupplierDocument | null>(null);
     const [priceBreakToDelete, setPriceBreakToDelete] = useState<number | null>(null);
-    const [isLoading, setIsLoading]                 = useState(false);
-    const [isSaving, setIsSaving]                   = useState(false);
+    const [isLoading, setIsLoading]                   = useState(false);
+    const [isSaving, setIsSaving]                     = useState(false);
 
     const supplierOptions = useMemo(() => supplierNames.map(supplierLabel), [supplierNames]);
-    const materialOptions = useMemo(() => materials.map((m) => m.display_name), [materials]);
+    const isPQ = selectedSupplier === "pq";
 
     // GET /suppliers → load the list of supplier names when module mounts
     useEffect(() => {
@@ -40,20 +41,28 @@ export default function SuppliersModule() {
     useEffect(() => {
         if (!selectedSupplier) return;
         setSelectedMaterial("");
+        setSelectedType("");
         setMaterials([]);
         setSavedDoc(null);
         setDraftDoc(null);
         fetch(`${API_BASE}/suppliers/${encodeURIComponent(selectedSupplier)}/materials`)
             .then((r) => r.json())
-            .then((data) => setMaterials(data.data ?? []))
+            .then((data) => {
+                const mats: SupplierMaterial[] = data.data ?? [];
+                setMaterials(mats);
+                if (mats.length > 0) setSelectedMaterial(mats[0].material);
+                if (selectedSupplier === "pq") setSelectedType("print");
+            })
             .catch(console.error);
     }, [selectedSupplier]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // GET /suppliers/:supplier/:material → load price breaks when material changes
+    // GET /suppliers/:supplier/:material → load price breaks when material or type changes
     useEffect(() => {
         if (!selectedSupplier || !selectedMaterial) return;
+        if (isPQ && !selectedType) return;
         setIsLoading(true);
-        fetch(`${API_BASE}/suppliers/${encodeURIComponent(selectedSupplier)}/${encodeURIComponent(selectedMaterial)}`)
+        const typeParam = selectedType ? `?material_type=${encodeURIComponent(selectedType)}` : "";
+        fetch(`${API_BASE}/suppliers/${encodeURIComponent(selectedSupplier)}/${encodeURIComponent(selectedMaterial)}${typeParam}`)
             .then((r) => r.json())
             .then((data) => {
                 const doc: SupplierDocument | null = data.data ?? null;
@@ -62,7 +71,7 @@ export default function SuppliersModule() {
             })
             .catch(console.error)
             .finally(() => setIsLoading(false));
-    }, [selectedSupplier, selectedMaterial]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [selectedSupplier, selectedMaterial, selectedType]); // eslint-disable-line react-hooks/exhaustive-deps
 
     function editPriceBreak(index: number, field: "amount" | "cost" | "unit", value: string) {
         setDraftDoc((prev) => {
@@ -83,12 +92,11 @@ export default function SuppliersModule() {
     function addPriceBreak() {
         setDraftDoc((prev) => {
             if (prev) return { ...prev, price_breaks: [...prev.price_breaks, { amount: 0, cost: 0 }] };
-            // No document exists yet — create a new one on the draft
             const displayName = materials.find((m) => m.material === selectedMaterial)?.display_name ?? selectedMaterial;
             return {
                 _id: "", supplier: selectedSupplier, material: selectedMaterial,
-                material_display_name: displayName, unit: "", price_breaks: [{ amount: 0, cost: 0 }],
-                last_updated: "",
+                material_display_name: displayName, material_type: selectedType,
+                unit: "", price_breaks: [{ amount: 0, cost: 0 }], last_updated: "",
             };
         });
     }
@@ -115,23 +123,19 @@ export default function SuppliersModule() {
         if (!hasUnsavedChanges || !draftDoc) return;
         setIsSaving(true);
         try {
-            // PATCH /suppliers/:supplier/:material → upsert the full document (price_breaks sorted by backend)
-            await fetch(
-                `${API_BASE}/suppliers/${encodeURIComponent(selectedSupplier)}/${encodeURIComponent(selectedMaterial)}`,
-                {
-                    method: "PATCH",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        display_name: draftDoc.material_display_name,
-                        unit: draftDoc.unit,
-                        price_breaks: draftDoc.price_breaks,
-                    }),
-                },
-            );
-            // GET /suppliers/:supplier/:material → reload to get sorted price_breaks + new last_updated
-            const data = await fetch(
-                `${API_BASE}/suppliers/${encodeURIComponent(selectedSupplier)}/${encodeURIComponent(selectedMaterial)}`,
-            ).then((r) => r.json());
+            const typeParam = selectedType ? `?material_type=${encodeURIComponent(selectedType)}` : "";
+            const base = `${API_BASE}/suppliers/${encodeURIComponent(selectedSupplier)}/${encodeURIComponent(selectedMaterial)}`;
+            await fetch(base, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    display_name: draftDoc.material_display_name,
+                    unit: draftDoc.unit,
+                    price_breaks: draftDoc.price_breaks,
+                    material_type: selectedType,
+                }),
+            });
+            const data = await fetch(`${base}${typeParam}`).then((r) => r.json());
             const updatedDoc: SupplierDocument | null = data.data ?? null;
             setSavedDoc(updatedDoc);
             setDraftDoc(updatedDoc ? JSON.parse(JSON.stringify(updatedDoc)) : null);
@@ -142,6 +146,7 @@ export default function SuppliersModule() {
     function clearSelections() {
         setSelectedSupplier("");
         setSelectedMaterial("");
+        setSelectedType("");
         setSavedDoc(null);
         setDraftDoc(null);
     }
@@ -155,7 +160,7 @@ export default function SuppliersModule() {
                 onCancel={() => setPriceBreakToDelete(null)}
             />
 
-            {/* 01 — choose supplier and material */}
+            {/* 01 — choose supplier, material, and (for PQ) type */}
             <div className="flex flex-col justify-center items-start w-full p-5 border-b-2 border-[#EDEAEA]">
                 <div className="text-[10px] m-2">01 — SUPPLIER & MATERIAL</div>
                 <div className="flex flex-row gap-4 w-full">
@@ -171,18 +176,48 @@ export default function SuppliersModule() {
                             width="w-full"
                         />
                     </div>
-                    <div className="flex flex-col gap-1 flex-[2]">
+                    <div className="flex flex-col gap-1 flex-1">
                         <div className="text-[10px] ml-1">Material</div>
-                        <Dropdown
-                            options={materialOptions}
-                            currOption={materials.find((m) => m.material === selectedMaterial)?.display_name ?? ""}
-                            onSelect={(displayName: string) => {
-                                const match = materials.find((m) => m.display_name === displayName);
-                                if (match) setSelectedMaterial(match.material);
-                            }}
-                            width="w-full"
-                        />
+                        <div className="flex flex-row flex-wrap gap-2 mt-0.5">
+                            {materials.length === 0 ? (
+                                <span className="text-[10px] text-[#ABABAB] ml-1">Select a supplier first</span>
+                            ) : materials.map((m) => (
+                                <button
+                                    key={m.material}
+                                    type="button"
+                                    onClick={() => setSelectedMaterial(m.material)}
+                                    className={`px-4 py-1.5 rounded-full text-xs font-bold border-2 transition-colors cursor-pointer ${
+                                        selectedMaterial === m.material
+                                            ? "bg-[#FFC843] border-[#FFC843] text-[#000005]"
+                                            : "border-[#EDEAEA] text-[#ABABAB] hover:border-[#FFC843] hover:text-[#000005]"
+                                    }`}
+                                >
+                                    {m.display_name}
+                                </button>
+                            ))}
+                        </div>
                     </div>
+                    {isPQ && (
+                        <div className="flex flex-col gap-1 flex-1">
+                            <div className="text-[10px] ml-1">Type</div>
+                            <div className="flex flex-row gap-2 mt-0.5">
+                                {PQ_TYPES.map((t) => (
+                                    <button
+                                        key={t.value}
+                                        type="button"
+                                        onClick={() => setSelectedType(t.value)}
+                                        className={`px-4 py-1.5 rounded-full text-xs font-bold border-2 transition-colors cursor-pointer ${
+                                            selectedType === t.value
+                                                ? "bg-[#FFC843] border-[#FFC843] text-[#000005]"
+                                                : "border-[#EDEAEA] text-[#ABABAB] hover:border-[#FFC843] hover:text-[#000005]"
+                                        }`}
+                                    >
+                                        {t.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -197,8 +232,12 @@ export default function SuppliersModule() {
                     )}
                 </div>
 
-                {!selectedSupplier || !selectedMaterial ? (
-                    <div className="text-xs m-2">Select a supplier and material above to view cost data points.</div>
+                {!selectedSupplier || !selectedMaterial || (isPQ && !selectedType) ? (
+                    <div className="text-xs m-2">
+                        {isPQ && selectedMaterial && !selectedType
+                            ? "Select a type above to view cost data points."
+                            : "Select a supplier and material above to view cost data points."}
+                    </div>
                 ) : isLoading ? (
                     <div className="text-xs m-2">Loading...</div>
                 ) : draftDoc && draftDoc.price_breaks && draftDoc.price_breaks.length > 0 ? (
