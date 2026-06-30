@@ -26,6 +26,7 @@ from lib.classes.db import MidnightOilDB
 
 # from lib.globals import
 from lib.classes.form import Complexity, Element
+from lib.cost_debug import maybe_attach_cost_explanations
 from lib.persisted_project import (
     PersistedProjectCreate,
     PersistedProjectUpdateBody,
@@ -166,7 +167,8 @@ def _compute_quote_scenarios(db: MidnightOilDB, elements: list[Element], payload
         )
         cost_input = _scenario_cost_input(sid, payload)
         s.calculate_cost(cost_input)
-        out[f"scenario_{sid}"] = s.to_serializable_dict()
+        # Debug-only: see lib/cost_debug.py — set COST_DEBUG_ENABLED = False for production.
+        out[f"scenario_{sid}"] = maybe_attach_cost_explanations(s.to_serializable_dict(), s, sid)
     return out
 
 

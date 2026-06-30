@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { type QuoteData, type QuoteBreakdownUi, type CostLineOverride, type ScenarioCostLineOverrides, type RequestPayload } from "@/pages/Inputter";
 import { API_BASE } from "@/lib/config";
 import { COST_LINE_TOOLTIPS } from "@/lib/costLineTooltips";
+import { COST_DEBUG_ENABLED, extractDebugExplanations, debugExplanationsFromQuoteResponse, hasDebugExplanations, type CostDebugExplanations } from "@/lib/costDebugConfig";
 
 type ScenarioId = 1 | 2 | 3 | 4 | 5;
 
@@ -278,7 +279,7 @@ function serializeScenarioToSource(
     sharedParams: ScenarioParams,
     perScenario: Record<ScenarioId, PerScenarioState>,
     scenarioLines: Record<ScenarioId, CostLine[]>,
-    initialSources: Record<ScenarioId, Record<string, number>>,
+    initialSources: Record<ScenarioId, Record<string, unknown>>,
 ): Record<string, number> {
     const base: Record<string, number> = {};
     const src0 = initialSources[id] ?? {};
@@ -408,12 +409,65 @@ function InfoTooltip({ text }: { text: string }) {
     );
 }
 
+function DebugFormulaTooltip({ text, pending = false }: { text: string; pending?: boolean }) {
+    const [visible, setVisible] = useState(false);
+    const [pos, setPos] = useState({ x: 0, y: 0 });
+    const iconRef = useRef<HTMLSpanElement>(null);
+
+    function handleMouseEnter() {
+        if (iconRef.current) {
+            const rect = iconRef.current.getBoundingClientRect();
+            const tooltipW = 320;
+            const x = Math.min(
+                Math.max(rect.left + rect.width / 2, tooltipW / 2 + 8),
+                window.innerWidth - tooltipW / 2 - 8,
+            );
+            setPos({ x, y: rect.top - 8 });
+        }
+        setVisible(true);
+    }
+
+    const borderClass = pending ? "border-[#B1B3B6] text-[#B1B3B6]" : "border-[#F57F17] text-[#F57F17] hover:bg-[#FFF8E1]";
+
+    return (
+        <span
+            ref={iconRef}
+            className="inline-flex items-center shrink-0"
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={() => setVisible(false)}
+        >
+            <span
+                title="Debug formula"
+                className={`w-3.5 h-3.5 rounded-sm border cursor-pointer flex items-center justify-center text-[8px] font-black cursor-default select-none transition-colors leading-none ${borderClass}`}
+            >
+                ?
+            </span>
+            {visible && typeof document !== "undefined" && createPortal(
+                <span
+                    style={{ left: pos.x, top: pos.y, transform: "translate(-50%, -100%)" }}
+                    className={`fixed z-[9999] w-80 max-w-[min(20rem,calc(100vw-1rem))] text-[10px] font-medium rounded-sm px-2.5 py-2 shadow-lg leading-snug pointer-events-none whitespace-pre-wrap ${
+                        pending ? "bg-[#333] text-[#ccc]" : "bg-[#1a1200] text-[#FFE082]"
+                    }`}
+                >
+                    {text}
+                    <span className={`absolute left-1/2 -translate-x-1/2 top-full border-4 border-transparent ${pending ? "border-t-[#333]" : "border-t-[#1a1200]"}`} />
+                </span>,
+                document.body,
+            )}
+        </span>
+    );
+}
+
 function CostRow({
     line,
     onChange,
+    debugExplanation,
+    debugPending = false,
 }: {
     line: CostLine;
     onChange: (key: string, field: "qty" | "unitCost", value: number) => void;
+    debugExplanation?: string;
+    debugPending?: boolean;
 }) {
     const isFlat        = line.unit === "flat";
     const isStandees    = line.unit === "standees";
@@ -436,6 +490,17 @@ function CostRow({
                     </span>
                 )}
                 {tooltip && <InfoTooltip text={tooltip} />}
+                {COST_DEBUG_ENABLED && (
+                    <DebugFormulaTooltip
+                        pending={debugPending && !debugExplanation}
+                        text={
+                            debugExplanation
+                            ?? (debugPending
+                                ? "Loading backend calculation formula…"
+                                : "Formula unavailable. Use Recalculate to refresh.")
+                        }
+                    />
+                )}
             </div>
 
             <div className="flex items-center gap-3">
@@ -540,15 +605,19 @@ export default function QuoteBreakdown({
     );
     const [isRecalculating, setIsRecalculating] = useState(false);
 
-    const initialSources: Record<ScenarioId, Record<string, number>> = {
-        1: (quoteData["scenario_1"] as Record<string, number>) ?? {},
-        2: (quoteData["scenario_2"] as Record<string, number>) ?? {},
-        3: (quoteData["scenario_3"] as Record<string, number>) ?? {},
-        4: (quoteData["scenario_4"] as Record<string, number>) ?? {},
-        5: (quoteData["scenario_5"] as Record<string, number>) ?? {},
+    const initialSources: Record<ScenarioId, Record<string, unknown>> = {
+        1: (quoteData["scenario_1"] as Record<string, unknown>) ?? {},
+        2: (quoteData["scenario_2"] as Record<string, unknown>) ?? {},
+        3: (quoteData["scenario_3"] as Record<string, unknown>) ?? {},
+        4: (quoteData["scenario_4"] as Record<string, unknown>) ?? {},
+        5: (quoteData["scenario_5"] as Record<string, unknown>) ?? {},
     };
 
-    const builtInitial = buildScenarioState(initialSources, initialStandees, resolveInitialActiveScenario(quoteData, initialActiveScenario));
+    const builtInitial = buildScenarioState(
+        initialSources as Record<ScenarioId, Record<string, number>>,
+        initialStandees,
+        resolveInitialActiveScenario(quoteData, initialActiveScenario),
+    );
     const persistedBreakdownUi = breakdownUiFromQuoteData(quoteData);
     const initialLineState = applyCostLineOverrides(
         mergeBreakdownUiIntoPerScenario(builtInitial.perScenario, persistedBreakdownUi),
@@ -566,11 +635,16 @@ export default function QuoteBreakdown({
     const [scenarioSubtotalOverride, setScenarioSubtotalOverride] = useState<Record<ScenarioId, string>>(() =>
         scenarioSubtotalOverridesFromUi(persistedBreakdownUi),
     );
+    const [debugExplanations, setDebugExplanations] = useState<Record<ScenarioId, CostDebugExplanations>>(() =>
+        extractDebugExplanations(initialSources),
+    );
+    const [debugExplanationsLoading, setDebugExplanationsLoading] = useState(false);
+    const [debugExplanationsError, setDebugExplanationsError] = useState<string | null>(null);
     const [isSavingQuote, setIsSavingQuote] = useState(false);
     const [saveQuoteError, setSaveQuoteError] = useState<string | null>(null);
     const [recalculateError, setRecalculateError] = useState<string | null>(null);
-    const [universalCostsExpanded, setUniversalCostsExpanded] = useState(false);
-    const [scenarioCostsExpanded, setScenarioCostsExpanded] = useState(false);
+    const [universalCostsExpanded, setUniversalCostsExpanded] = useState(COST_DEBUG_ENABLED);
+    const [scenarioCostsExpanded, setScenarioCostsExpanded] = useState(COST_DEBUG_ENABLED);
     const [manualDirty, setManualDirty] = useState(false);
     const [contributionMargin, setContributionMargin] = useState(() =>
         initialContributionMargin != null ? String(initialContributionMargin) : "",
@@ -588,6 +662,55 @@ export default function QuoteBreakdown({
             return () => { clearTimeout(showId); clearTimeout(hideId); clearTimeout(removeId); };
         }
     }, [toast]);
+
+    // Saved quotes don't store _debug_explanations — fetch from backend on load.
+    useEffect(() => {
+        if (!COST_DEBUG_ENABLED) return;
+
+        const scenarioIds = ([1, 2, 3, 4, 5] as ScenarioId[]).filter(
+            (id) => quoteData[`scenario_${id}`] !== undefined,
+        );
+        if (scenarioIds.length === 0) return;
+        if (hasDebugExplanations(debugExplanations, scenarioIds)) return;
+
+        let cancelled = false;
+        setDebugExplanationsLoading(true);
+        setDebugExplanationsError(null);
+
+        (async () => {
+            try {
+                const res = await fetch(`${API_BASE}/generate_quote`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        ...requestPayload,
+                        persist_project: false,
+                        num_standees: params.numStandees,
+                        print_forms_per_standee: params.printFormsPerStandee,
+                        structure_forms_per_standee: params.structureFormsPerStandee,
+                        num_overs: params.overs,
+                    }),
+                });
+                const data = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+                if (cancelled) return;
+                if (!res.ok || !data) {
+                    setDebugExplanationsError("Could not load debug formulas from backend.");
+                    return;
+                }
+                setDebugExplanations((prev) => ({ ...prev, ...debugExplanationsFromQuoteResponse(data) }));
+            } catch {
+                if (!cancelled) setDebugExplanationsError("Could not load debug formulas from backend.");
+            } finally {
+                if (!cancelled) setDebugExplanationsLoading(false);
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+        // Intentionally only on quote open — recalculate updates explanations separately.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [persistedQuoteId, quoteData]);
 
     function showToast(message: string, type: "save" | "delete") {
         setToastVisible(false);
@@ -746,16 +869,20 @@ export default function QuoteBreakdown({
                 return;
             }
             console.log(`[recalculate] scenario_${sid}:`, data?.[`scenario_${sid}`]);
-            const src: Record<string, number> = (data[`scenario_${sid}`] as Record<string, number>) ?? {};
-            const newUniversalLines = seedLines(buildLines(Object.keys(UNIVERSAL_LINE_DEFS), UNIVERSAL_LINE_DEFS), src);
-            const newScenarioLines  = seedLines(buildLines(SCENARIO_KEYS[sid], SCENARIO_LINE_DEFS), src);
-            const newParams: ScenarioParams = { ...params, overs: src.overs ?? params.overs };
+            const src: Record<string, unknown> = (data[`scenario_${sid}`] as Record<string, unknown>) ?? {};
+            const newUniversalLines = seedLines(buildLines(Object.keys(UNIVERSAL_LINE_DEFS), UNIVERSAL_LINE_DEFS), src as Record<string, number>);
+            const newScenarioLines  = seedLines(buildLines(SCENARIO_KEYS[sid], SCENARIO_LINE_DEFS), src as Record<string, number>);
+            const newParams: ScenarioParams = { ...params, overs: (src.overs as number | undefined) ?? params.overs };
             const mergedPs: Record<ScenarioId, PerScenarioState> = {
                 ...perScenario,
                 [sid]: { universalLines: newUniversalLines, universalSubtotalOverride: "" },
             };
             const mergedSl: Record<ScenarioId, CostLine[]>   = { ...scenarioLines, [sid]: newScenarioLines };
             const mergedSso: Record<ScenarioId, string>       = { ...scenarioSubtotalOverride, [sid]: "" };
+            setDebugExplanations((prev) => ({
+                ...prev,
+                [sid]: extractDebugExplanations({ [sid]: src })[sid] ?? {},
+            }));
             setParams(newParams);
             setBaseline({ ...newParams });
             setPerScenario(mergedPs);
@@ -879,6 +1006,13 @@ export default function QuoteBreakdown({
                     <p className="text-xs text-[#B1B3B6] font-semibold">
                         Viewing Scenario {activeScenario} — {SCENARIO_META[activeScenario].short}: {SCENARIO_META[activeScenario].sub}
                     </p>
+                    {COST_DEBUG_ENABLED && (
+                        <p className="text-[10px] font-bold text-[#F57F17] bg-[#FFF8E1] border border-[#FFE082] rounded-sm px-2 py-1">
+                            Debug mode: hover the orange ? icons for backend calculation formulas.
+                            {debugExplanationsLoading && " Loading formulas…"}
+                            {debugExplanationsError && ` ${debugExplanationsError}`}
+                        </p>
+                    )}
                 </div>
 
                 {/* Parameters card */}
@@ -1000,7 +1134,13 @@ export default function QuoteBreakdown({
                         <div className={`grid transition-all duration-300 ease-in-out ${universalCostsExpanded ? "grid-rows-[1fr] mt-3" : "grid-rows-[0fr]"}`}>
                             <div className="overflow-hidden">
                                 {universalLines.map((line) => (
-                                    <CostRow key={line.key} line={line} onChange={updateUniversal} />
+                                    <CostRow
+                                        key={line.key}
+                                        line={line}
+                                        onChange={updateUniversal}
+                                        debugExplanation={debugExplanations[activeScenario]?.[line.key]}
+                                        debugPending={debugExplanationsLoading}
+                                    />
                                 ))}
                                 <div className="flex justify-between items-center pt-3 mt-1 border-t-2 border-[#F0F0F0]">
                                     <span className="text-xs font-black text-[#B1B3B6] uppercase tracking-wider">Subtotal</span>
@@ -1057,7 +1197,13 @@ export default function QuoteBreakdown({
                         <div className={`grid transition-all duration-300 ease-in-out ${scenarioCostsExpanded ? "grid-rows-[1fr] mt-3" : "grid-rows-[0fr]"}`}>
                             <div className="overflow-hidden">
                                 {scenarioLines[activeScenario].map((line) => (
-                                    <CostRow key={line.key} line={line} onChange={updateScenario} />
+                                    <CostRow
+                                        key={line.key}
+                                        line={line}
+                                        onChange={updateScenario}
+                                        debugExplanation={debugExplanations[activeScenario]?.[line.key]}
+                                        debugPending={debugExplanationsLoading}
+                                    />
                                 ))}
                                 <div className="flex justify-between items-center pt-3 mt-1 border-t-2 border-[#F0F0F0]">
                                     <span className="text-xs font-black text-[#B1B3B6] uppercase tracking-wider">Subtotal</span>
