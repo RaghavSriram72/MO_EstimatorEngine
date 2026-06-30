@@ -4,6 +4,7 @@
   "supplier": "fosters",
   "material": "fosters_print_form",
   "material_display_name": "Foster Print Form",
+  "type": "",
   "unit": "thousand",
   "price_breaks": [
     {

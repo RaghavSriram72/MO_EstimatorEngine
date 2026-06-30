@@ -369,11 +369,10 @@ class MidnightOilDB:
         return sorted(seen.values(), key=lambda x: x["material"])
 
     def _get_supplier_doc(self, supplier: str, material: str, material_type: str = "") -> dict[str, Any] | None:
-        """Return one supplier/material document from cache, optionally filtered by type."""
+        """Return one supplier/material document from cache, filtered by type."""
         for r in self._cache["suppliers"]:
-            if r["supplier"] == supplier and r["material"] == material:
-                if not material_type or r.get("type", "") == material_type:
-                    return r
+            if r["supplier"] == supplier and r["material"] == material and r.get("type", "") == material_type:
+                return r
         return None
 
     def get_supplier_material_records(self, supplier: str, material: str, material_type: str = "") -> dict[str, Any]:
