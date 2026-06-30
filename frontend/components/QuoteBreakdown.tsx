@@ -864,8 +864,12 @@ export default function QuoteBreakdown({
             });
             const data = await res.json().catch(() => null);
             if (!res.ok) {
-                console.error("Recalculate failed:", data);
-                setRecalculateError("Recalculate failed — check console for details");
+                const detail =
+                    data && typeof data === "object" && "detail" in data
+                        ? String((data as { detail: unknown }).detail)
+                        : `HTTP ${res.status}`;
+                console.error("Recalculate failed:", detail, data);
+                setRecalculateError(`Recalculate failed: ${detail}`);
                 return;
             }
             console.log(`[recalculate] scenario_${sid}:`, data?.[`scenario_${sid}`]);

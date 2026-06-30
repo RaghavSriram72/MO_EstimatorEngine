@@ -369,11 +369,22 @@ class MidnightOilDB:
         return sorted(seen.values(), key=lambda x: x["material"])
 
     def _get_supplier_doc(self, supplier: str, material: str, material_type: str = "") -> dict[str, Any] | None:
-        """Return one supplier/material document from cache, filtered by type."""
-        for r in self._cache["suppliers"]:
-            if r["supplier"] == supplier and r["material"] == material and r.get("type", "") == material_type:
+        """Return one supplier/material document from cache, optionally filtered by type."""
+        matches = [
+            r for r in self._cache["suppliers"] if r["supplier"] == supplier and r["material"] == material
+        ]
+        if not matches:
+            return None
+        if material_type:
+            for r in matches:
+                if r.get("type", "") == material_type:
+                    return r
+            return None
+        # Untyped lookup: prefer legacy docs with no ``type`` field, else first match.
+        for r in matches:
+            if not r.get("type", ""):
                 return r
-        return None
+        return matches[0]
 
     def get_supplier_material_records(self, supplier: str, material: str, material_type: str = "") -> dict[str, Any]:
         """Return one supplier/material document with serialized price_breaks."""

@@ -322,7 +322,7 @@ class OutsourceProject[T: OutsourceInput](Project[T]):
         )
         self.die_cost = self._get_die_cost()
         self.shipping_box_cost = self._get_supplier_mount_die_buyout_cost(
-            input.corrugate_supplier, SupplierMaterials.BLANK, 1
+            input.corrugate_supplier, SupplierMaterials.BLANK, 1, "blank" if is_pq else ""
         )
         _, self.label_cost = self._get_shipping_box_and_label_cost()
         self.instruction_sheet_cost = self._get_instruction_sheet_cost()

@@ -223,10 +223,15 @@ async def generate_quote(payload: QuoteRequest):
     provided, also creates or updates a project document in Mongo with the
     provided details (but does not persist the quote itself).
     """
-    elements = _elements_from_element_types(payload.elements)
-    out: dict[str, Any] = {}
-    db = _ensure_db()
-    out = _compute_quote_scenarios(db, elements, payload)
+    try:
+        elements = _elements_from_element_types(payload.elements)
+        out: dict[str, Any] = {}
+        db = _ensure_db()
+        out = _compute_quote_scenarios(db, elements, payload)
+    except ValueError as exc:
+        return JSONResponse(status_code=400, content={"detail": str(exc)})
+    except Exception as exc:
+        return JSONResponse(status_code=500, content={"detail": str(exc)})
 
     # Persist the project if an authenticated owner is provided.
     owner = None
