@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import ConfirmAlert from "@/components/ConfirmAlert";
 
 export type ProjectSummary = {
@@ -24,6 +24,12 @@ const IconTrash = () => (
     </svg>
 );
 
+const IconPencil = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+    </svg>
+);
+
 type Props = {
     activeProjectId: string | null;
     projects: ProjectSummary[];
@@ -35,6 +41,7 @@ type Props = {
     onNewProject: () => void;
     onLoadProject: (id: string) => void;
     onDeleteProject: (id: string, label: string) => void;
+    onRenameProject: (id: string, newName: string) => void;
 };
 
 export default function ProjectSidebar({
@@ -48,13 +55,34 @@ export default function ProjectSidebar({
     onNewProject,
     onLoadProject,
     onDeleteProject,
+    onRenameProject,
 }: Props) {
     const [pendingDelete, setPendingDelete] = useState<{ id: string; label: string } | null>(null);
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [editingName, setEditingName] = useState("");
+    const inputRef = useRef<HTMLInputElement>(null);
 
     function confirmDelete() {
         if (!pendingDelete) return;
         onDeleteProject(pendingDelete.id, pendingDelete.label);
         setPendingDelete(null);
+    }
+
+    function startEdit(id: string, currentName: string) {
+        setEditingId(id);
+        setEditingName(currentName);
+        setTimeout(() => inputRef.current?.select(), 0);
+    }
+
+    function commitEdit() {
+        if (!editingId) return;
+        const trimmed = editingName.trim();
+        if (trimmed) onRenameProject(editingId, trimmed);
+        setEditingId(null);
+    }
+
+    function cancelEdit() {
+        setEditingId(null);
     }
 
     return (
@@ -67,11 +95,11 @@ export default function ProjectSidebar({
         />
         <aside className="shrink-0 w-[250px] flex flex-col border-r-2 border-[#E0E0E0] bg-white px-3 py-5 gap-3">
             <div className="flex flex-col gap-0.5 pl-3">
-                    <span className="text-[11px] font-bold tracking-[0.2em] uppercase text-[#B1B3B6]">Your Work</span>
-                    <div className="flex items-center gap-2">
-                        <span className="text-[1.25em] font-bold text-[#000005]">Projects</span>
-                    </div>
+                <span className="text-[11px] font-bold tracking-[0.2em] uppercase text-[#B1B3B6]">Your Work</span>
+                <div className="flex items-center gap-2">
+                    <span className="text-[1.25em] font-bold text-[#000005]">Projects</span>
                 </div>
+            </div>
             <button
                 type="button"
                 onClick={onNewProject}
@@ -88,7 +116,7 @@ export default function ProjectSidebar({
                 className={SIDEBAR_INPUT_CLASS}
                 autoComplete="off"
             />
-            <div className="flex-1  min-h-0 overflow-y-auto flex flex-col gap-1.5">
+            <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-1.5">
                 {isLoading && projects.length === 0 && (
                     <div className="text-[11px] text-[#B1B3B6] font-semibold px-1">Loading…</div>
                 )}
@@ -102,28 +130,44 @@ export default function ProjectSidebar({
                     <div className="text-[11px] text-[#B1B3B6] font-semibold px-1">No projects match your search.</div>
                 )}
                 {projects.map((p) => {
-                    const isActive = activeProjectId === p._id;
+                    const isActive  = activeProjectId === p._id;
+                    const isEditing = editingId === p._id;
                     return (
                         <div
-
                             key={p._id}
-                            className={`flex  items-stretch rounded-md border transition-all duration-200 overflow-hidden ${
+                            className={`flex items-stretch rounded-md border transition-all duration-200 overflow-hidden ${
                                 isActive
                                     ? "border-[#FFC843] bg-[#FFFBEE] shadow-sm hover:cursor-pointer"
-                                    : "border-[#E8E8E8] bg-white hover:border-[#C8C8C8] hover:shadow-sm hover:cursor-pointer" 
+                                    : "border-[#E8E8E8] bg-white hover:border-[#C8C8C8] hover:shadow-sm hover:cursor-pointer"
                             }`}
                         >
                             {/* Left accent bar */}
-                            <div className={`w-[3px]  shrink-0 transition-all duration-200 ${isActive ? "bg-[#FFC843]" : "bg-transparent"}`} />
+                            <div className={`w-[3px] shrink-0 transition-all duration-200 ${isActive ? "bg-[#FFC843]" : "bg-transparent"}`} />
 
                             <button
                                 type="button"
-                                onClick={() => onLoadProject(p._id)}
+                                onClick={() => !isEditing && onLoadProject(p._id)}
                                 className="cursor-pointer min-w-0 flex-1 text-left px-2.5 py-2.5 outline-none focus-visible:ring-2 focus-visible:ring-[#FFC843]"
                             >
-                                <div className="text-[13px] font-bold text-[#000005] tracking-tight line-clamp-2 leading-tight">
-                                    {p.project_name || "Untitled"}
-                                </div>
+                                {isEditing ? (
+                                    <input
+                                        ref={inputRef}
+                                        autoFocus
+                                        value={editingName}
+                                        onChange={(e) => setEditingName(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === "Enter") { e.preventDefault(); commitEdit(); }
+                                            if (e.key === "Escape") cancelEdit();
+                                        }}
+                                        onBlur={commitEdit}
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="w-full text-[13px] font-bold text-[#000005] border-b-2 border-[#FFC843] bg-transparent outline-none leading-tight tracking-tight"
+                                    />
+                                ) : (
+                                    <div className="text-[13px] font-bold text-[#000005] tracking-tight line-clamp-2 leading-tight">
+                                        {p.project_name || "Untitled"}
+                                    </div>
+                                )}
                                 <div className="flex items-center gap-1.5 mt-1.5">
                                     <span className="text-[9px] text-[#B1B3B6] font-semibold">{p.num_standees} standees</span>
                                     <span className={`text-[8.5px] font-bold px-1.5 py-0.5 rounded-full ${STANDEE_BADGE[p.standee_type] ?? "bg-[#F0F0F0] text-[#888]"}`}>
@@ -132,6 +176,19 @@ export default function ProjectSidebar({
                                 </div>
                             </button>
 
+                            {/* Edit button */}
+                            <button
+                                type="button"
+                                aria-label={`Rename project ${p.project_name || "Untitled"}`}
+                                onClick={(e) => { e.stopPropagation(); isEditing ? cancelEdit() : startEdit(p._id, p.project_name || "Untitled"); }}
+                                className={`cursor-pointer shrink-0 w-7 flex items-center justify-center border-l border-[#F0F0F0] transition-colors ${
+                                    isEditing ? "text-[#64748B] bg-[#F1F5F9]" : "text-[#DEDEDE] hover:text-[#64748B] hover:bg-[#F1F5F9]"
+                                }`}
+                            >
+                                <IconPencil />
+                            </button>
+
+                            {/* Delete button */}
                             <button
                                 type="button"
                                 aria-label={`Delete project ${p.project_name || "Untitled"}`}

@@ -606,6 +606,52 @@ export default function Inputter() {
         setInQuotesWorkspace(false);
     }
 
+    // PATCH /projects/:id/rename → rename a project
+    async function renameProject(projectId: string, newName: string) {
+        const owner = localStorage.getItem("username");
+        if (!owner) return;
+        try {
+            const res = await fetch(
+                `${API_BASE}/projects/${encodeURIComponent(projectId)}/rename?owner=${encodeURIComponent(owner)}`,
+                {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ project_name: newName }),
+                },
+            );
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) { setProjectListError(apiErrorMessage(data) ?? "Could not rename project"); return; }
+            if (activeProjectId === projectId) setProjectName(newName);
+            setProjectListRefreshKey((v) => v + 1);
+            showToast(`Renamed to "${newName}"`, "save");
+        } catch {
+            setProjectListError("Could not rename project");
+        }
+    }
+
+    // PATCH /quotes/:id/rename → rename a quote
+    async function renameSavedQuote(quoteId: string, newName: string) {
+        const owner = localStorage.getItem("username");
+        if (!owner) return;
+        try {
+            const res = await fetch(
+                `${API_BASE}/quotes/${encodeURIComponent(quoteId)}/rename?owner=${encodeURIComponent(owner)}`,
+                {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ quote_name: newName }),
+                },
+            );
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) { setSavedQuoteListError(apiErrorMessage(data) ?? "Could not rename quote"); return; }
+            if (activePersistedQuoteId === quoteId) setActiveQuoteName(newName);
+            await refreshSavedQuoteList();
+            showToast(`Renamed to "${newName}"`, "save");
+        } catch {
+            setSavedQuoteListError("Could not rename quote");
+        }
+    }
+
     // DELETE /quotes/:id → remove a saved quote from the project
     async function deleteSavedQuote(quoteId: string, _quoteLabel: string) {
         const owner = localStorage.getItem("username")?.trim();
@@ -733,6 +779,7 @@ export default function Inputter() {
                         }}
                         onOpenQuote={(id) => void openSavedQuote(id)}
                         onDeleteQuote={(id, label) => void deleteSavedQuote(id, label)}
+                        onRenameQuote={(id, name) => void renameSavedQuote(id, name)}
                         onBack={exitQuotesWorkspace}
                     />
 
@@ -793,6 +840,7 @@ export default function Inputter() {
                 onNewProject={resetEstimatorForm}
                 onLoadProject={(id) => void loadProject(id)}
                 onDeleteProject={(id, label) => void deleteProject(id, label)}
+                onRenameProject={(id, name) => void renameProject(id, name)}
             />
 
             {/* Main estimator form */}

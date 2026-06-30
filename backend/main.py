@@ -12,7 +12,7 @@ from bson import ObjectId
 from fastapi import FastAPI, File, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from lib.classes import Project, Scenario1, Scenario2, Scenario3, Scenario4, Scenario5
 from lib.classes.cost_inputs import (
@@ -597,6 +597,25 @@ async def update_quote(
     return {"message": "Quote updated successfully", "quote_id": quote_id}
 
 
+class RenameQuoteBody(BaseModel):
+    quote_name: str = Field(..., min_length=1, max_length=512)
+
+
+@app.patch("/quotes/{quote_id}/rename")
+async def rename_quote(
+    quote_id: str,
+    payload: RenameQuoteBody,
+    owner: str = Query(..., description="Must match the document's owner field"),
+):
+    """Rename a quote without touching any other fields."""
+    db = _ensure_db()
+    if not db.check_username_exists(owner):
+        return JSONResponse(status_code=404, content={"error": "Unknown owner"})
+    if not db.update_persisted_quote(quote_id, owner, {"quote_name": payload.quote_name.strip()}):
+        return JSONResponse(status_code=404, content={"error": "Quote not found"})
+    return {"message": "Quote renamed", "quote_id": quote_id, "quote_name": payload.quote_name.strip()}
+
+
 @app.delete("/quotes/{quote_id}")
 async def delete_quote(
     quote_id: str,
@@ -625,6 +644,25 @@ async def update_project(
     if not db.update_persisted_project(project_id, owner, fields):
         return JSONResponse(status_code=404, content={"error": "Project not found"})
     return {"message": "Project updated successfully", "project_id": project_id}
+
+
+class RenameProjectBody(BaseModel):
+    project_name: str = Field(..., min_length=1, max_length=512)
+
+
+@app.patch("/projects/{project_id}/rename")
+async def rename_project(
+    project_id: str,
+    payload: RenameProjectBody,
+    owner: str = Query(..., description="Must match the document's owner field"),
+):
+    """Rename a project without touching any other fields."""
+    db = _ensure_db()
+    if not db.check_username_exists(owner):
+        return JSONResponse(status_code=404, content={"error": "Unknown owner"})
+    if not db.update_persisted_project(project_id, owner, {"project_name": payload.project_name.strip()}):
+        return JSONResponse(status_code=404, content={"error": "Project not found"})
+    return {"message": "Project renamed", "project_id": project_id, "project_name": payload.project_name.strip()}
 
 
 @app.delete("/projects/{project_id}")
