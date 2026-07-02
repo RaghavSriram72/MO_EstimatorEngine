@@ -5,7 +5,7 @@ from typing import override
 from lib.classes import Complexity, Form, MidnightOilDB
 from lib.classes.cost_inputs import BaseInput, InHouseInput, OutsourceInput
 from lib.classes.db_keys import StandeeKey, SupplierMaterials, Suppliers, UnitCostEntries
-from lib.globals import BUSMARK_PADDING, PRINT_FORM_LENGTH, UNIT_MAP
+from lib.globals import PRINT_FORM_LENGTH, UNIT_MAP
 
 STANDEE_MAP = {
     Complexity.SIMPLE: StandeeKey.SIMPLE,
@@ -94,7 +94,6 @@ class Project[T: BaseInput]:
             raise ValueError(f"Unsupported unit type '{print_form_unit}' for print material '{print_material_name}'")
 
         if "roll" in print_material_name:
-            linear_inches += BUSMARK_PADDING * self.num_standees
             print_form_cost = print_form_material["cost"] * UNIT_MAP[print_form_unit] * linear_inches
 
         # ! do we need hi-tack if theyre doing mounting??

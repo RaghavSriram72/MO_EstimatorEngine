@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from lib.classes.db_keys import UnitCostEntries
-from lib.globals import BUSMARK_PADDING, PRINT_FORM_LENGTH, UNIT_MAP
+from lib.globals import PRINT_FORM_LENGTH, UNIT_MAP
 
 # ── Toggle: set False for production ────────────────────────────────────────
 COST_DEBUG_ENABLED = True
@@ -146,11 +146,7 @@ def _explain_print_form_cost(project: Any, _scenario_id: int) -> tuple[str | Non
     if unit == "linear_foot":
         linear_inches = PRINT_FORM_LENGTH * total_forms
         if "roll" in material:
-            linear_inches += BUSMARK_PADDING * project.num_standees
-            lines.append(
-                f"linear_in = {PRINT_FORM_LENGTH} × forms + busmark padding "
-                f"({BUSMARK_PADDING} × standees) = {_num(linear_inches)}"
-            )
+            lines.append(f"linear_in = {PRINT_FORM_LENGTH} × forms = {_num(linear_inches)}")
             lines.append(f"cost = rate × UNIT_MAP[{unit}] × linear_in = {_money(project.print_form_cost)}")
         else:
             hi_tack = _machine_entry(project.db, UnitCostEntries.ROLL_HI_TACK)
@@ -166,12 +162,13 @@ def _explain_machine_line(
     project: Any,
     cost_key: str,
     hours_key: str,
-    machine_key: str,
+    machine_key: str | None,
     label: str,
+    machine_name: str | None = None,
 ) -> tuple[str | None, str | None]:
     if not _has_cost(project, cost_key):
         return None, None
-    machine = _get(project, machine_key)
+    machine = machine_name or (_get(project, machine_key) if machine_key else None)
     if not machine:
         return None, None
     entry = _machine_entry(project.db, machine)
@@ -196,16 +193,7 @@ def _explain_print_cost(project: Any, _scenario_id: int) -> tuple[str | None, st
 
 
 def _explain_rollx_cost(project: Any, _scenario_id: int) -> tuple[str | None, str | None]:
-    if not _has_cost(project, "rollx_cost"):
-        return None, None
-    entry = _machine_entry(project.db, UnitCostEntries.ROLLX)
-    hourly = entry["cost"] * UNIT_MAP[entry["unit"]]
-    hours = _get(project, "rollx_hours", 0)
-    return (
-        "rollx_cost",
-        f"Roll-X: {_money(hourly)}/hr × {_num(hours)} hrs = {_money(project.rollx_cost)}\n"
-        f"(same linear_in / throughput formula as Rho, using roll-x machine rates)",
-    )
+    return _explain_machine_line(project, "rollx_cost", "rollx_hours", None, "Roll-X", machine_name=UnitCostEntries.ROLLX)
 
 
 def _explain_zund_cut_cost(project: Any, _scenario_id: int) -> tuple[str | None, str | None]:
