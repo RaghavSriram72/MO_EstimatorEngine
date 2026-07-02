@@ -346,18 +346,30 @@ def _explain_packout(project: Any, _scenario_id: int) -> tuple[str | None, str |
     )
 
 
-def _curve_unit_cost(
-    project: Any, supplier: str, material: str, qty: float, material_type: str = ""
+def _supplier_unit_cost(
+    project: Any, supplier: str, material: str, curve_qty: float, material_type: str = ""
 ) -> tuple[float, str]:
-    records = project.db.get_supplier_material_records(supplier, material, material_type)
+    """Mirrors _get_supplier_cost: exact price-break if num_standees matches, else curve."""
+    try:
+        record = project.db.get_supplier_material_records(supplier, material, material_type)
+    except Exception:
+        return 0.0, f"no record for {supplier}/{material}"
+    unit = record["unit"]
+    num_standees = project.num_standees
+
+    for pb in record.get("price_breaks", []):
+        if pb.get("amount") is not None and abs(pb["amount"] - num_standees) < 1e-9:
+            cost = pb["cost"] * UNIT_MAP[unit]
+            return cost, f"Static price break @ {int(num_standees)} standees = {_money(cost)}"
+
     params = project.db.get_curve_params(supplier, material, material_type)
-    unit = records["unit"]
     if params is None:
         return 0.0, f"no curve for {supplier}/{material}"
-    raw = params["a"] * qty ** params["b"] + params["c"]
+    raw = params["a"] * curve_qty ** params["b"] + params["c"]
     scaled = raw * UNIT_MAP[unit]
     detail = (
-        f"({params['a']:.4g}×{qty:.0f}^{params['b']:.4g}+{params['c']:.4g})×UNIT_MAP[{unit}]"
+        f"Curve @ qty={_num(curve_qty, 0)}: "
+        f"({params['a']:.4g}×{curve_qty:.0f}^{params['b']:.4g}+{params['c']:.4g})×UNIT_MAP[{unit}]"
         f" = {_money(scaled)}"
     )
     return scaled, detail
@@ -377,23 +389,23 @@ def _explain_mount_die_buyout_cost(project: Any, _scenario_id: int) -> tuple[str
     print_type = "print" if is_pq else ""
     blank_type = "blank" if is_pq else ""
 
-    print_unit, print_detail = _curve_unit_cost(project, supplier, material, standees, print_type)
-    blank_unit, blank_detail = _curve_unit_cost(project, supplier, material, standees, blank_type)
+    print_unit, print_detail = _supplier_unit_cost(project, supplier, material, standees, print_type)
+    blank_unit, blank_detail = _supplier_unit_cost(project, supplier, material, standees, blank_type)
 
     print_total = print_unit * standees * print_forms
     blank_total = blank_unit * standees * structure_forms
 
     if is_pq:
         lines.append(f"Print forms: {_money(print_unit)} × {standees} × {print_forms} = {_money(print_total)}")
-        lines.append(f"  curve @ standees: {print_detail}")
+        lines.append(f"  {print_detail}")
         lines.append(f"Blank forms: {_money(blank_unit)} × {standees} × {structure_forms} = {_money(blank_total)}")
-        lines.append(f"  curve @ standees: {blank_detail}")
+        lines.append(f"  {blank_detail}")
     else:
         unit = print_unit or blank_unit
         forms = print_forms + structure_forms
-        lines.append("unit_cost × standees × blank_forms_per_standee")
+        lines.append("unit_cost × standees × total_forms_per_standee")
         lines.append(f"{_money(unit)} × {standees} × {forms} = {_money(project.mount_die_buyout_cost)}")
-        lines.append(f"curve @ standees: {print_detail}")
+        lines.append(f"  {print_detail}")
 
     lines.append(f"Total = {_money(project.mount_die_buyout_cost)}")
     return "mount_die_buyout_cost", "\n".join(lines)
@@ -406,11 +418,11 @@ def _explain_litho_buyout_cost(project: Any, _scenario_id: int) -> tuple[str | N
     material = _get(project, "material", "fosters_print_form")
     sheets = _get(project, "litho_sheets_per_form", project.num_standees + project.overs)
     unit_cost = _get(project, "litho_buyout_unit_cost", 0)
-    _, curve_detail = _curve_unit_cost(project, supplier, material, sheets)
+    _, cost_detail = _supplier_unit_cost(project, supplier, material, sheets)
     return (
         "litho_buyout_cost",
         f"sheets_per_form = num_standees ({project.num_standees}) + overs ({project.overs}) = {sheets}\n"
-        f"unit_cost from curve @ sheets: {curve_detail}\n"
+        f"unit_cost: {cost_detail}\n"
         f"{_money(unit_cost)} × {sheets} sheets × {project.print_forms_per_standee} print_forms_per_standee "
         f"= {_money(project.litho_buyout_cost)}",
     )

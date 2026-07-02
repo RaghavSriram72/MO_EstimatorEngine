@@ -179,13 +179,20 @@ class Project[T: BaseInput]:
         return self.db.get_standee_data(self.standee_key, "kitting_and_assembly") * self.num_standees
 
     def _get_supplier_cost(self, supplier: str, material: str, num_forms: float, material_type: str = "") -> float:
-        unit = self.db.get_supplier_material_records(supplier, material, material_type)["unit"]
+        record = self.db.get_supplier_material_records(supplier, material, material_type)
+        unit = record["unit"]
+
+        # Exact price-break lookup — keyed by num_standees (job qty), not derived forms
+        for pb in record.get("price_breaks", []):
+            if pb.get("amount") is not None and abs(pb["amount"] - self.num_standees) < 1e-9:
+                return pb["cost"] * UNIT_MAP[unit]
+
+        # Fall back to fitted curve
         params = self.db.get_curve_params(supplier, material, material_type)
         if params is None:
             raise ValueError(
                 f"No pricing data found for supplier={supplier!r} material={material!r} type={material_type!r}"
             )
-
         cost_per_unit = params["a"] * num_forms ** params["b"] + params["c"]
         return cost_per_unit * UNIT_MAP[unit]
 
