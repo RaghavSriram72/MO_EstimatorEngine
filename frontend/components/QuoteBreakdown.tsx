@@ -1007,7 +1007,7 @@ export default function QuoteBreakdown({
                         </div>
                     ) : null}
 
-                    <p className="text-xs text-[#B1B3B6] font-semibold">
+                    <p className="text-[1.6em] text-[#000000] font-semibold">
                         Viewing Scenario {activeScenario} — {SCENARIO_META[activeScenario].short}: {SCENARIO_META[activeScenario].sub}
                     </p>
                     {COST_DEBUG_ENABLED && (
