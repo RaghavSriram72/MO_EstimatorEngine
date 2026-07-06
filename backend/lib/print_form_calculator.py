@@ -23,12 +23,37 @@ def print_form_calculator(initial_elements: list[Element]):
 
 def _pack_elements(initial_elements: list[Element]):
     """Pack elements and return forms plus rectangle coordinates for each packed element."""
-    elements = {el.name: _add_padding(el) for el in _get_all_elements(initial_elements)}
+    # Ensure original elements have a backend placeholder name when empty so
+    # split pieces inherit a stable parent name like `75.88x62.97_0`.
+    def _fmt_dim(v: float) -> str:
+        s = f"{v:.2f}".rstrip("0").rstrip(".")
+        return s
+
+    def _dim_label(el: Element) -> str:
+        return f"{_fmt_dim(el.length)}x{_fmt_dim(el.width)}"
+
+    for idx, e in enumerate(initial_elements):
+        if not e.name:
+            e.name = _dim_label(e)
+
+    # Use internal unique ids for packing keys so empty/duplicate element names
+    # from frontend do not collapse entries. Keep element.name on each Element
+    # for display but pass a generated uid to the packer.
+    all_elements = _get_all_elements(initial_elements)
+    elements: dict[str, Element] = {}
+    for i, el in enumerate(all_elements):
+        padded = _add_padding(el)
+        uid = f"el_{i}"
+        # Ensure elements with empty names get a backend placeholder
+        if not padded.name:
+            padded.name = uid
+        elements[uid] = padded
+    
     element_list = list(elements.values())
     packer = newPacker(mode=PackingMode.Offline, rotation=True)
     packer.add_bin(FORM_WIDTH, FORM_LENGTH, len(element_list))
-    for element in element_list:
-        packer.add_rect(element.length, element.width, element.name)
+    for uid, element in elements.items():
+        packer.add_rect(element.length, element.width, uid)
     packer.pack()  # type: ignore
 
     all_rects = packer.rect_list()
