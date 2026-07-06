@@ -23,19 +23,6 @@ def print_form_calculator(initial_elements: list[Element]):
 
 def _pack_elements(initial_elements: list[Element]):
     """Pack elements and return forms plus rectangle coordinates for each packed element."""
-    # Ensure original elements have a backend placeholder name when empty so
-    # split pieces inherit a stable parent name like `75.88x62.97_0`.
-    def _fmt_dim(v: float) -> str:
-        s = f"{v:.2f}".rstrip("0").rstrip(".")
-        return s
-
-    def _dim_label(el: Element) -> str:
-        return f"{_fmt_dim(el.length)}x{_fmt_dim(el.width)}"
-
-    for idx, e in enumerate(initial_elements):
-        if not e.name:
-            e.name = _dim_label(e)
-
     # Use internal unique ids for packing keys so empty/duplicate element names
     # from frontend do not collapse entries. Keep element.name on each Element
     # for display but pass a generated uid to the packer.

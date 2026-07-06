@@ -1,7 +1,11 @@
-FORM_WIDTH = 60.0
-FORM_LENGTH = 80.0
+FORM_WIDTH = 59.5
+FORM_LENGTH = 79.625
+
+# FORM_WIDTH = 61
+# FORM_LENGTH = 84
+
 PRINT_FORM_LENGTH = 80.0  # used for print form cost calculation
-PADDING = 0.25
+PADDING = 0 #  0.25
 BUSMARK_PADDING = 180  # used for busmark padding in print form cost calculation
 FORM_AREA = FORM_WIDTH * FORM_LENGTH
 SCENARIO_MAP = {
