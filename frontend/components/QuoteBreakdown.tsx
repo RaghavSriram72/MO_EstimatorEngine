@@ -94,8 +94,8 @@ const SCENARIO_KEYS: Record<ScenarioId, string[]> = {
     1: ["corrugate_cost", "print_form_cost", "print_cost", "rollx_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "kitting_and_assembly_cost"],
     2: ["corrugate_cost", "print_form_cost", "print_cost", "rollx_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "kitting_and_assembly_cost"],
     3: ["corrugate_cost", "print_form_cost", "print_cost", "rollx_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "pallet_material_cost", "pallet_labor_cost", "freight_cost", "packout"],
-    4: ["mount_die_buyout_cost", "print_form_cost", "print_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "pallet_material_cost", "pallet_labor_cost", "freight_cost", "die_cost"],
-    5: ["mount_die_buyout_cost", "litho_buyout_cost", "label_cost", "instruction_sheet_cost", "freight_cost", "die_cost"],
+    4: ["mount_die_buyout_cost", "print_form_cost", "print_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "pallet_material_cost", "pallet_labor_cost", "freight_cost", "die_cost", "packout"],
+    5: ["mount_die_buyout_cost", "litho_buyout_cost", "label_cost", "instruction_sheet_cost", "freight_cost", "die_cost", "packout"],
 };
 
 

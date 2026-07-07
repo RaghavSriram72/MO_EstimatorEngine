@@ -24,5 +24,27 @@ class TestPrintFormCalculatorBinCount(unittest.TestCase):
         for bin_id in sorted(bin_dict):
             print(f"bin {bin_id}: {[element.name for element in bin_dict[bin_id].elements]}")
 
+        # Map each packed element name to (bin_id, element)
+        name_to_packed = {}
+        for bin_id, form in bin_dict.items():
+            for el in form.elements:
+                name_to_packed[el.name] = (bin_id, el)
+
+        print("\n--- element split summary ---")
+        for orig in elements:
+            pieces = {
+                name: (bin_id, el)
+                for name, (bin_id, el) in name_to_packed.items()
+                if name == orig.name or name.startswith(orig.name + "_")
+            }
+            if not pieces:
+                print(f"  {orig.name} -> (not packed)")
+            elif len(pieces) == 1 and orig.name in pieces:
+                bin_id, el = pieces[orig.name]
+                print(f"  {orig.name} -> bin {bin_id} ({el.length:.2f} x {el.width:.2f}, no split)")
+            else:
+                for piece, (bin_id, el) in sorted(pieces.items()):
+                    print(f"  {orig.name} -> piece '{piece}' in bin {bin_id} ({el.length:.2f} x {el.width:.2f})")
+
         self.assertEqual(len(bin_dict), 4)
         self.assertGreaterEqual(len(packed_elements), len(elements))

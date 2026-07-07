@@ -3,42 +3,42 @@ import math
 from rectpack import PackingMode, newPacker
 
 from lib.classes import Complexity, Element, Form
-from lib.globals import FORM_LENGTH, FORM_WIDTH, PADDING
+from lib.globals import FORM_95_LENGTH, FORM_95_WIDTH, PADDING
 
 
-def print_form_calculator(initial_elements: list[Element]):
-    """
-    Tool to calculate number of forms to fit elements.
-
-    Args:
-        initial_elements: list of Elements
-        num_standees: number of standees to calculate for
-
-    Returns:
-        None
-    """
-    elements, bin_dict = _pack_elements(initial_elements)
+def print_form_calculator(
+    initial_elements: list[Element],
+    form_width: float = FORM_95_WIDTH,
+    form_length: float = FORM_95_LENGTH,
+    padding: float = PADDING,
+):
+    elements, bin_dict = _pack_elements(initial_elements, form_width, form_length, padding)
     return elements, bin_dict
 
 
-def _pack_elements(initial_elements: list[Element]):
+def _pack_elements(
+    initial_elements: list[Element],
+    form_width: float,
+    form_length: float,
+    padding: float,
+):
     """Pack elements and return forms plus rectangle coordinates for each packed element."""
     # Use internal unique ids for packing keys so empty/duplicate element names
     # from frontend do not collapse entries. Keep element.name on each Element
     # for display but pass a generated uid to the packer.
-    all_elements = _get_all_elements(initial_elements)
+    all_elements = _get_all_elements(initial_elements, form_width, form_length)
     elements: dict[str, Element] = {}
     for i, el in enumerate(all_elements):
-        padded = _add_padding(el)
+        padded = _add_padding(el, form_length, padding)
         uid = f"el_{i}"
         # Ensure elements with empty names get a backend placeholder
         if not padded.name:
             padded.name = uid
         elements[uid] = padded
-    
+
     element_list = list(elements.values())
     packer = newPacker(mode=PackingMode.Offline, rotation=True)
-    packer.add_bin(FORM_WIDTH, FORM_LENGTH, len(element_list))
+    packer.add_bin(form_width, form_length, len(element_list))
     for uid, element in elements.items():
         packer.add_rect(element.length, element.width, uid)
     packer.pack()  # type: ignore
@@ -57,75 +57,47 @@ def _pack_elements(initial_elements: list[Element]):
     return elements, bin_dict
 
 
-def _fits_on_form(element: Element):
-    """
-    Helper function to check if an element can fit on a form.
-
-    Args:
-        element: Element to check
-
-    Returns:
-        True if element can fit on a form, False otherwise
-    """
-    return (element.length <= FORM_LENGTH and element.width <= FORM_WIDTH) or (
-        element.length <= FORM_WIDTH and element.width <= FORM_LENGTH
+def _fits_on_form(element: Element, form_width: float, form_length: float) -> bool:
+    return (element.length <= form_length and element.width <= form_width) or (
+        element.length <= form_width and element.width <= form_length
     )
 
 
-def _get_all_elements(elements: list[Element]):
-    """
-    Helper function to get all elements, including split elements.
-
-    Args:
-        elements: list of Elements
-
-    Returns:
-        list of all Elements, including split elements
-    """
+def _get_all_elements(elements: list[Element], form_width: float, form_length: float) -> list[Element]:
     changed = True
     while changed:
         changed = False
         new_elements = []
         for element in elements:
-            if _fits_on_form(element):
+            if _fits_on_form(element, form_width, form_length):
                 new_elements.append(element)
             else:
-                new_elements.extend(_split_element(element))
+                new_elements.extend(_split_element(element, form_width, form_length))
                 changed = True
         elements = new_elements
     return elements
 
 
-def _split_element(element):
-    """
-    Helper function to split elements too large to fit on a single form regardless of rotation.
+def _split_element(element: Element, form_width: float, form_length: float) -> list[Element]:
+    length_ratio = element.length / form_length
+    width_ratio = element.width / form_width
 
-    Args:
-        element: Element to split
-    Returns:
-        list of Elements that can fit within a form
-    """
-    length_ratio = element.length / FORM_LENGTH
-    width_ratio = element.width / FORM_WIDTH
-
-    if length_ratio >= width_ratio and element.length > FORM_LENGTH:
+    if length_ratio >= width_ratio and element.length > form_length:
         # Split along the longer side when it is the dimension preventing a fit.
-        num_splits = math.ceil(element.length / FORM_LENGTH)
+        num_splits = math.ceil(element.length / form_length)
         split_length = element.length / num_splits
         split_width = element.width
         split_linear_inches = (element.get_linear_inches() / num_splits) + element.width
-    elif element.width > FORM_WIDTH:
+    elif element.width > form_width:
         # Split width when it is the dimension preventing a fit.
-        num_splits = math.ceil(element.width / FORM_WIDTH)
+        num_splits = math.ceil(element.width / form_width)
         split_width = element.width / num_splits
         split_length = element.length
         split_linear_inches = (element.get_linear_inches() / num_splits) + element.length
     else:
         raise ValueError(
-            (
-                f"Cannot split element {element.name}: {element.length} x {element.width} "
-                "does not exceed form limits in a splittable way"
-            )
+            f"Cannot split element {element.name}: {element.length} x {element.width} "
+            "does not exceed form limits in a splittable way"
         )
 
     return [
@@ -140,18 +112,9 @@ def _split_element(element):
     ]
 
 
-def _add_padding(element):
-    """
-    Helper function to add padding to an element.
-
-    Args:
-        element: Element to add padding to
-
-    Returns:
-        Element with padding added
-    """
-    element.length = min(element.length + PADDING, FORM_LENGTH)
-    element.width = min(element.width + PADDING, FORM_LENGTH)
+def _add_padding(element: Element, form_length: float, padding: float) -> Element:
+    element.length = min(element.length + padding, form_length)
+    element.width = min(element.width + padding, form_length)
     return element
 
 

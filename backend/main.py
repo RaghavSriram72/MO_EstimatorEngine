@@ -24,7 +24,13 @@ from lib.classes.cost_inputs import (
 )
 from lib.classes.db import MidnightOilDB
 
-# from lib.globals import
+from lib.globals import (
+    BUSMARK_FORM_LENGTH,
+    BUSMARK_FORM_WIDTH,
+    FORM_95_LENGTH,
+    FORM_95_WIDTH,
+    PADDING,
+)
 from lib.classes.form import Complexity, Element
 from lib.cost_debug import maybe_attach_cost_explanations
 from lib.persisted_project import (
@@ -152,17 +158,25 @@ def _scenario_cost_input(sid: int, payload: QuoteRequest):
 
 
 def _compute_quote_scenarios(db: MidnightOilDB, elements: list[Element], payload: QuoteRequest) -> dict[str, Any]:
-    # for element in elements:
-    #     print(f"Element: {element.name}, length: {element.length}, width: {element.width}, complexity: {element.complexity}")
-    _, bin_dict = print_form_calculator(elements)
-    print(f"bin count: {len(bin_dict)}")
-    for bin_id in sorted(bin_dict):
-        print(f"bin {bin_id}: {[element.name for element in bin_dict[bin_id].elements]}")
-    print_forms = list(bin_dict.values())
+    _, busmark_bins = print_form_calculator(
+        elements,
+        form_width=BUSMARK_FORM_WIDTH,
+        form_length=BUSMARK_FORM_LENGTH,
+        padding=PADDING,
+    )
+    _, form_95_bins = print_form_calculator(
+        elements,
+        form_width=FORM_95_WIDTH,
+        form_length=FORM_95_LENGTH,
+        padding=PADDING,
+    )
+    busmark_forms = list(busmark_bins.values())
+    form_95_forms = list(form_95_bins.values())
 
     scenarios_to_run = [payload.scenario] if payload.scenario is not None else [1, 2, 3, 4, 5]
     out: dict[str, Any] = {}
     for sid in scenarios_to_run:
+        print_forms = busmark_forms if sid in (1, 2, 3) else form_95_forms
         s: Project = _SCENARIO_CLASSES[sid](
             db=db,
             name="API quote",

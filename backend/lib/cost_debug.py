@@ -9,7 +9,11 @@ from __future__ import annotations
 from typing import Any
 
 from lib.classes.db_keys import UnitCostEntries
-from lib.globals import PRINT_FORM_LENGTH, UNIT_MAP
+from lib.globals import BUSMARK_PADDING, BUSMARK_PRINT_FORM_LENGTH, PRINT_95_FORM_LENGTH, UNIT_MAP
+
+
+def _print_form_length(scenario_id: int) -> float:
+    return BUSMARK_PRINT_FORM_LENGTH if scenario_id in (1, 2, 3) else PRINT_95_FORM_LENGTH
 
 # ── Toggle: set False for production ────────────────────────────────────────
 COST_DEBUG_ENABLED = True
@@ -143,14 +147,20 @@ def _explain_print_form_cost(project: Any, _scenario_id: int) -> tuple[str | Non
         f"print_form_total = print_forms_per_standee ({_num(project.print_forms_per_standee, 0)}) × "
         f"(num_standees ({_num(project.num_standees, 0)}) + overs ({_num(project.overs, 0)})) = {_num(total_forms, 0)}",
     ]
+    pfl = _print_form_length(_scenario_id)
+    is_busmark = _scenario_id in (1, 2, 3)
     if unit == "linear_foot":
-        linear_inches = PRINT_FORM_LENGTH * total_forms
+        linear_inches = pfl * total_forms + (BUSMARK_PADDING if is_busmark else 0)
+        if is_busmark:
+            linear_in_formula = f"{pfl} × forms ({_num(total_forms, 0)}) + BUSMARK_PADDING ({BUSMARK_PADDING}) = {_num(linear_inches)}"
+        else:
+            linear_in_formula = f"{pfl} × forms ({_num(total_forms, 0)}) = {_num(linear_inches)}"
         if "roll" in material:
-            lines.append(f"linear_in = {PRINT_FORM_LENGTH} × forms = {_num(linear_inches)}")
+            lines.append(f"linear_in = {linear_in_formula}")
             lines.append(f"cost = rate × UNIT_MAP[{unit}] × linear_in = {_money(project.print_form_cost)}")
         else:
             hi_tack = _machine_entry(project.db, UnitCostEntries.ROLL_HI_TACK)
-            lines.append(f"linear_in = {PRINT_FORM_LENGTH} × forms = {_num(linear_inches)}")
+            lines.append(f"linear_in = {linear_in_formula}")
             lines.append(f"substrate + hi-tack @ {_money(hi_tack['cost'])}/{hi_tack['unit']} × linear_in")
             lines.append(f"total = {_money(project.print_form_cost)}")
     else:
@@ -160,6 +170,7 @@ def _explain_print_form_cost(project: Any, _scenario_id: int) -> tuple[str | Non
 
 def _explain_machine_line(
     project: Any,
+    scenario_id: int,
     cost_key: str,
     hours_key: str,
     machine_key: str | None,
@@ -177,7 +188,8 @@ def _explain_machine_line(
     throughput = entry["throughput"]
     throughput_unit = entry["throughput_unit"]
     setup = entry.get("setup_time", 0) * project.print_forms_per_standee
-    linear_inches = PRINT_FORM_LENGTH * project.print_form_total
+    pfl = _print_form_length(scenario_id)
+    linear_inches = pfl * project.print_form_total
     effective_throughput = throughput / UNIT_MAP[throughput_unit]
     lines = [
         f"{label}: {_money(hourly)}/hr × {_num(hours)} hrs = {_money(getattr(project, cost_key))}",
@@ -189,11 +201,12 @@ def _explain_machine_line(
 
 
 def _explain_print_cost(project: Any, _scenario_id: int) -> tuple[str | None, str | None]:
-    return _explain_machine_line(project, "print_cost", "print_hours", "print_machine", "Rho print")
+    machine_name = UnitCostEntries.RHO_1312 if _scenario_id == 4 else None
+    return _explain_machine_line(project, _scenario_id, "print_cost", "print_hours", "print_machine", "Rho print", machine_name=machine_name)
 
 
 def _explain_rollx_cost(project: Any, _scenario_id: int) -> tuple[str | None, str | None]:
-    return _explain_machine_line(project, "rollx_cost", "rollx_hours", None, "Roll-X", machine_name=UnitCostEntries.ROLLX)
+    return _explain_machine_line(project, _scenario_id, "rollx_cost", "rollx_hours", None, "Roll-X", machine_name=UnitCostEntries.ROLLX)
 
 
 def _explain_zund_cut_cost(project: Any, _scenario_id: int) -> tuple[str | None, str | None]:

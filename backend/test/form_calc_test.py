@@ -4,7 +4,7 @@ from lib.classes import (
     Complexity,
     Element,
 )
-from lib.globals import FORM_LENGTH, FORM_WIDTH
+from lib.globals import BUSMARK_FORM_LENGTH, BUSMARK_FORM_WIDTH, BUSMARK_PADDING
 from lib.print_form_calculator import print_form_calculator
 
 
@@ -13,8 +13,8 @@ class TestPrintFormCalculator(unittest.TestCase):
 
     def _assert_elements_fit_on_form(self, form):
         for element in form.elements:
-            self.assertLessEqual(element.length, FORM_LENGTH)
-            self.assertLessEqual(element.width, FORM_WIDTH)
+            self.assertLessEqual(element.length, BUSMARK_FORM_LENGTH)
+            self.assertLessEqual(element.width, BUSMARK_FORM_WIDTH)
 
     def test_print_form_calculator_returns_no_bins_for_empty_input(self):
         """Test print form calculation with no input elements."""
@@ -28,7 +28,7 @@ class TestPrintFormCalculator(unittest.TestCase):
         elements = [
             Element(name="fit", length=79.75, width=59.75, complexity=Complexity.COMPLEX),
         ]
-        packed_elements, bin_dict = print_form_calculator(elements)
+        packed_elements, bin_dict = print_form_calculator(elements, form_width=BUSMARK_FORM_WIDTH, form_length=BUSMARK_FORM_LENGTH, padding=BUSMARK_PADDING)
 
         self.assertEqual(len(bin_dict), 1)
         self.assertEqual(sorted(packed_elements), ["fit"])
@@ -45,7 +45,7 @@ class TestPrintFormCalculator(unittest.TestCase):
         elements = [
             Element(name="edge", length=79.75, width=59.75, complexity=Complexity.SIMPLE),
         ]
-        packed_elements, bin_dict = print_form_calculator(elements)
+        packed_elements, bin_dict = print_form_calculator(elements, form_width=BUSMARK_FORM_WIDTH, form_length=BUSMARK_FORM_LENGTH, padding=BUSMARK_PADDING)
 
         self.assertEqual(len(bin_dict), 1)
         self.assertEqual(sorted(packed_elements), ["edge"])
@@ -62,7 +62,7 @@ class TestPrintFormCalculator(unittest.TestCase):
         elements = [
             Element(name="monkey", length=90, width=60, complexity=Complexity.COMPLEX),
         ]
-        packed_elements, bin_dict = print_form_calculator(elements)
+        packed_elements, bin_dict = print_form_calculator(elements, form_width=BUSMARK_FORM_WIDTH, form_length=BUSMARK_FORM_LENGTH, padding=BUSMARK_PADDING)
 
         self.assertEqual(len(bin_dict), 2)
         self.assertEqual(sorted(packed_elements), ["monkey_0", "monkey_1"])
@@ -82,7 +82,7 @@ class TestPrintFormCalculator(unittest.TestCase):
         elements = [
             Element(name="poster", length=90, width=60, complexity=Complexity.MODERATE),
         ]
-        packed_elements, bin_dict = print_form_calculator(elements)
+        packed_elements, bin_dict = print_form_calculator(elements, form_width=BUSMARK_FORM_WIDTH, form_length=BUSMARK_FORM_LENGTH, padding=BUSMARK_PADDING)
 
         self.assertEqual(len(bin_dict), 2)
         self.assertTrue(all(element.complexity == Complexity.MODERATE for element in packed_elements.values()))
@@ -97,7 +97,7 @@ class TestPrintFormCalculator(unittest.TestCase):
         elements = [
             Element(name="banner", length=60, width=90, complexity=Complexity.MODERATE),
         ]
-        packed_elements, bin_dict = print_form_calculator(elements)
+        packed_elements, bin_dict = print_form_calculator(elements, form_width=BUSMARK_FORM_WIDTH, form_length=BUSMARK_FORM_LENGTH, padding=BUSMARK_PADDING)
 
         self.assertEqual(len(bin_dict), 2)
         self.assertEqual(sorted(packed_elements), ["banner_0", "banner_1"])
@@ -119,7 +119,7 @@ class TestPrintFormCalculator(unittest.TestCase):
             Element(name="moderate", length=20, width=20, complexity=Complexity.MODERATE),
             Element(name="complex", length=20, width=20, complexity=Complexity.COMPLEX),
         ]
-        packed_elements, bin_dict = print_form_calculator(elements)
+        packed_elements, bin_dict = print_form_calculator(elements, form_width=BUSMARK_FORM_WIDTH, form_length=BUSMARK_FORM_LENGTH, padding=BUSMARK_PADDING)
 
         self.assertEqual(len(bin_dict), 1)
         self.assertCountEqual(packed_elements, ["simple", "moderate", "complex"])

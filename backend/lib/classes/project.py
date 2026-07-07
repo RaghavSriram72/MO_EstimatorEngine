@@ -5,7 +5,7 @@ from typing import override
 from lib.classes import Complexity, Form, MidnightOilDB
 from lib.classes.cost_inputs import BaseInput, InHouseInput, OutsourceInput
 from lib.classes.db_keys import StandeeKey, SupplierMaterials, Suppliers, UnitCostEntries
-from lib.globals import PRINT_FORM_LENGTH, UNIT_MAP
+from lib.globals import BUSMARK_PRINT_FORM_LENGTH, PRINT_95_FORM_LENGTH, UNIT_MAP
 
 STANDEE_MAP = {
     Complexity.SIMPLE: StandeeKey.SIMPLE,
@@ -106,7 +106,7 @@ class Project[T: BaseInput]:
         return print_form_cost
 
     def _get_print_form_linear_inches(self) -> float:
-        return PRINT_FORM_LENGTH * self.print_form_total
+        return PRINT_95_FORM_LENGTH * self.print_form_total
 
     def _setup_time(self, unit_cost_entry: dict, forms: int) -> float:
         return unit_cost_entry["setup_time"] * forms
@@ -258,6 +258,9 @@ class InHouseProject[T: InHouseInput](Project[T]):
             + self.shipping_box_cost
             + self.label_cost
         )
+
+    def _get_print_form_linear_inches(self) -> float:
+        return BUSMARK_PRINT_FORM_LENGTH * self.print_form_total
 
     @override
     def calculate_cost(self, input: T) -> None:
