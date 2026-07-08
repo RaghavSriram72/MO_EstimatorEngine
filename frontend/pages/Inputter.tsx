@@ -2,10 +2,10 @@
 import ElementsManager from "@/components/ElementsManager";
 import Dropdown from "@/components/Dropdown";
 import QuoteBreakdown from "@/components/QuoteBreakdown";
-import BuildQuoteModal from "@/components/BuildQuoteModal";
 import UploadBlueModal from "@/components/UploadBlueModal";
 import ProjectSidebar, { type ProjectSummary } from "@/components/inputter/ProjectSidebar";
-import QuotesSidebar, { type SavedQuoteListItem } from "@/components/inputter/QuotesSidebar";
+// import BuildQuoteModal from "@/components/BuildQuoteModal";
+// import QuotesSidebar, { type SavedQuoteListItem } from "@/components/inputter/QuotesSidebar";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { API_BASE } from "@/lib/config";
 
@@ -53,7 +53,6 @@ export type RequestPayload = {
     scenario?: number;
 };
 
-type QuoteScenarioId = 1 | 2 | 3 | 4 | 5;
 
 // Shape of an element as stored in MongoDB (uses "length" not "height")
 type ApiPersistedElement = {
@@ -76,64 +75,62 @@ function quoteDataFromGenerateResponse(data: Record<string, unknown>): QuoteData
     return out;
 }
 
-// Extracts scenario_* blobs + _breakdown_ui from a persisted quote document
-function quoteDataFromPersistedDoc(breakdown: unknown): QuoteData {
-    const out: QuoteData = {};
-    if (!breakdown || typeof breakdown !== "object" || Array.isArray(breakdown)) return out;
-    const b = breakdown as Record<string, unknown>;
-    for (const [key, val] of Object.entries(b)) {
-        if (!key.startsWith("scenario_")) continue;
-        if (val && typeof val === "object" && !Array.isArray(val)) {
-            out[key] = val as Record<string, number>;
-        }
-    }
-    const ui = b._breakdown_ui;
-    if (ui && typeof ui === "object" && !Array.isArray(ui)) {
-        out._breakdown_ui = ui as QuoteBreakdownUi;
-    }
-    return out;
-}
 
-// Reconstructs a RequestPayload from a persisted quote doc, falling back to current form state
-function buildPayloadFromPersistedQuote(
-    doc: { scenario?: number; num_standees?: number; standee_type?: string; elements?: ApiPersistedElement[] },
-    fallback: { elements: Element[]; standeeType: StandeeType; standeeCount: number | "" },
-): RequestPayload {
-    const standeeTypeMap: Record<StandeeType, number> = { Simple: 1, Moderate: 2, Complex: 3 };
-    const srcRows =
-        Array.isArray(doc.elements) && doc.elements.length > 0
-            ? doc.elements
-            : fallback.elements.map((el) => ({
-                  name: "",
-                  length: el.height === "" ? 0 : el.height,
-                  width: el.width === "" ? 0 : el.width,
-                  linear_inches: el.linear_inches === "" ? null : el.linear_inches,
-                  complexity: el.complexity,
-              }));
-    const num =
-        typeof doc.num_standees === "number" && doc.num_standees >= 1
-            ? doc.num_standees
-            : fallback.standeeCount === "" || fallback.standeeCount < 1
-              ? 1
-              : fallback.standeeCount;
-    const st = (doc.standee_type as StandeeType) || fallback.standeeType;
-    return {
-        elements: srcRows.map((e) => ({
-            name: e.name ?? "",
-            height: e.length,
-            width: e.width,
-            complexity: e.complexity as StandeeType,
-            linear_inches: e.linear_inches ?? null,
-            description: "",
-        })),
-        num_standees: num,
-        standee_type: standeeTypeMap[st] ?? 1,
-        scenario:
-            typeof doc.scenario === "number" && doc.scenario >= 1 && doc.scenario <= 5
-                ? (doc.scenario as QuoteScenarioId)
-                : undefined,
-    };
-}
+// // Extracts scenario_* blobs + _breakdown_ui from a persisted quote document
+// function quoteDataFromPersistedDoc(breakdown: unknown): QuoteData {
+//     const out: QuoteData = {};
+//     if (!breakdown || typeof breakdown !== "object" || Array.isArray(breakdown)) return out;
+//     const b = breakdown as Record<string, unknown>;
+//     for (const [key, val] of Object.entries(b)) {
+//         if (!key.startsWith("scenario_")) continue;
+//         if (val && typeof val === "object" && !Array.isArray(val)) {
+//             out[key] = val as Record<string, number>;
+//         }
+//     }
+//     const ui = b._breakdown_ui;
+//     if (ui && typeof ui === "object" && !Array.isArray(ui)) {
+//         out._breakdown_ui = ui as QuoteBreakdownUi;
+//     }
+//     return out;
+// }
+
+// // Reconstructs a RequestPayload from a persisted quote doc, falling back to current form state
+// function buildPayloadFromPersistedQuote(
+//     doc: { scenario?: number; num_standees?: number; standee_type?: string; elements?: ApiPersistedElement[] },
+//     fallback: { elements: Element[]; standeeType: StandeeType; standeeCount: number | "" },
+// ): RequestPayload {
+//     const standeeTypeMap: Record<StandeeType, number> = { Simple: 1, Moderate: 2, Complex: 3 };
+//     const srcRows =
+//         Array.isArray(doc.elements) && doc.elements.length > 0
+//             ? doc.elements
+//             : fallback.elements.map((el) => ({
+//                   name: "",
+//                   length: el.height === "" ? 0 : el.height,
+//                   width: el.width === "" ? 0 : el.width,
+//                   linear_inches: el.linear_inches === "" ? null : el.linear_inches,
+//                   complexity: el.complexity,
+//               }));
+//     const num =
+//         typeof doc.num_standees === "number" && doc.num_standees >= 1
+//             ? doc.num_standees
+//             : fallback.standeeCount === "" || fallback.standeeCount < 1
+//               ? 1
+//               : fallback.standeeCount;
+//     const st = (doc.standee_type as StandeeType) || fallback.standeeType;
+//     return {
+//         elements: srcRows.map((e) => ({
+//             name: e.name ?? "",
+//             height: e.length,
+//             width: e.width,
+//             complexity: e.complexity as StandeeType,
+//             linear_inches: e.linear_inches ?? null,
+//             description: "",
+//         })),
+//         num_standees: num,
+//         standee_type: standeeTypeMap[st] ?? 1,
+//         scenario: undefined,
+//     };
+// }
 
 // Converts the UI element list to the shape expected by the backend
 function elementsForApi(elements: Element[]) {
@@ -191,31 +188,22 @@ export default function Inputter() {
     const [projectListRefreshKey, setProjectListRefreshKey] = useState(0); // bumped to re-fetch list
 
     // ── Quote workspace state ──────────────────────────────────────────────
-    // inQuotesWorkspace = true after clicking "Continue" (shows quote sidebar + breakdown area)
-    const [inQuotesWorkspace, setInQuotesWorkspace]           = useState(false);
     const [activeQuoteData, setActiveQuoteData]               = useState<QuoteData | null>(null);
     const [activeQuotePayload, setActiveQuotePayload]         = useState<RequestPayload | null>(null);
-    const [activeQuoteScenario, setActiveQuoteScenario]       = useState<QuoteScenarioId>(1);
     const [activeQuoteName, setActiveQuoteName]               = useState<string | null>(null);
     const [activeQuoteContributionMargin, setActiveQuoteContributionMargin] = useState<number | null>(null);
     const [activePersistedQuoteId, setActivePersistedQuoteId] = useState<string | null>(null);
+    const [isQuoteGenerating, setIsQuoteGenerating]           = useState(false);
 
-    // ── Build-quote modal state ────────────────────────────────────────────
-    const [buildQuoteModalOpen, setBuildQuoteModalOpen]   = useState(false);
-    const [newQuoteName, setNewQuoteName]                 = useState("");
-    const [newQuoteScenario, setNewQuoteScenario]         = useState<QuoteScenarioId>(1);
-    const [newQuoteQuantity, setNewQuoteQuantity]         = useState<number | "">("");
-    const [isQuoteGenerating, setIsQuoteGenerating]       = useState(false);
-
-    // ── Saved quotes list (inside workspace) ──────────────────────────────
-    const [savedQuoteList, setSavedQuoteList]           = useState<SavedQuoteListItem[]>([]);
-    const [savedQuoteListLoading, setSavedQuoteListLoading] = useState(false);
-    const [savedQuoteListError, setSavedQuoteListError] = useState<string | null>(null);
-    const [deletingQuoteId, setDeletingQuoteId]         = useState<string | null>(null);
+    // ── Saved quotes list (inside workspace) — commented, restore with QuotesSidebar ──
+    // const [savedQuoteList, setSavedQuoteList]           = useState<SavedQuoteListItem[]>([]);
+    // const [savedQuoteListLoading, setSavedQuoteListLoading] = useState(false);
+    // const [savedQuoteListError, setSavedQuoteListError] = useState<string | null>(null);
+    // const [deletingQuoteId, setDeletingQuoteId]         = useState<string | null>(null);
 
     // ── UI state ───────────────────────────────────────────────────────────
     const [projectSearchQuery, setProjectSearchQuery]   = useState("");
-    const [quoteSearchQuery, setQuoteSearchQuery]       = useState("");
+    // const [quoteSearchQuery, setQuoteSearchQuery]     = useState("");
     const [uploadBlueOpen, setUploadBlueOpen]           = useState(false);
     const [isSavingBeforeContinue, setIsSavingBeforeContinue] = useState(false);
     const [toast, setToast]                             = useState<{ message: string; type: "save" | "delete" } | null>(null);
@@ -262,43 +250,37 @@ export default function Inputter() {
         }
     }, []);
 
-    // GET /projects/:id/quotes?owner=... → refresh the quotes list inside the workspace
-    const refreshSavedQuoteList = useCallback(async () => {
-        const owner = typeof window !== "undefined" ? localStorage.getItem("username") : null;
-        if (!owner?.trim() || !activeProjectId) {
-            setSavedQuoteList([]);
-            setSavedQuoteListLoading(false);
-            return;
-        }
-        setSavedQuoteListLoading(true);
-        setSavedQuoteListError(null);
-        try {
-            const res = await fetch(
-                `${API_BASE}/projects/${encodeURIComponent(activeProjectId)}/quotes?owner=${encodeURIComponent(owner)}`,
-            );
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok) {
-                setSavedQuoteListError(typeof data.error === "string" ? data.error : "Could not load quotes");
-                setSavedQuoteList([]);
-                return;
-            }
-            setSavedQuoteList(Array.isArray(data.quotes) ? data.quotes : []);
-        } catch {
-            setSavedQuoteListError("Could not load quotes");
-            setSavedQuoteList([]);
-        } finally {
-            setSavedQuoteListLoading(false);
-        }
-    }, [activeProjectId]);
-
-    // Whether the quotes workspace (sidebar + breakdown panel) should be shown
-    const showQuotesWorkspace = inQuotesWorkspace || (!!activeQuoteData && !!activeQuotePayload);
-
-    useEffect(() => {
-        if (showQuotesWorkspace && activeProjectId) void refreshSavedQuoteList();
-    }, [showQuotesWorkspace, activeProjectId, refreshSavedQuoteList]);
 
     useEffect(() => { void refreshProjectList(); }, [refreshProjectList, projectListRefreshKey]);
+
+    // // GET /projects/:id/quotes?owner=... → refresh the quotes list inside the workspace
+    // const refreshSavedQuoteList = useCallback(async () => {
+    //     const owner = typeof window !== "undefined" ? localStorage.getItem("username") : null;
+    //     if (!owner?.trim() || !activeProjectId) {
+    //         setSavedQuoteList([]);
+    //         setSavedQuoteListLoading(false);
+    //         return;
+    //     }
+    //     setSavedQuoteListLoading(true);
+    //     setSavedQuoteListError(null);
+    //     try {
+    //         const res = await fetch(
+    //             `${API_BASE}/projects/${encodeURIComponent(activeProjectId)}/quotes?owner=${encodeURIComponent(owner)}`,
+    //         );
+    //         const data = await res.json().catch(() => ({}));
+    //         if (!res.ok) {
+    //             setSavedQuoteListError(typeof data.error === "string" ? data.error : "Could not load quotes");
+    //             setSavedQuoteList([]);
+    //             return;
+    //         }
+    //         setSavedQuoteList(Array.isArray(data.quotes) ? data.quotes : []);
+    //     } catch {
+    //         setSavedQuoteListError("Could not load quotes");
+    //         setSavedQuoteList([]);
+    //     } finally {
+    //         setSavedQuoteListLoading(false);
+    //     }
+    // }, [activeProjectId]);
 
     // ── Filtered sidebar lists ─────────────────────────────────────────────
 
@@ -308,14 +290,14 @@ export default function Inputter() {
         ),
     [projectList, projectSearchQuery]);
 
-    const filteredSavedQuotes = useMemo(() =>
-        savedQuoteList.filter((q) => {
-            const name = (q.quote_name || "Untitled").trim();
-            const scen = typeof q.scenario === "number" ? `scenario ${q.scenario}` : "";
-            const ns   = typeof q.num_standees === "number" ? `${q.num_standees} standees` : "";
-            return searchMatches(quoteSearchQuery, `${name} ${scen} ${ns} ${q._id}`);
-        }),
-    [savedQuoteList, quoteSearchQuery]);
+    // const filteredSavedQuotes = useMemo(() =>
+    //     savedQuoteList.filter((q) => {
+    //         const name = (q.quote_name || "Untitled").trim();
+    //         const scen = typeof q.scenario === "number" ? `scenario ${q.scenario}` : "";
+    //         const ns   = typeof q.num_standees === "number" ? `${q.num_standees} standees` : "";
+    //         return searchMatches(quoteSearchQuery, `${name} ${scen} ${ns} ${q._id}`);
+    //     }),
+    // [savedQuoteList, quoteSearchQuery]);
 
     // ── Project actions ────────────────────────────────────────────────────
 
@@ -326,17 +308,15 @@ export default function Inputter() {
         setElementListKey((k) => k + 1);
         setProjectName("Untitled project");
         setActiveProjectId(null);
-        setInQuotesWorkspace(false);
         setActiveQuoteData(null);
         setActiveQuotePayload(null);
-        setBuildQuoteModalOpen(false);
         setIsQuoteGenerating(false);
         setActiveQuoteName(null);
-        setSavedQuoteList([]);
-        setSavedQuoteListError(null);
-        setDeletingQuoteId(null);
+        // setSavedQuoteList([]);
+        // setSavedQuoteListError(null);
+        // setDeletingQuoteId(null);
         setProjectSearchQuery("");
-        setQuoteSearchQuery("");
+        // setQuoteSearchQuery("");
         setActivePersistedQuoteId(null);
     }
 
@@ -423,12 +403,10 @@ export default function Inputter() {
                 })),
             );
             setElementListKey((k) => k + 1);
-            setInQuotesWorkspace(false);
             setActiveQuoteData(null);
             setActiveQuotePayload(null);
-            setBuildQuoteModalOpen(false);
             setActiveQuoteName(null);
-            setSavedQuoteList([]);
+            // setSavedQuoteList([]);
             setActivePersistedQuoteId(null);
         } catch {
             setProjectListError("Could not load project");
@@ -464,8 +442,8 @@ export default function Inputter() {
 
     const canCalculate = (standeeCount !== "" && standeeCount > 0) && elements.length > 0;
 
-    // Builds the base request body for POST /generate_quote
-    function buildQuotePayload(numStandees: number, scenarioId: QuoteScenarioId): RequestPayload {
+    // Builds the base request body for POST /generate_quote (all 5 scenarios)
+    function buildQuotePayload(numStandees: number): RequestPayload {
         const standeeTypeMap: Record<StandeeType, number> = { Simple: 1, Moderate: 2, Complex: 3 };
         return {
             standee_type: standeeTypeMap[standeeType],
@@ -478,15 +456,16 @@ export default function Inputter() {
                 description: description || "",
             })),
             num_standees: numStandees,
-            scenario: scenarioId,
         };
     }
 
-    // "Continue" button — auto-saves the project then opens the quotes workspace
+    // "Continue" button — saves project, fires all 5 scenarios, auto-saves quote
     async function handleContinue() {
         if (!canCalculate || isSavingBeforeContinue) return;
         const owner = typeof window !== "undefined" ? localStorage.getItem("username")?.trim() : null;
-        if (owner && !activeProjectId) {
+
+        // Ensure the project is saved so we have a project ID to attach the quote to
+        if (owner) {
             setProjectListError(null);
             setIsSavingBeforeContinue(true);
             try {
@@ -497,39 +476,14 @@ export default function Inputter() {
                 setIsSavingBeforeContinue(false);
             }
         }
-        setInQuotesWorkspace(true);
-    }
 
-    // "Save" button — saves without navigating to quotes workspace
-    async function handleSave() {
-        if (!canCalculate) return;
-        if (!localStorage.getItem("username")?.trim()) return;
-        const r = await saveCurrentProject();
-        if (r.success) {
-            setProjectListRefreshKey((v) => v + 1);
-            showToast("Project saved", "save");
-        } else if (r.errorMessage) console.error(r.errorMessage);
-    }
-
-    const canSubmitNewQuote =
-        elements.length > 0 &&
-        newQuoteName.trim().length > 0 &&
-        newQuoteQuantity !== "" &&
-        newQuoteQuantity > 0;
-
-    // POST /generate_quote → generate quote, then POST /projects/:id/quotes → save it
-    async function handleBuildAndSaveQuote() {
-        if (!canSubmitNewQuote) return;
-        setBuildQuoteModalOpen(false);
         setIsQuoteGenerating(true);
-
-        const corePayload = buildQuotePayload(newQuoteQuantity as number, newQuoteScenario);
-        const owner       = typeof window !== "undefined" ? localStorage.getItem("username") : null;
+        const num         = standeeCount as number;
+        const corePayload = buildQuotePayload(num);
+        const quoteName   = projectName.trim() || "Untitled quote";
         const pid         = activeProjectId;
-        const quoteName   = newQuoteName.trim() || "Untitled quote";
 
         try {
-            // POST /generate_quote → run the estimation engine
             const res  = await fetch(`${API_BASE}/generate_quote`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -539,17 +493,15 @@ export default function Inputter() {
             if (!res.ok) { console.error("Quote error:", data); return; }
 
             const quoteResult = data as Record<string, unknown>;
-            console.log(`[generateQuote] scenario_${newQuoteScenario}:`, quoteResult[`scenario_${newQuoteScenario}`]);
+            const quoteData   = quoteDataFromGenerateResponse(quoteResult);
             setActiveQuotePayload(corePayload);
-            setActiveQuoteScenario(newQuoteScenario);
             setActiveQuoteName(quoteName);
             setActiveQuoteContributionMargin(0);
-            setActiveQuoteData(quoteDataFromGenerateResponse(quoteResult));
-            setInQuotesWorkspace(false);
+            setActiveQuoteData(quoteData);
             setActivePersistedQuoteId(null);
 
-            // POST /projects/:id/quotes → persist the generated quote if the user is signed in
-            if (owner?.trim() && pid) {
+            // Auto-save the quote to the project if signed in
+            if (owner && pid) {
                 const breakdownPayload: Record<string, unknown> = {};
                 for (const key of Object.keys(quoteResult)) {
                     if (key.startsWith("scenario_")) breakdownPayload[key] = quoteResult[key];
@@ -558,10 +510,9 @@ export default function Inputter() {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
-                        owner: owner.trim(),
+                        owner,
                         quote_name: quoteName,
-                        scenario: newQuoteScenario,
-                        num_standees: newQuoteQuantity as number,
+                        num_standees: num,
                         contribution_margin: 0,
                         standee_type: standeeType,
                         elements: elementsForApi(elements),
@@ -574,7 +525,7 @@ export default function Inputter() {
                 } else {
                     console.error("Could not persist quote:", saveData);
                 }
-                void refreshSavedQuoteList();
+                // void refreshSavedQuoteList();
             }
         } catch (err) {
             console.error("Error generating quote:", err);
@@ -583,27 +534,15 @@ export default function Inputter() {
         }
     }
 
-    // GET /quotes/:id → load a saved quote into the breakdown view
-    async function openSavedQuote(quoteId: string) {
-        if (activePersistedQuoteId === quoteId && activeQuoteData) return;
-        const owner = localStorage.getItem("username");
-        if (!owner?.trim()) { console.error("Sign in to load saved quotes"); return; }
-        const res = await fetch(`${API_BASE}/quotes/${encodeURIComponent(quoteId)}?owner=${encodeURIComponent(owner)}`);
-        const doc = await res.json().catch(() => ({}));
-        if (!res.ok) { console.error("Load quote:", doc); return; }
-        const qd = quoteDataFromPersistedDoc(doc.breakdown);
-        if (Object.keys(qd).length === 0) { console.error("Quote has no scenario breakdown"); return; }
-        const initialScenario =
-            typeof doc.scenario === "number" && doc.scenario >= 1 && doc.scenario <= 5
-                ? (doc.scenario as QuoteScenarioId)
-                : 1;
-        setActiveQuoteScenario(initialScenario);
-        setActiveQuoteName(typeof doc.quote_name === "string" ? doc.quote_name : "Quote");
-        setActiveQuoteContributionMargin(typeof doc.contribution_margin === "number" ? doc.contribution_margin : 0);
-        setActivePersistedQuoteId(quoteId);
-        setActiveQuoteData(qd);
-        setActiveQuotePayload(buildPayloadFromPersistedQuote(doc, { elements, standeeType, standeeCount }));
-        setInQuotesWorkspace(false);
+    // "Save" button — saves without generating a quote
+    async function handleSave() {
+        if (!canCalculate) return;
+        if (!localStorage.getItem("username")?.trim()) return;
+        const r = await saveCurrentProject();
+        if (r.success) {
+            setProjectListRefreshKey((v) => v + 1);
+            showToast("Project saved", "save");
+        } else if (r.errorMessage) console.error(r.errorMessage);
     }
 
     // PATCH /projects/:id/rename → rename a project
@@ -629,76 +568,84 @@ export default function Inputter() {
         }
     }
 
-    // PATCH /quotes/:id/rename → rename a quote
-    async function renameSavedQuote(quoteId: string, newName: string) {
-        const owner = localStorage.getItem("username");
-        if (!owner) return;
-        try {
-            const res = await fetch(
-                `${API_BASE}/quotes/${encodeURIComponent(quoteId)}/rename?owner=${encodeURIComponent(owner)}`,
-                {
-                    method: "PATCH",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ quote_name: newName }),
-                },
-            );
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok) { setSavedQuoteListError(apiErrorMessage(data) ?? "Could not rename quote"); return; }
-            if (activePersistedQuoteId === quoteId) setActiveQuoteName(newName);
-            await refreshSavedQuoteList();
-            showToast(`Renamed to "${newName}"`, "save");
-        } catch {
-            setSavedQuoteListError("Could not rename quote");
-        }
-    }
+    // // GET /quotes/:id → load a saved quote into the breakdown view
+    // async function openSavedQuote(quoteId: string) {
+    //     if (activePersistedQuoteId === quoteId && activeQuoteData) return;
+    //     const owner = localStorage.getItem("username");
+    //     if (!owner?.trim()) { console.error("Sign in to load saved quotes"); return; }
+    //     const res = await fetch(`${API_BASE}/quotes/${encodeURIComponent(quoteId)}?owner=${encodeURIComponent(owner)}`);
+    //     const doc = await res.json().catch(() => ({}));
+    //     if (!res.ok) { console.error("Load quote:", doc); return; }
+    //     const qd = quoteDataFromPersistedDoc(doc.breakdown);
+    //     if (Object.keys(qd).length === 0) { console.error("Quote has no scenario breakdown"); return; }
+    //     setActiveQuoteName(typeof doc.quote_name === "string" ? doc.quote_name : "Quote");
+    //     setActiveQuoteContributionMargin(typeof doc.contribution_margin === "number" ? doc.contribution_margin : 0);
+    //     setActivePersistedQuoteId(quoteId);
+    //     setActiveQuoteData(qd);
+    //     setActiveQuotePayload(buildPayloadFromPersistedQuote(doc, { elements, standeeType, standeeCount }));
+    // }
 
-    // DELETE /quotes/:id → remove a saved quote from the project
-    async function deleteSavedQuote(quoteId: string, _quoteLabel: string) {
-        const owner = localStorage.getItem("username")?.trim();
-        if (!owner) return;
-        setSavedQuoteListError(null);
-        setDeletingQuoteId(quoteId);
-        try {
-            const res = await fetch(
-                `${API_BASE}/quotes/${encodeURIComponent(quoteId)}?owner=${encodeURIComponent(owner)}`,
-                { method: "DELETE" },
-            );
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok) { setSavedQuoteListError(apiErrorMessage(data) ?? "Could not delete quote"); return; }
-            if (activePersistedQuoteId === quoteId) clearActiveQuote();
-            await refreshSavedQuoteList();
-        } catch {
-            setSavedQuoteListError("Could not delete quote");
-        } finally {
-            setDeletingQuoteId(null);
-        }
-    }
+    // // PATCH /quotes/:id/rename → rename a quote
+    // async function renameSavedQuote(quoteId: string, newName: string) {
+    //     const owner = localStorage.getItem("username");
+    //     if (!owner) return;
+    //     try {
+    //         const res = await fetch(
+    //             `${API_BASE}/quotes/${encodeURIComponent(quoteId)}/rename?owner=${encodeURIComponent(owner)}`,
+    //             { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ quote_name: newName }) },
+    //         );
+    //         const data = await res.json().catch(() => ({}));
+    //         if (!res.ok) { setSavedQuoteListError(apiErrorMessage(data) ?? "Could not rename quote"); return; }
+    //         if (activePersistedQuoteId === quoteId) setActiveQuoteName(newName);
+    //         await refreshSavedQuoteList();
+    //         showToast(`Renamed to "${newName}"`, "save");
+    //     } catch {
+    //         setSavedQuoteListError("Could not rename quote");
+    //     }
+    // }
 
-    function exitQuotesWorkspace() {
-        setInQuotesWorkspace(false);
-        setActiveQuoteData(null);
-        setActiveQuotePayload(null);
-        setActiveQuoteName(null);
-        setActivePersistedQuoteId(null);
-        setBuildQuoteModalOpen(false);
-        setQuoteSearchQuery("");
-    }
+    // // DELETE /quotes/:id → remove a saved quote from the project
+    // async function deleteSavedQuote(quoteId: string, _quoteLabel: string) {
+    //     const owner = localStorage.getItem("username")?.trim();
+    //     if (!owner) return;
+    //     setSavedQuoteListError(null);
+    //     setDeletingQuoteId(quoteId);
+    //     try {
+    //         const res = await fetch(
+    //             `${API_BASE}/quotes/${encodeURIComponent(quoteId)}?owner=${encodeURIComponent(owner)}`,
+    //             { method: "DELETE" },
+    //         );
+    //         const data = await res.json().catch(() => ({}));
+    //         if (!res.ok) { setSavedQuoteListError(apiErrorMessage(data) ?? "Could not delete quote"); return; }
+    //         if (activePersistedQuoteId === quoteId) clearActiveQuote();
+    //         await refreshSavedQuoteList();
+    //     } catch {
+    //         setSavedQuoteListError("Could not delete quote");
+    //     } finally {
+    //         setDeletingQuoteId(null);
+    //     }
+    // }
+
+    // // Exits the quotes workspace entirely (clears quote + search state)
+    // function exitQuotesWorkspace() {
+    //     setActiveQuoteData(null);
+    //     setActiveQuotePayload(null);
+    //     setActiveQuoteName(null);
+    //     setActivePersistedQuoteId(null);
+    //     setQuoteSearchQuery("");
+    // }
 
     function clearActiveQuote() {
         setActiveQuoteData(null);
         setActiveQuotePayload(null);
         setActiveQuoteName(null);
         setActivePersistedQuoteId(null);
-        setInQuotesWorkspace(true);
     }
 
     function handleActiveQuoteNumStandeesChange(numStandees: number) {
         setActiveQuotePayload((prev) => (prev ? { ...prev, num_standees: numStandees } : prev));
-        const activeId = activePersistedQuoteId;
-        if (!activeId) return;
-        setSavedQuoteList((prev) =>
-            prev.map((q) => (q._id === activeId ? { ...q, num_standees: numStandees } : q)),
-        );
+        // const activeId = activePersistedQuoteId;
+        // if (activeId) setSavedQuoteList((prev) => prev.map((q) => (q._id === activeId ? { ...q, num_standees: numStandees } : q)));
     }
 
     // Called when vision processing completes and returns detected elements
@@ -755,68 +702,22 @@ export default function Inputter() {
         );
     }
 
-    // ── Quotes workspace view ──────────────────────────────────────────────
-    if (showQuotesWorkspace) {
+    // ── Quote breakdown view (shown after generating or loading a saved quote) ─
+    if (activeQuoteData && activeQuotePayload) {
         return (
             <>
-                <div className="flex flex-row w-full flex-1 min-h-0 overflow-hidden bg-[#F8F8F8]">
-                    <QuotesSidebar
-                        projectName={projectName}
-                        quotes={filteredSavedQuotes}
-                        totalQuoteCount={savedQuoteList.length}
-                        isLoading={savedQuoteListLoading}
-                        error={savedQuoteListError}
-                        activeQuoteId={activePersistedQuoteId}
-                        deletingQuoteId={deletingQuoteId}
-                        searchQuery={quoteSearchQuery}
-                        isSignedIn={isSignedIn}
-                        onSearchChange={setQuoteSearchQuery}
-                        onBuildNewQuote={() => {
-                            setNewQuoteName(projectName.trim() || "Untitled quote");
-                            setNewQuoteScenario(1);
-                            setNewQuoteQuantity(standeeCount !== "" && standeeCount > 0 ? standeeCount : "");
-                            setBuildQuoteModalOpen(true);
-                        }}
-                        onOpenQuote={(id) => void openSavedQuote(id)}
-                        onDeleteQuote={(id, label) => void deleteSavedQuote(id, label)}
-                        onRenameQuote={(id, name) => void renameSavedQuote(id, name)}
-                        onBack={exitQuotesWorkspace}
-                    />
-
-                    {/* Breakdown panel (empty until a quote is selected / built) */}
-                    <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
-                        {activeQuoteData && activeQuotePayload ? (
-                            <QuoteBreakdown
-                                key={activePersistedQuoteId ?? "draft"}
-                                quoteData={activeQuoteData}
-                                numStandees={activeQuotePayload.num_standees}
-                                requestPayload={activeQuotePayload}
-                                initialActiveScenario={activeQuoteScenario}
-                                quoteName={activeQuoteName}
-                                initialContributionMargin={activeQuoteContributionMargin}
-                                persistedQuoteId={activePersistedQuoteId}
-                                quoteOwner={typeof window !== "undefined" ? localStorage.getItem("username") : null}
-                                onBack={clearActiveQuote}
-                                onNumStandeesChange={handleActiveQuoteNumStandeesChange}
-                            />
-                        ) : (
-                            <div className="flex-1 min-h-0 bg-[#F8F8F8]" aria-hidden />
-                        )}
-                    </div>
-                </div>
-
-                <UploadBlueModal open={uploadBlueOpen} onClose={() => setUploadBlueOpen(false)} onElementsLoaded={handleVisionElementsLoaded} />
-                <BuildQuoteModal
-                    open={buildQuoteModalOpen}
-                    onClose={() => setBuildQuoteModalOpen(false)}
-                    quoteName={newQuoteName}
-                    onQuoteNameChange={setNewQuoteName}
-                    scenario={newQuoteScenario}
-                    onScenarioChange={setNewQuoteScenario}
-                    quantity={newQuoteQuantity}
-                    onQuantityChange={setNewQuoteQuantity}
-                    canSubmit={canSubmitNewQuote}
-                    onSubmit={() => void handleBuildAndSaveQuote()}
+                <QuoteBreakdown
+                    key={activePersistedQuoteId ?? "draft"}
+                    quoteData={activeQuoteData}
+                    numStandees={activeQuotePayload.num_standees}
+                    requestPayload={activeQuotePayload}
+                    initialActiveScenario={1}
+                    quoteName={activeQuoteName}
+                    initialContributionMargin={activeQuoteContributionMargin}
+                    persistedQuoteId={activePersistedQuoteId}
+                    quoteOwner={typeof window !== "undefined" ? localStorage.getItem("username") : null}
+                    onBack={clearActiveQuote}
+                    onNumStandeesChange={handleActiveQuoteNumStandeesChange}
                 />
                 {toastJsx}
             </>

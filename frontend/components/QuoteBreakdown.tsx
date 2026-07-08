@@ -25,10 +25,6 @@ type ScenarioParams = {
     overs: number;
 };
 
-type PerScenarioState = {
-    universalLines: CostLine[];
-    universalSubtotalOverride: string;
-};
 
 type Props = {
     quoteData: QuoteData;
@@ -184,11 +180,10 @@ function buildScenarioState(
     initialScenario: ScenarioId,
 ): {
     params: ScenarioParams;
-    perScenario: Record<ScenarioId, PerScenarioState>;
+    universalLines: CostLine[];
     scenarioLines: Record<ScenarioId, CostLine[]>;
 } {
     const ids: ScenarioId[] = [1, 2, 3, 4, 5];
-    const perScenario = {} as Record<ScenarioId, PerScenarioState>;
     const scenarioLines = {} as Record<ScenarioId, CostLine[]>;
     const seedSource = sources[initialScenario] ?? sources[1] ?? {};
     const params: ScenarioParams = {
@@ -197,15 +192,15 @@ function buildScenarioState(
         structureFormsPerStandee: seedSource.structure_forms_per_standee ?? 0,
         overs: seedSource.overs ?? 0,
     };
+    const universalLines = seedLines(
+        buildLines(Object.keys(UNIVERSAL_LINE_DEFS), UNIVERSAL_LINE_DEFS),
+        seedSource,
+    );
     for (const id of ids) {
         const src = sources[id] ?? {};
-        perScenario[id] = {
-            universalLines: seedLines(buildLines(Object.keys(UNIVERSAL_LINE_DEFS), UNIVERSAL_LINE_DEFS), src),
-            universalSubtotalOverride: "",
-        };
         scenarioLines[id] = seedLines(buildLines(SCENARIO_KEYS[id], SCENARIO_LINE_DEFS), src);
     }
-    return { params, perScenario, scenarioLines };
+    return { params, universalLines, scenarioLines };
 }
 
 function breakdownUiFromQuoteData(q: QuoteData): QuoteBreakdownUi | undefined {
@@ -215,52 +210,45 @@ function breakdownUiFromQuoteData(q: QuoteData): QuoteBreakdownUi | undefined {
 }
 
 function applyCostLineOverrides(
-    perScenario: Record<ScenarioId, PerScenarioState>,
+    universalLines: CostLine[],
     scenarioLines: Record<ScenarioId, CostLine[]>,
     ui: QuoteBreakdownUi | undefined,
-): { perScenario: Record<ScenarioId, PerScenarioState>; scenarioLines: Record<ScenarioId, CostLine[]> } {
+): { universalLines: CostLine[]; scenarioLines: Record<ScenarioId, CostLine[]> } {
     const overrides = ui?.cost_line_overrides;
     if (!overrides || typeof overrides !== "object") {
-        return { perScenario, scenarioLines };
+        return { universalLines, scenarioLines };
     }
-    const nextPs = { ...perScenario };
+    // Apply universal overrides from the first scenario that has them (shared across all)
+    let newUniversalLines = universalLines;
+    for (const id of [1, 2, 3, 4, 5] as ScenarioId[]) {
+        const o = overrides[String(id)];
+        if (!o?.universal) continue;
+        newUniversalLines = universalLines.map((line) => {
+            const ed = o.universal![line.key];
+            return ed ? { ...line, qty: ed.qty, unitCost: ed.unitCost } : line;
+        });
+        break;
+    }
     const nextSl = { ...scenarioLines };
     for (const id of [1, 2, 3, 4, 5] as ScenarioId[]) {
         const o = overrides[String(id)];
-        if (!o) continue;
-        if (o.universal) {
-            nextPs[id] = {
-                ...nextPs[id],
-                universalLines: nextPs[id].universalLines.map((line) => {
-                    const ed = o.universal![line.key];
-                    return ed ? { ...line, qty: ed.qty, unitCost: ed.unitCost } : line;
-                }),
-            };
-        }
-        if (o.scenario) {
-            nextSl[id] = nextSl[id].map((line) => {
-                const ed = o.scenario![line.key];
-                return ed ? { ...line, qty: ed.qty, unitCost: ed.unitCost } : line;
-            });
-        }
+        if (!o?.scenario) continue;
+        nextSl[id] = scenarioLines[id].map((line) => {
+            const ed = o.scenario![line.key];
+            return ed ? { ...line, qty: ed.qty, unitCost: ed.unitCost } : line;
+        });
     }
-    return { perScenario: nextPs, scenarioLines: nextSl };
+    return { universalLines: newUniversalLines, scenarioLines: nextSl };
 }
 
-function mergeBreakdownUiIntoPerScenario(
-    perScenario: Record<ScenarioId, PerScenarioState>,
-    ui: QuoteBreakdownUi | undefined,
-): Record<ScenarioId, PerScenarioState> {
+function universalSubtotalOverrideFromUi(ui: QuoteBreakdownUi | undefined): string {
     const uo = ui?.universal_subtotal_override;
-    if (!uo || typeof uo !== "object") return perScenario;
-    const next: Record<ScenarioId, PerScenarioState> = { ...perScenario };
+    if (!uo || typeof uo !== "object") return "";
     for (const id of [1, 2, 3, 4, 5] as ScenarioId[]) {
         const raw = uo[String(id)];
-        if (raw != null && String(raw).trim() !== "") {
-            next[id] = { ...next[id], universalSubtotalOverride: String(raw) };
-        }
+        if (raw != null && String(raw).trim() !== "") return String(raw);
     }
-    return next;
+    return "";
 }
 
 function scenarioSubtotalOverridesFromUi(ui: QuoteBreakdownUi | undefined): Record<ScenarioId, string> {
@@ -277,7 +265,7 @@ function scenarioSubtotalOverridesFromUi(ui: QuoteBreakdownUi | undefined): Reco
 function serializeScenarioToSource(
     id: ScenarioId,
     sharedParams: ScenarioParams,
-    perScenario: Record<ScenarioId, PerScenarioState>,
+    universalLines: CostLine[],
     scenarioLines: Record<ScenarioId, CostLine[]>,
     initialSources: Record<ScenarioId, Record<string, unknown>>,
 ): Record<string, number> {
@@ -295,25 +283,22 @@ function serializeScenarioToSource(
     base.structure_forms_per_standee = p.structureFormsPerStandee;
     base.blank_forms_per_standee = p.printFormsPerStandee + p.structureFormsPerStandee;
     base.overs = p.overs;
-    for (const line of perScenario[id].universalLines) {
+    for (const line of universalLines) {
         base[line.key] = lineTotal(line);
         const qtySrc = LINE_KEY_TO_QTY_SOURCE[line.key];
-        if (qtySrc) {
-            base[qtySrc] = line.qty;
-        }
+        if (qtySrc) base[qtySrc] = line.qty;
     }
     for (const line of scenarioLines[id]) {
         base[line.key] = lineTotal(line);
         const qtySrc = LINE_KEY_TO_QTY_SOURCE[line.key];
-        if (qtySrc) {
-            base[qtySrc] = line.qty;
-        }
+        if (qtySrc) base[qtySrc] = line.qty;
     }
     return base;
 }
 
 function buildBreakdownUiPayloadFromState(
-    perScenario: Record<ScenarioId, PerScenarioState>,
+    universalLines: CostLine[],
+    universalSubtotalOverride: string,
     scenarioLines: Record<ScenarioId, CostLine[]>,
     scenarioSubtotalOverride: Record<ScenarioId, string>,
 ): QuoteBreakdownUi | null {
@@ -321,17 +306,23 @@ function buildBreakdownUiPayloadFromState(
     const scenario_subtotal_override: Record<string, string> = {};
     const cost_line_overrides: Record<string, ScenarioCostLineOverrides> = {};
 
+    const u = universalSubtotalOverride.trim();
+    if (u) {
+        for (const id of [1, 2, 3, 4, 5] as ScenarioId[]) {
+            universal_subtotal_override[String(id)] = u;
+        }
+    }
+
+    const universal: Record<string, CostLineOverride> = {};
+    for (const line of universalLines) {
+        if (line.unit === "standees") continue;
+        universal[line.key] = { qty: line.qty, unitCost: line.unitCost };
+    }
+
     for (const id of [1, 2, 3, 4, 5] as ScenarioId[]) {
-        const u = perScenario[id]?.universalSubtotalOverride?.trim() ?? "";
         const s = scenarioSubtotalOverride[id]?.trim() ?? "";
-        if (u) universal_subtotal_override[String(id)] = u;
         if (s) scenario_subtotal_override[String(id)] = s;
 
-        const universal: Record<string, CostLineOverride> = {};
-        for (const line of perScenario[id]?.universalLines ?? []) {
-            if (line.unit === "standees") continue;
-            universal[line.key] = { qty: line.qty, unitCost: line.unitCost };
-        }
         const scenario: Record<string, CostLineOverride> = {};
         for (const line of scenarioLines[id] ?? []) {
             if (line.unit === "standees") continue;
@@ -346,15 +337,9 @@ function buildBreakdownUiPayloadFromState(
     }
 
     const out: QuoteBreakdownUi = {};
-    if (Object.keys(universal_subtotal_override).length > 0) {
-        out.universal_subtotal_override = universal_subtotal_override;
-    }
-    if (Object.keys(scenario_subtotal_override).length > 0) {
-        out.scenario_subtotal_override = scenario_subtotal_override;
-    }
-    if (Object.keys(cost_line_overrides).length > 0) {
-        out.cost_line_overrides = cost_line_overrides;
-    }
+    if (Object.keys(universal_subtotal_override).length > 0) out.universal_subtotal_override = universal_subtotal_override;
+    if (Object.keys(scenario_subtotal_override).length > 0) out.scenario_subtotal_override = scenario_subtotal_override;
+    if (Object.keys(cost_line_overrides).length > 0) out.cost_line_overrides = cost_line_overrides;
     return Object.keys(out).length > 0 ? out : null;
 }
 
@@ -463,11 +448,13 @@ function CostRow({
     onChange,
     debugExplanation,
     debugPending = false,
+    isEdited = false,
 }: {
     line: CostLine;
     onChange: (key: string, field: "qty" | "unitCost", value: number) => void;
     debugExplanation?: string;
     debugPending?: boolean;
+    isEdited?: boolean;
 }) {
     const isFlat        = line.unit === "flat";
     const isStandees    = line.unit === "standees";
@@ -476,7 +463,7 @@ function CostRow({
     const tooltip       = COST_LINE_TOOLTIPS[line.key];
 
     return (
-        <div className="grid grid-cols-[1fr_auto] items-center gap-6 py-2.5 border-b border-[#F0F0F0] last:border-0">
+        <div className={`grid grid-cols-[1fr_auto] items-center gap-6 px-8  py-2.5 rounded-lg border-[#F0F0F0] last:border-0 -mx-4 px-4 transition-colors ${isEdited ? "bg-[#ffc400]/47 border-l-[3px] border-l-[#FFC843]" : ""}`}>
             <div className="flex items-center gap-2">
                 <span className="text-xs text-[#000005] font-semibold">{line.label}</span>
                 {!isFlat && (
@@ -620,14 +607,15 @@ export default function QuoteBreakdown({
     );
     const persistedBreakdownUi = breakdownUiFromQuoteData(quoteData);
     const initialLineState = applyCostLineOverrides(
-        mergeBreakdownUiIntoPerScenario(builtInitial.perScenario, persistedBreakdownUi),
+        builtInitial.universalLines,
         builtInitial.scenarioLines,
         persistedBreakdownUi,
     );
     const [params, setParams] = useState<ScenarioParams>(() => builtInitial.params);
     const [baseline, setBaseline] = useState<ScenarioParams>(() => builtInitial.params);
-    const [perScenario, setPerScenario] = useState<Record<ScenarioId, PerScenarioState>>(
-        () => initialLineState.perScenario,
+    const [universalLines, setUniversalLines] = useState<CostLine[]>(() => initialLineState.universalLines);
+    const [universalSubtotalOverride, setUniversalSubtotalOverride] = useState<string>(
+        () => universalSubtotalOverrideFromUi(persistedBreakdownUi),
     );
     const [scenarioLines, setScenarioLines] = useState<Record<ScenarioId, CostLine[]>>(
         () => initialLineState.scenarioLines,
@@ -646,6 +634,10 @@ export default function QuoteBreakdown({
     const [universalCostsExpanded, setUniversalCostsExpanded] = useState(COST_DEBUG_ENABLED);
     const [scenarioCostsExpanded, setScenarioCostsExpanded] = useState(COST_DEBUG_ENABLED);
     const [manualDirty, setManualDirty] = useState(false);
+    const [editedUniversalKeys, setEditedUniversalKeys] = useState<Set<string>>(new Set());
+    const [editedScenarioKeys, setEditedScenarioKeys] = useState<Record<ScenarioId, Set<string>>>({ 1: new Set(), 2: new Set(), 3: new Set(), 4: new Set(), 5: new Set() });
+    const origUniversalLines = useRef<CostLine[]>(initialLineState.universalLines);
+    const origScenarioLines  = useRef<Record<ScenarioId, CostLine[]>>(initialLineState.scenarioLines);
     const [contributionMargin, setContributionMargin] = useState(() =>
         initialContributionMargin != null ? String(initialContributionMargin) : "",
     );
@@ -718,7 +710,6 @@ export default function QuoteBreakdown({
         setTimeout(() => setToast({ message, type }), 10);
     }
 
-    const { universalLines, universalSubtotalOverride } = perScenario[activeScenario];
     const { numStandees, printFormsPerStandee, structureFormsPerStandee, overs } = params;
 
     const isDirty =
@@ -732,10 +723,10 @@ export default function QuoteBreakdown({
 
     async function persistQuoteSnapshots(
         sharedParams: ScenarioParams,
-        ps: Record<ScenarioId, PerScenarioState>,
+        ul: CostLine[],
+        uso: string,
         sl: Record<ScenarioId, CostLine[]>,
         sso: Record<ScenarioId, string>,
-        scenarioForMeta: ScenarioId,
     ): Promise<boolean> {
         const qid = persistedQuoteId?.trim();
         const owner = quoteOwner?.trim();
@@ -743,9 +734,9 @@ export default function QuoteBreakdown({
         const breakdown: Record<string, unknown> = {};
         for (const id of [1, 2, 3, 4, 5] as ScenarioId[]) {
             if (quoteData[`scenario_${id}`] === undefined) continue;
-            breakdown[`scenario_${id}`] = serializeScenarioToSource(id, sharedParams, ps, sl, initialSources);
+            breakdown[`scenario_${id}`] = serializeScenarioToSource(id, sharedParams, ul, sl, initialSources);
         }
-        const ui = buildBreakdownUiPayloadFromState(ps, sl, sso);
+        const ui = buildBreakdownUiPayloadFromState(ul, uso, sl, sso);
         if (ui) breakdown._breakdown_ui = ui;
         const parsedMargin = parseFloat(contributionMargin);
         const contribution_margin =
@@ -754,7 +745,7 @@ export default function QuoteBreakdown({
             quote_name: (quoteName ?? "").trim() || "Untitled quote",
             num_standees: sharedParams.numStandees,
             contribution_margin,
-            scenario: scenarioForMeta,
+            scenario: activeScenario,
             standee_type: standeeTypeToPersistLabel(requestPayload.standee_type),
             elements: requestPayload.elements.map((e) => ({
                 name: e.name ?? "",
@@ -785,10 +776,10 @@ export default function QuoteBreakdown({
         try {
             const ok = await persistQuoteSnapshots(
                 params,
-                perScenario,
+                universalLines,
+                universalSubtotalOverride,
                 scenarioLines,
                 scenarioSubtotalOverride,
-                activeScenario,
             );
             if (ok) {
                 setBaseline({ ...params });
@@ -804,29 +795,22 @@ export default function QuoteBreakdown({
         }
     }
 
-    function patchActive(patch: Partial<PerScenarioState>) {
-        setManualDirty(true);
-        setPerScenario((prev) => ({
-            ...prev,
-            [activeScenario]: { ...prev[activeScenario], ...patch },
-        }));
-    }
-
     function patchParams(updates: Partial<ScenarioParams>) {
         setParams((prev) => ({ ...prev, ...updates }));
     }
 
     function updateUniversal(key: string, field: "qty" | "unitCost", value: number) {
         setManualDirty(true);
-        setPerScenario((prev) => ({
-            ...prev,
-            [activeScenario]: {
-                ...prev[activeScenario],
-                universalLines: prev[activeScenario].universalLines.map((l) =>
-                    l.key === key ? { ...l, [field]: value } : l
-                ),
-            },
-        }));
+        setUniversalLines((prev) => prev.map((l) => l.key === key ? { ...l, [field]: value } : l));
+        const orig = origUniversalLines.current.find((l) => l.key === key);
+        const cur  = universalLines.find((l) => l.key === key);
+        const next = cur ? { ...cur, [field]: value } : null;
+        setEditedUniversalKeys((prev) => {
+            const s = new Set(prev);
+            if (orig && next && orig.qty === next.qty && orig.unitCost === next.unitCost) s.delete(key);
+            else s.add(key);
+            return s;
+        });
     }
 
     function updateScenario(key: string, field: "qty" | "unitCost", value: number) {
@@ -835,16 +819,24 @@ export default function QuoteBreakdown({
             ...prev,
             [activeScenario]: prev[activeScenario].map((l) => (l.key === key ? { ...l, [field]: value } : l)),
         }));
+        const orig = origScenarioLines.current[activeScenario]?.find((l) => l.key === key);
+        const cur  = scenarioLines[activeScenario]?.find((l) => l.key === key);
+        const next = cur ? { ...cur, [field]: value } : null;
+        setEditedScenarioKeys((prev) => {
+            const s = new Set(prev[activeScenario]);
+            if (orig && next && orig.qty === next.qty && orig.unitCost === next.unitCost) s.delete(key);
+            else s.add(key);
+            return { ...prev, [activeScenario]: s };
+        });
     }
 
     async function recalculate() {
         setIsRecalculating(true);
         setSaveQuoteError(null);
         setRecalculateError(null);
-        const sid = activeScenario;
         const body = {
             ...requestPayload,
-            scenario: sid,
+            // no scenario → backend returns all 5 at once
             num_standees: params.numStandees,
             persist_project: false,
             ...(params.printFormsPerStandee !== baseline.printFormsPerStandee && {
@@ -856,7 +848,6 @@ export default function QuoteBreakdown({
             ...(params.overs !== baseline.overs && { num_overs: params.overs }),
         };
         try {
-            // POST /generate_quote → recalculate costs for the active scenario with updated params
             const res = await fetch(`${API_BASE}/generate_quote`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -868,36 +859,42 @@ export default function QuoteBreakdown({
                     data && typeof data === "object" && "detail" in data
                         ? String((data as { detail: unknown }).detail)
                         : `HTTP ${res.status}`;
-                console.error("Recalculate failed:", detail, data);
                 setRecalculateError(`Recalculate failed: ${detail}`);
                 return;
             }
-            console.log(`[recalculate] scenario_${sid}:`, data?.[`scenario_${sid}`]);
-            const src: Record<string, unknown> = (data[`scenario_${sid}`] as Record<string, unknown>) ?? {};
-            const newUniversalLines = seedLines(buildLines(Object.keys(UNIVERSAL_LINE_DEFS), UNIVERSAL_LINE_DEFS), src as Record<string, number>);
-            const newScenarioLines  = seedLines(buildLines(SCENARIO_KEYS[sid], SCENARIO_LINE_DEFS), src as Record<string, number>);
-            const newParams: ScenarioParams = { ...params, overs: (src.overs as number | undefined) ?? params.overs };
-            const mergedPs: Record<ScenarioId, PerScenarioState> = {
-                ...perScenario,
-                [sid]: { universalLines: newUniversalLines, universalSubtotalOverride: "" },
-            };
-            const mergedSl: Record<ScenarioId, CostLine[]>   = { ...scenarioLines, [sid]: newScenarioLines };
-            const mergedSso: Record<ScenarioId, string>       = { ...scenarioSubtotalOverride, [sid]: "" };
-            setDebugExplanations((prev) => ({
-                ...prev,
-                [sid]: extractDebugExplanations({ [sid]: src })[sid] ?? {},
-            }));
+            // Universal lines are the same across all scenarios; seed from first available
+            const firstSrc = ((data["scenario_1"] ?? data["scenario_2"] ?? {}) as Record<string, number>);
+            const newUniversalLines = seedLines(
+                buildLines(Object.keys(UNIVERSAL_LINE_DEFS), UNIVERSAL_LINE_DEFS),
+                firstSrc,
+            );
+            const newSl = { ...scenarioLines } as Record<ScenarioId, CostLine[]>;
+            const newDebug = { ...debugExplanations } as Record<ScenarioId, CostDebugExplanations>;
+            for (const sid of [1, 2, 3, 4, 5] as ScenarioId[]) {
+                const src = (data[`scenario_${sid}`] ?? {}) as Record<string, number>;
+                if (data[`scenario_${sid}`]) {
+                    newSl[sid] = seedLines(buildLines(SCENARIO_KEYS[sid], SCENARIO_LINE_DEFS), src);
+                    newDebug[sid] = extractDebugExplanations({ [sid]: src })[sid] ?? {};
+                }
+            }
+            const newParams: ScenarioParams = { ...params, overs: firstSrc.overs ?? params.overs };
+            const newSso: Record<ScenarioId, string> = { 1: "", 2: "", 3: "", 4: "", 5: "" };
+            setUniversalLines(newUniversalLines);
+            setUniversalSubtotalOverride("");
+            setScenarioLines(newSl);
+            setScenarioSubtotalOverride(newSso);
             setParams(newParams);
             setBaseline({ ...newParams });
-            setPerScenario(mergedPs);
-            setScenarioLines(mergedSl);
-            setScenarioSubtotalOverride(mergedSso);
+            setDebugExplanations(newDebug);
             setManualDirty(false);
+            setEditedUniversalKeys(new Set());
+            setEditedScenarioKeys({ 1: new Set(), 2: new Set(), 3: new Set(), 4: new Set(), 5: new Set() });
+            origUniversalLines.current = newUniversalLines;
+            origScenarioLines.current  = newSl;
             if (canPersistQuote) {
                 setIsSavingQuote(true);
                 try {
-                    // PATCH /quotes/:id → persist updated scenario costs after recalculate
-                    const ok = await persistQuoteSnapshots(newParams, mergedPs, mergedSl, mergedSso, sid);
+                    const ok = await persistQuoteSnapshots(newParams, newUniversalLines, "", newSl, newSso);
                     if (!ok) setSaveQuoteError("Could not save quote after recalculate");
                 } catch {
                     setSaveQuoteError("Could not save quote after recalculate");
@@ -940,7 +937,7 @@ export default function QuoteBreakdown({
     ) as ScenarioId[];
 
     return (
-        <div className="flex flex-col w-full flex-1 min-h-0 overflow-hidden text-[#000005] bg-[#F8F8F8]">
+        <div className="flex flex-row w-full flex-1 min-h-0 overflow-hidden text-[#000005]">
             {toast && (
                 <div
                     className={`fixed top-6 left-1/2 z-50 -translate-x-1/2 transition-all duration-300 ease-out ${
@@ -959,56 +956,70 @@ export default function QuoteBreakdown({
                     </div>
                 </div>
             )}
+
+            {/* Left sidebar — scenario selector + back */}
+            <aside className="flex flex-col w-[220px] shrink-0 bg-white border-r-2 border-[#E0E0E0] px-3 py-5 gap-4 min-h-0 h-full overflow-y-auto">
+                <div>
+                    <div className="text-[10px] font-black uppercase tracking-widest text-[#000005] mb-1">
+                        <span className="text-[#FFC843]">// </span>QUOTE
+                    </div>
+                    {quoteName?.trim() ? (
+                        <div className="text-xs font-black text-[#000005] uppercase tracking-tight break-words leading-snug">
+                            {quoteName.trim()}
+                        </div>
+                    ) : (
+                        <div className="text-xs font-black text-[#000005] uppercase tracking-tight">
+                            Quote Breakdown
+                        </div>
+                    )}
+                </div>
+
+                <div className="flex flex-col gap-1.5 flex-1 min-h-0">
+                    <span className="text-[10px] font-black text-[#B1B3B6] uppercase tracking-widest shrink-0">Scenario</span>
+                    <div className="flex flex-col gap-1.5">
+                        {availableScenarios.map((id) => (
+                            <button
+                                key={id}
+                                type="button"
+                                onClick={() => setActiveScenario(id)}
+                                className={`text-left w-full rounded-sm border-2 px-3 py-2.5 transition-all duration-200 ${
+                                    activeScenario === id
+                                        ? "border-[#000005] bg-[#000005]"
+                                        : "border-[#E0E0E0] hover:border-[#B1B3B6] bg-white"
+                                }`}
+                            >
+                                <span className={`block text-xs font-black uppercase tracking-wide ${activeScenario === id ? "text-white" : "text-[#000005]"}`}>
+                                    {SCENARIO_META[id].short}
+                                </span>
+                                <span className={`block text-[10px] font-semibold ${activeScenario === id ? "text-[#FFC843]" : "text-[#B1B3B6]"}`}>
+                                    {SCENARIO_META[id].sub}
+                                </span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                <button
+                    type="button"
+                    onClick={onBack}
+                    className="shrink-0 w-full text-xs font-black text-[#B1B3B6] border-2 border-[#E0E0E0] py-2.5 rounded-sm cursor-pointer hover:bg-[#000005] hover:text-white hover:border-[#000005] transition-all duration-200 uppercase tracking-widest"
+                >
+                    ← BACK
+                </button>
+            </aside>
+
+            {/* Main panel */}
+            <div className="flex flex-col flex-1 min-h-0 overflow-hidden bg-[#F8F8F8]">
             <div className="flex flex-col flex-1 min-h-0 overflow-hidden px-8 py-6 gap-5">
 
-                {/* Header: quote name, title, scenario tabs, back */}
-                <div className="shrink-0 flex flex-col gap-4">
-                    <div className="flex flex-row items-start justify-between gap-4">
-                        <div className="min-w-0 flex-1">
-                            {quoteName?.trim() ? (
-                                <h1 className="text-xl sm:text-2xl font-black text-[#000005] uppercase tracking-tight leading-snug break-words mb-2">
-                                    {(quoteName ?? "").trim()}
-                                </h1>
-                            ) : null}
-                            <div className="text-xs font-bold text-[#FFC843] tracking-widest uppercase mb-1">// BREAKDOWN</div>
-                            <div className="text-2xl sm:text-3xl font-black text-[#000005] uppercase tracking-tight">
-                                Quote Breakdown
-                            </div>
-                        </div>
-                        <button
-                            type="button"
-                            onClick={onBack}
-                            className="shrink-0 text-xs font-black text-[#B1B3B6] border-2 border-[#E0E0E0] py-2 px-3 rounded-sm cursor-pointer hover:bg-[#000005] hover:text-white hover:border-[#000005] transition-all duration-200 uppercase tracking-widest"
-                        >
-                            ← BACK
-                        </button>
+                {/* Header */}
+                <div className="shrink-0 flex flex-col gap-2">
+                    <div className="text-xs font-bold text-[#FFC843] tracking-widest uppercase">// BREAKDOWN</div>
+                    <div className="text-2xl sm:text-3xl font-black text-[#000005] uppercase tracking-tight">
+                        Quote Breakdown
                     </div>
-
-                    {availableScenarios.length > 1 ? (
-                        <div className="flex flex-col gap-1.5">
-                            <span className="text-[10px] font-black text-[#B1B3B6] uppercase tracking-widest">Scenario</span>
-                            <div className="flex flex-wrap gap-2">
-                                {availableScenarios.map((id) => (
-                                    <button
-                                        key={id}
-                                        type="button"
-                                        onClick={() => setActiveScenario(id)}
-                                        className={`text-left rounded-sm border-2 px-3 py-2 transition-all duration-200 ${
-                                            activeScenario === id
-                                                ? "tab-active border-[#000005]"
-                                                : "tab-inactive border-[#E0E0E0] hover:border-[#B1B3B6]"
-                                        }`}
-                                    >
-                                        <span className="block text-xs font-black uppercase tracking-wide">{SCENARIO_META[id].short}</span>
-                                        <span className="block text-[10px] font-semibold text-[#B1B3B6]">{SCENARIO_META[id].sub}</span>
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                    ) : null}
-
-                    <p className="text-[1.6em] text-[#000000] font-semibold">
-                        Viewing Scenario {activeScenario} — {SCENARIO_META[activeScenario].short}: {SCENARIO_META[activeScenario].sub}
+                    <p className="text-sm text-[#000005] font-semibold">
+                        Scenario {activeScenario} — {SCENARIO_META[activeScenario].short}: {SCENARIO_META[activeScenario].sub}
                     </p>
                     {COST_DEBUG_ENABLED && (
                         <p className="text-[10px] font-bold text-[#F57F17] bg-[#FFF8E1] border border-[#FFE082] rounded-sm px-2 py-1">
@@ -1144,6 +1155,7 @@ export default function QuoteBreakdown({
                                         onChange={updateUniversal}
                                         debugExplanation={debugExplanations[activeScenario]?.[line.key]}
                                         debugPending={debugExplanationsLoading}
+                                        isEdited={editedUniversalKeys.has(line.key)}
                                     />
                                 ))}
                                 <div className="flex justify-between items-center pt-3 mt-1 border-t-2 border-[#F0F0F0]">
@@ -1160,7 +1172,7 @@ export default function QuoteBreakdown({
                                             min={0}
                                             step={0.01}
                                             value={universalSubtotalOverride}
-                                            onChange={(e) => patchActive({ universalSubtotalOverride: e.target.value })}
+                                            onChange={(e) => { setManualDirty(true); setUniversalSubtotalOverride(e.target.value); }}
                                             placeholder={`e.g. 5000 — default ${fmt(universalLinesSum)}`}
                                             className="border border-[#E0E0E0] rounded-sm px-2 py-1.5 text-xs text-[#000005] outline-none bg-[#F8F8F8] focus:border-[#FFC843] w-full font-semibold"
                                         />
@@ -1207,6 +1219,7 @@ export default function QuoteBreakdown({
                                         onChange={updateScenario}
                                         debugExplanation={debugExplanations[activeScenario]?.[line.key]}
                                         debugPending={debugExplanationsLoading}
+                                        isEdited={editedScenarioKeys[activeScenario]?.has(line.key)}
                                     />
                                 ))}
                                 <div className="flex justify-between items-center pt-3 mt-1 border-t-2 border-[#F0F0F0]">
@@ -1309,6 +1322,7 @@ export default function QuoteBreakdown({
                     </div>
 
                 </div>
+            </div>
             </div>
         </div>
     );
