@@ -8,8 +8,10 @@ from __future__ import annotations
 
 from typing import Any
 
+import math
+
 from lib.classes.db_keys import UnitCostEntries
-from lib.globals import BUSMARK_PADDING, BUSMARK_PRINT_FORM_LENGTH, PRINT_95_FORM_LENGTH, UNIT_MAP
+from lib.globals import BUSMARK_PADDING, BUSMARK_PRINT_FORM_LENGTH, BUSMARK_ROLL_LENGTH, PRINT_95_FORM_LENGTH, UNIT_MAP
 
 
 def _print_form_length(scenario_id: int) -> float:
@@ -153,6 +155,15 @@ def _explain_print_form_cost(project: Any, _scenario_id: int) -> tuple[str | Non
         web_ups = _get(project, "busmark_web_ups", 1) if is_busmark else 0
         linear_inches = pfl * total_forms + (BUSMARK_PADDING * web_ups if is_busmark else 0)
         if is_busmark:
+            forms_per_roll = math.floor((BUSMARK_ROLL_LENGTH - BUSMARK_PADDING) / BUSMARK_PRINT_FORM_LENGTH)
+            lines.append(
+                f"forms_per_roll = floor(({BUSMARK_ROLL_LENGTH} - {BUSMARK_PADDING}) / {BUSMARK_PRINT_FORM_LENGTH})"
+                f" = {forms_per_roll}"
+            )
+            lines.append(
+                f"web_ups = ceil(forms ({_num(total_forms, 0)}) / forms_per_roll ({forms_per_roll}))"
+                f" = {web_ups}"
+            )
             linear_in_formula = (
                 f"{pfl} × forms ({_num(total_forms, 0)}) + BUSMARK_PADDING ({BUSMARK_PADDING}) "
                 f"× web_ups ({web_ups}) = {_num(linear_inches)}"
