@@ -1,3 +1,4 @@
+import math
 from dataclasses import dataclass
 from enum import Enum
 from typing import override
@@ -5,7 +6,7 @@ from typing import override
 from lib.classes import Complexity, Form, MidnightOilDB
 from lib.classes.cost_inputs import BaseInput, InHouseInput, OutsourceInput
 from lib.classes.db_keys import StandeeKey, SupplierMaterials, Suppliers, UnitCostEntries
-from lib.globals import BUSMARK_PRINT_FORM_LENGTH, PRINT_95_FORM_LENGTH, UNIT_MAP
+from lib.globals import BUSMARK_PADDING, BUSMARK_PRINT_FORM_LENGTH, BUSMARK_ROLL_LENGTH, PRINT_95_FORM_LENGTH, UNIT_MAP
 
 STANDEE_MAP = {
     Complexity.SIMPLE: StandeeKey.SIMPLE,
@@ -260,7 +261,9 @@ class InHouseProject[T: InHouseInput](Project[T]):
         )
 
     def _get_print_form_linear_inches(self) -> float:
-        return BUSMARK_PRINT_FORM_LENGTH * self.print_form_total
+        forms_per_roll = math.floor((BUSMARK_ROLL_LENGTH - BUSMARK_PADDING) / BUSMARK_PRINT_FORM_LENGTH)
+        self.busmark_web_ups = math.ceil(self.print_form_total / forms_per_roll) if forms_per_roll > 0 else 1
+        return BUSMARK_PRINT_FORM_LENGTH * self.print_form_total + BUSMARK_PADDING * self.busmark_web_ups
 
     @override
     def calculate_cost(self, input: T) -> None:

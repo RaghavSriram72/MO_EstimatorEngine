@@ -5,7 +5,8 @@ PRINT_95_FORM_LENGTH = 80.625  # used for print form cost calculation
 
 BUSMARK_FORM_WIDTH = 61
 BUSMARK_FORM_LENGTH = 84
-BUSMARK_PRINT_FORM_LENGTH = 85.0  # used for print form cost calculation
+BUSMARK_PRINT_FORM_LENGTH = 82.5  # used for print form cost calculation
+BUSMARK_ROLL_LENGTH = 1800
 BUSMARK_FORM_AREA = BUSMARK_FORM_WIDTH * BUSMARK_FORM_LENGTH
 BUSMARK_PADDING = 180
 

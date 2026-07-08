@@ -150,9 +150,13 @@ def _explain_print_form_cost(project: Any, _scenario_id: int) -> tuple[str | Non
     pfl = _print_form_length(_scenario_id)
     is_busmark = _scenario_id in (1, 2, 3)
     if unit == "linear_foot":
-        linear_inches = pfl * total_forms + (BUSMARK_PADDING if is_busmark else 0)
+        web_ups = _get(project, "busmark_web_ups", 1) if is_busmark else 0
+        linear_inches = pfl * total_forms + (BUSMARK_PADDING * web_ups if is_busmark else 0)
         if is_busmark:
-            linear_in_formula = f"{pfl} × forms ({_num(total_forms, 0)}) + BUSMARK_PADDING ({BUSMARK_PADDING}) = {_num(linear_inches)}"
+            linear_in_formula = (
+                f"{pfl} × forms ({_num(total_forms, 0)}) + BUSMARK_PADDING ({BUSMARK_PADDING}) "
+                f"× web_ups ({web_ups}) = {_num(linear_inches)}"
+            )
         else:
             linear_in_formula = f"{pfl} × forms ({_num(total_forms, 0)}) = {_num(linear_inches)}"
         if "roll" in material:
