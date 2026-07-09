@@ -978,11 +978,10 @@ export default function QuoteBreakdown({
                     <span className="text-[10px] font-black text-[#B1B3B6] uppercase tracking-widest shrink-0">Scenario</span>
                     <div className="flex flex-col gap-1.5">
                         {availableScenarios.map((id) => (
-                            <button
+                            <div
                                 key={id}
-                                type="button"
                                 onClick={() => setActiveScenario(id)}
-                                className={`text-left w-full rounded-sm border-2 px-3 py-2.5 transition-all duration-200 ${
+                                className={`text-left w-full cursor-pointer rounded-sm border-2 px-3 py-2.5 transition-all duration-200 ${
                                     activeScenario === id
                                         ? "border-[#000005] bg-[#000005]"
                                         : "border-[#E0E0E0] hover:border-[#B1B3B6] bg-white"
@@ -994,7 +993,7 @@ export default function QuoteBreakdown({
                                 <span className={`block text-[10px] font-semibold ${activeScenario === id ? "text-[#FFC843]" : "text-[#B1B3B6]"}`}>
                                     {SCENARIO_META[id].sub}
                                 </span>
-                            </button>
+                            </div>
                         ))}
                     </div>
                 </div>
