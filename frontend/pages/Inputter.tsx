@@ -840,7 +840,7 @@ export default function Inputter() {
                                     : "bg-[#E0E0E0] text-[#B1B3B6] cursor-not-allowed"
                             }`}
                         >
-                            {isSavingBeforeContinue ? "SAVING…" : "CONTINUE"}{" "}
+                            {isSavingBeforeContinue ? "SAVING…" : "BUILD QUOTE"}{" "}
                             <img
                                 src="/submitarrow.svg"
                                 alt=""

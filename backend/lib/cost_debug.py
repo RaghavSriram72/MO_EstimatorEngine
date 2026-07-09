@@ -251,10 +251,23 @@ def _explain_die_cost(project: Any, _scenario_id: int) -> tuple[str | None, str 
     die_rate = _unit_cost(project.db, UnitCostEntries.DIE_COST)
     blank_min = project.db.get_standee_data(project.standee_key, "cutting_die_blank_form_min")
     blank_part = project.structure_forms_per_standee * blank_min
+    all_linear = project._all_elements_have_linear_inches()
+    if all_linear:
+        print_note = (
+            "print die = Σ(element linear_in × cutting_die_inches_multiplier × "
+            f"{_money(die_rate)}/inch)  [all elements have linear inches]"
+        )
+    else:
+        print_note = (
+            "print die = Σ per-form cutting_die_print_form_min  "
+            "[static fallback: not every element has linear inches]"
+        )
     return (
         "die_cost",
-        f"Blank die min ({_num(blank_part)}) + print die min (min of per-form mins vs linear-inch calc)\n"
-        f"die_rate={_money(die_rate)}/inch → total={_money(project.die_cost)}",
+        f"Blank die = structure_forms_per_standee ({_num(project.structure_forms_per_standee)}) × "
+        f"cutting_die_blank_form_min ({_num(blank_min)}) = {_money(blank_part)}\n"
+        f"{print_note}\n"
+        f"total = {_money(project.die_cost)}",
     )
 
 

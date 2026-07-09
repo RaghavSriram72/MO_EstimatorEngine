@@ -158,21 +158,39 @@ class Project[T: BaseInput]:
         )
         return instruction_sheet_cost
 
+    def _all_elements_have_linear_inches(self) -> bool:
+        """True only if every element across every print form has explicit linear inches."""
+        elements = [element for form in self.print_forms for element in form.elements]
+        return bool(elements) and all(element.linear_inches_provided for element in elements)
+
     def _get_die_cost(self) -> float:
         die_unit_cost = self.db.get_unit_cost(UnitCostEntries.DIE_COST)
-        die_complexity_map = {
-            complexity: self.db.get_standee_data(term, "cutting_die_inches_multiplier")
-            for complexity, term in STANDEE_MAP.items()
-        }
+
+        # Blank/structure forms carry no linear-inch data, so they always use the static
+        # per-standee die cost.
         blank_die_cost = self.structure_forms_per_standee * self.db.get_standee_data(
             self.standee_key, "cutting_die_blank_form_min"
         )
-        print_die_cost = 0
-        for form in self.print_forms:
-            print_die_cost += self.db.get_standee_data(STANDEE_MAP[form.complexity], "cutting_die_print_form_min")
-        print_die_cost = min(
-            print_die_cost, sum(form.get_die_cost(die_complexity_map, die_unit_cost) for form in self.print_forms)
-        )
+
+        if self._all_elements_have_linear_inches():
+            # Every element has real linear inches: scale them by the complexity multiplier.
+            die_complexity_map = {
+                complexity: self.db.get_standee_data(term, "cutting_die_inches_multiplier")
+                for complexity, term in STANDEE_MAP.items()
+            }
+            print_die_cost = sum(
+                element.get_linear_inches() * die_complexity_map[element.complexity] * die_unit_cost
+                for form in self.print_forms
+                for element in form.elements
+            )
+        else:
+            # Missing linear inches for at least one element: fall back to the static
+            # per-standee print-form die cost.
+            print_die_cost = sum(
+                self.db.get_standee_data(STANDEE_MAP[form.complexity], "cutting_die_print_form_min")
+                for form in self.print_forms
+            )
+
         return blank_die_cost + print_die_cost
 
     def _get_kitting_and_assembly_cost(self) -> float:

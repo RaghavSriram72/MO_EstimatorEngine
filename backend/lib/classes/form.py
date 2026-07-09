@@ -57,14 +57,6 @@ class Form:
         self.complexity = complexity
         self.die_cost = 0
 
-    def get_die_cost(self, die_map: dict[Complexity, float], die_unit_cost: float) -> float:
-        """Calculate die cost for the form based on the complexity of its elements and a provided die map."""
-        cost = 0
-        for element in self.elements:
-            multiplier = die_map[element.complexity]
-            cost += element.get_linear_inches(multiplier if not element.linear_inches_provided else 1) * die_unit_cost
-        return cost
-
     def get_linear_inches(self) -> float:
         """Calculate total linear inches for the form."""
         return sum(element.get_linear_inches() for element in self.elements)
