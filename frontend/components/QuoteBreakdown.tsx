@@ -613,6 +613,9 @@ export default function QuoteBreakdown({
     );
     const [params, setParams] = useState<ScenarioParams>(() => builtInitial.params);
     const [baseline, setBaseline] = useState<ScenarioParams>(() => builtInitial.params);
+    // Once the user edits the overs field, keep sending it on every recalc so it doesn't
+    // get overwritten by the backend's num_standees-derived default.
+    const [oversPinned, setOversPinned] = useState(false);
     const [universalLines, setUniversalLines] = useState<CostLine[]>(() => initialLineState.universalLines);
     const [universalSubtotalOverride, setUniversalSubtotalOverride] = useState<string>(
         () => universalSubtotalOverrideFromUi(persistedBreakdownUi),
@@ -839,13 +842,9 @@ export default function QuoteBreakdown({
             // no scenario → backend returns all 5 at once
             num_standees: params.numStandees,
             persist_project: false,
-            ...(params.printFormsPerStandee !== baseline.printFormsPerStandee && {
-                print_forms_per_standee: params.printFormsPerStandee,
-            }),
-            ...(params.structureFormsPerStandee !== baseline.structureFormsPerStandee && {
-                structure_forms_per_standee: params.structureFormsPerStandee,
-            }),
-            ...(params.overs !== baseline.overs && { num_overs: params.overs }),
+            print_forms_per_standee: params.printFormsPerStandee,
+            structure_forms_per_standee: params.structureFormsPerStandee,
+            ...(oversPinned && { num_overs: params.overs }),
         };
         try {
             const res = await fetch(`${API_BASE}/generate_quote`, {
@@ -1084,7 +1083,10 @@ export default function QuoteBreakdown({
                             min={0}
                             step={1}
                             value={overs}
-                            onChange={(e) => patchParams({ overs: Math.max(0, parseInt(e.target.value) || 0) })}
+                            onChange={(e) => {
+                                setOversPinned(true);
+                                patchParams({ overs: Math.max(0, parseInt(e.target.value) || 0) });
+                            }}
                             disabled={isRecalculating}
                             className={`border-2 border-[#E0E0E0] rounded-sm px-3 py-1.5 text-sm font-black text-[#000005] outline-none focus:border-[#FFC843] w-[100px] text-right transition-colors disabled:opacity-50 ${overs !== baseline.overs ? "bg-[#FFC843]/20" : "bg-[#F8F8F8]"}`}
                         />
