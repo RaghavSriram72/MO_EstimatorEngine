@@ -1038,6 +1038,7 @@ export default function QuoteBreakdown({
                             value={numStandees}
                             onChange={(e) => {
                                 const n = parseInt(e.target.value) || 0;
+                                setOversPinned(false);
                                 patchParams({ numStandees: n });
                                 onNumStandeesChange?.(n);
                             }}
