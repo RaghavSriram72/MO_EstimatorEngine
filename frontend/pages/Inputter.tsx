@@ -321,7 +321,7 @@ export default function Inputter() {
     }
 
     // POST /create-project  or  PATCH /projects/:id  → save current form to MongoDB
-    async function saveCurrentProject(): Promise<{ success: boolean; errorMessage?: string }> {
+    async function saveCurrentProject(): Promise<{ success: boolean; projectId?: string; errorMessage?: string }> {
         const owner = localStorage.getItem("username");
         if (!owner?.trim()) return { success: false, errorMessage: "Not signed in" };
         if (!canCalculate)  return { success: false, errorMessage: "Add standees and at least one element" };
@@ -345,7 +345,7 @@ export default function Inputter() {
                 );
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok) return { success: false, errorMessage: apiErrorMessage(data) ?? "Could not update project" };
-                return { success: true };
+                return { success: true, projectId: activeProjectId };
             }
             // POST /create-project → create a new project
             const res = await fetch(`${API_BASE}/create-project`, {
@@ -364,7 +364,7 @@ export default function Inputter() {
             if (!res.ok) return { success: false, errorMessage: apiErrorMessage(data) ?? "Could not save project" };
             if (typeof data.project_id !== "string") return { success: false, errorMessage: "Could not save project" };
             setActiveProjectId(data.project_id);
-            return { success: true };
+            return { success: true, projectId: data.project_id };
         } catch (e) {
             console.error("Save failed:", e);
             return { success: false, errorMessage: "Save failed" };
@@ -463,6 +463,7 @@ export default function Inputter() {
     async function handleContinue() {
         if (!canCalculate || isSavingBeforeContinue) return;
         const owner = typeof window !== "undefined" ? localStorage.getItem("username")?.trim() : null;
+        let projectId = activeProjectId;
 
         // Ensure the project is saved so we have a project ID to attach the quote to
         if (owner) {
@@ -471,6 +472,7 @@ export default function Inputter() {
             try {
                 const r = await saveCurrentProject();
                 if (!r.success) { setProjectListError(r.errorMessage ?? "Could not save project"); return; }
+                if (r.projectId) projectId = r.projectId;
                 setProjectListRefreshKey((v) => v + 1);
             } finally {
                 setIsSavingBeforeContinue(false);
@@ -481,7 +483,7 @@ export default function Inputter() {
         const num         = standeeCount as number;
         const corePayload = buildQuotePayload(num);
         const quoteName   = projectName.trim() || "Untitled quote";
-        const pid         = activeProjectId;
+        const pid         = projectId;
 
         try {
             const res  = await fetch(`${API_BASE}/generate_quote`, {
@@ -512,6 +514,7 @@ export default function Inputter() {
                     body: JSON.stringify({
                         owner,
                         quote_name: quoteName,
+                        scenario: 1,
                         num_standees: num,
                         contribution_margin: 0,
                         standee_type: standeeType,
@@ -523,7 +526,7 @@ export default function Inputter() {
                 if (saveRes.ok && typeof saveData.quote_id === "string") {
                     setActivePersistedQuoteId(saveData.quote_id);
                 } else {
-                    console.error("Could not persist quote:", saveData);
+                    console.error("Could not persist quote:", apiErrorMessage(saveData) ?? saveData);
                 }
                 // void refreshSavedQuoteList();
             }
