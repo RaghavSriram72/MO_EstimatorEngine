@@ -4,6 +4,7 @@ import json
 import csv
 from scipy.spatial import Delaunay
 import math
+from pdf2image import convert_from_path
 
 # INTERNALLY: process_image is the most important function here
 
@@ -51,6 +52,39 @@ def load_image(image_path):
     if image is None:
         raise FileNotFoundError(f"Could not load image: {image_path}") 
     return image
+
+def process_pdf(slide_path, first_page = None, last_page = None,slide_ids = None, **kwargs):
+    """Run to process pdfs. 
+    For specific slides, either specify first and last page (last page inclusive I believe?), or slide_ids (0 indexed). 
+    If both are passed, the indexing will happen on the subset of slides, so make sure to
+    calculate properly. (e.g. start 2 index 0 will be equivalent to start none index 2)
+    kwargs are the kwargs that would be passed ot process_image, k_cluseters or min_area """
+
+    images = convert_from_path(slide_path, first_page=first_page, last_page=last_page)
+
+    if slide_ids is not None: #if slide ids are specified, pick them from the rasterized images
+        temp = []
+        for id in slide_ids:
+            temp.append(images[id])
+        images = temp
+
+    # convert to numpy array and bgr to pass to process_image as expected from cv2 conventions
+    images_np = [np.array(img) for img in images]
+    for i in range(len(images_np)):
+        images_np[i] = cv2.cvtColor(images_np[i], cv2.COLOR_RGB2BGR)
+
+    segmented_images = []
+    outputs = []
+    all_results_list = []
+    binary_masks_list = []
+    for image in images_np:
+        segmented_image, output, all_results, binary_masks = process_image(image, **kwargs)
+        segmented_images.append(segmented_image)
+        outputs.append(output)
+        all_results_list.append(all_results)
+        binary_masks_list.append(binary_masks)
+
+    return segmented_images, outputs, all_results_list, binary_masks_list
 
 def process_image(image, k_clusters = 6, min_area = 100):
 
