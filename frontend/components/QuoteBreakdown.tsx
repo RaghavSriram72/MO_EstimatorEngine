@@ -81,7 +81,7 @@ const SCENARIO_LINE_DEFS: Record<string, LineDef> = {
     instruction_sheet_cost: { label: "Instruction Sheet",    unit: "standees" },
     freight_cost:               { label: "Freight Cost",            unit: "flat"     },
     kitting_and_assembly_cost:  { label: "Kitting & Assembly",      unit: "standees" },
-    packout:                    { label: "Packout",                 unit: "standees" },
+    packout:                    { label: "Kitting and Assembly",    unit: "standees" },
     litho_buyout_cost:          { label: "Litho Buyout",            unit: "sheets",   readonlyQty: true },
     mount_die_buyout_cost:      { label: "Mount & Die Cut Buyout",        unit: "standees", readonlyQty: true },
 };
@@ -467,18 +467,24 @@ function CostRow({
     debugExplanation,
     debugPending = false,
     isEdited = false,
+    origLine,
 }: {
     line: CostLine;
     onChange: (key: string, field: "qty" | "unitCost", value: number) => void;
     debugExplanation?: string;
     debugPending?: boolean;
     isEdited?: boolean;
+    origLine?: { qty: number; unitCost: number };
 }) {
     const isFlat        = line.unit === "flat";
     const isStandees    = line.unit === "standees";
     const isReadonlyQty = isStandees || !!line.readonlyQty;
     const total         = lineTotal(line);
     const tooltip       = COST_LINE_TOOLTIPS[line.key];
+
+    const qtyChanged      = isEdited && origLine != null && Math.abs(origLine.qty - line.qty) > 0.00005;
+    const unitCostChanged = isEdited && origLine != null && Math.abs(origLine.unitCost - line.unitCost) > 0.00005;
+    const origTotal       = origLine != null ? (isFlat ? origLine.unitCost : origLine.qty * origLine.unitCost) : null;
 
     return (
         <div className={`grid grid-cols-[1fr_auto] items-center gap-6 px-8  py-2.5 rounded-lg border-[#F0F0F0] last:border-0 -mx-4 px-4 transition-colors ${isEdited ? "bg-[#ffc400]/47 border-l-[3px] border-l-[#FFC843]" : ""}`}>
@@ -526,6 +532,11 @@ function CostRow({
                                 className="border border-[#E0E0E0] rounded-sm px-2 py-1 text-xs text-[#000005] outline-none bg-[#F8F8F8] focus:border-[#FFC843] focus:bg-white w-[68px] text-right transition-colors font-semibold"
                             />
                         )}
+                        {qtyChanged && origLine && (
+                            <span className="text-[9px] text-[#B1B3B6] font-medium">
+                                default: {parseFloat(origLine.qty.toFixed(2))}
+                            </span>
+                        )}
                     </div>
                 )}
 
@@ -541,11 +552,21 @@ function CostRow({
                         onChange={(e) => onChange(line.key, "unitCost", parseFloat(e.target.value) || 0)}
                         className="border border-[#E0E0E0] rounded-sm px-2 py-1 text-xs text-[#000005] outline-none bg-[#F8F8F8] focus:border-[#FFC843] focus:bg-white w-[96px] text-right transition-colors font-semibold"
                     />
+                    {unitCostChanged && origLine && (
+                        <span className="text-[9px] text-[#B1B3B6] font-medium">
+                            default: ${parseFloat(origLine.unitCost.toFixed(2))}
+                        </span>
+                    )}
                 </div>
 
                 <div className="flex flex-col items-end gap-0.5 w-[80px]">
                     <span className="text-[9px] text-[#B1B3B6] uppercase font-bold tracking-wider">total</span>
                     <span className="text-xs font-black text-[#000005]">${fmt(total)}</span>
+                    {isEdited && origTotal != null && Math.abs(origTotal - total) > 0.005 && (
+                        <span className="text-[9px] text-[#B1B3B6] font-medium">
+                            default: ${fmt(origTotal)}
+                        </span>
+                    )}
                 </div>
             </div>
         </div>
@@ -828,11 +849,14 @@ export default function QuoteBreakdown({
         const next = cur ? { ...cur, [field]: value } : null;
         setEditedUniversalKeys((prev) => {
             const s = new Set(prev);
-            if (orig && next && orig.qty === next.qty && orig.unitCost === next.unitCost) s.delete(key);
+            if (orig && next && Math.abs(orig.qty - next.qty) < 0.005 && Math.abs(orig.unitCost - next.unitCost) < 0.005) s.delete(key);
             else s.add(key);
             return s;
         });
     }
+
+    // Keys that scale proportionally when print_form_cost qty changes
+    const PRINT_FORM_DERIVED_KEYS = ["print_cost", "rollx_cost", "zund_cut_cost"] as const;
 
     function updateScenario(key: string, field: "qty" | "unitCost", value: number) {
         setManualDirty(true);
@@ -843,9 +867,21 @@ export default function QuoteBreakdown({
         setScenarioLines((prev) => {
             const next = { ...prev };
             for (const sid of scenariosToUpdate) {
-                if (prev[sid]) {
-                    next[sid] = prev[sid].map((l) => l.key === key ? { ...l, [field]: value } : l);
+                if (!prev[sid]) continue;
+                let lines = prev[sid].map((l) => l.key === key ? { ...l, [field]: value } : l);
+                // Proportionally scale print/rollx/zund hours when form count changes
+                if (key === "print_form_cost" && field === "qty") {
+                    const oldForms = prev[sid].find((l) => l.key === "print_form_cost")?.qty ?? 0;
+                    if (oldForms > 0) {
+                        const ratio = value / oldForms;
+                        lines = lines.map((l) =>
+                            (PRINT_FORM_DERIVED_KEYS as readonly string[]).includes(l.key)
+                                ? { ...l, qty: parseFloat((l.qty * ratio).toFixed(4)) }
+                                : l
+                        );
+                    }
                 }
+                next[sid] = lines;
             }
             return next;
         });
@@ -857,10 +893,28 @@ export default function QuoteBreakdown({
                 const cur     = scenarioLines[sid]?.find((l) => l.key === key);
                 const updated = cur ? { ...cur, [field]: value } : null;
                 const s = new Set(prev[sid]);
-                if (orig && updated && orig.qty === updated.qty && orig.unitCost === updated.unitCost) {
+                if (orig && updated && Math.abs(orig.qty - updated.qty) < 0.005 && Math.abs(orig.unitCost - updated.unitCost) < 0.005) {
                     s.delete(key);
                 } else {
                     s.add(key);
+                }
+                // Also mark derived keys as edited when form count changes
+                if (key === "print_form_cost" && field === "qty") {
+                    const oldForms = scenarioLines[sid]?.find((l) => l.key === "print_form_cost")?.qty ?? 0;
+                    if (oldForms > 0) {
+                        const ratio = value / oldForms;
+                        for (const dk of PRINT_FORM_DERIVED_KEYS) {
+                            const dOrig = origScenarioLines.current[sid]?.find((l) => l.key === dk);
+                            const dCur  = scenarioLines[sid]?.find((l) => l.key === dk);
+                            if (!dCur) continue;
+                            const newQty = parseFloat((dCur.qty * ratio).toFixed(4));
+                            if (dOrig && Math.abs(dOrig.qty - newQty) < 0.005 && Math.abs(dOrig.unitCost - dCur.unitCost) < 0.005) {
+                                s.delete(dk);
+                            } else {
+                                s.add(dk);
+                            }
+                        }
+                    }
                 }
                 next[sid] = s;
             }
@@ -1194,6 +1248,7 @@ export default function QuoteBreakdown({
                                         debugExplanation={debugExplanations[activeScenario]?.[line.key]}
                                         debugPending={debugExplanationsLoading}
                                         isEdited={editedUniversalKeys.has(line.key)}
+                                        origLine={origUniversalLines.current.find((l) => l.key === line.key)}
                                     />
                                 ))}
                                 <div className="flex justify-between items-center pt-3 mt-1 border-t-2 border-[#F0F0F0]">
@@ -1258,6 +1313,7 @@ export default function QuoteBreakdown({
                                         debugExplanation={debugExplanations[activeScenario]?.[line.key]}
                                         debugPending={debugExplanationsLoading}
                                         isEdited={editedScenarioKeys[activeScenario]?.has(line.key)}
+                                        origLine={origScenarioLines.current[activeScenario]?.find((l) => l.key === line.key)}
                                     />
                                 ))}
                                 <div className="flex justify-between items-center pt-3 mt-1 border-t-2 border-[#F0F0F0]">
