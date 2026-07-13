@@ -206,15 +206,15 @@ class QuoteRequest(BaseModel):
     """Payload for generating quote scenarios."""
 
     elements: list[ElementType]
-    num_standees: int
+    num_standees: float
     scenario: int | None = None
     standee_type: int = 1
     owner: str | None = None
     project_name: str | None = None
     project_id: str | None = None
-    print_forms_per_standee: int | None = None
-    structure_forms_per_standee: int | None = None
-    num_overs: int | None = None
+    print_forms_per_standee: float | None = None
+    structure_forms_per_standee: float | None = None
+    num_overs: float | None = None
     print_hours: float | None = None
     rollx_hours: float | None = None
     zund_hours: float | None = None
@@ -263,7 +263,7 @@ async def generate_quote(payload: QuoteRequest):
             persisted = PersistedProjectCreate(
                 owner=owner,
                 project_name=pname,
-                num_standees=payload.num_standees,
+                num_standees=int(payload.num_standees),
                 standee_type=complexity_to_str(Complexity(payload.standee_type)),
                 elements=elements_to_persisted(elements),
             )
