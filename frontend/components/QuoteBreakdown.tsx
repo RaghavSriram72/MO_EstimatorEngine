@@ -1070,10 +1070,10 @@ export default function QuoteBreakdown({
                         <input
                             type="number"
                             min={0}
-                            step={0.1}
+                            step={1}
                             value={numStandees}
                             onChange={(e) => {
-                                const n = parseFloat(e.target.value) || 0;
+                                const n = parseInt(e.target.value) || 0;
                                 setOversPinned(false);
                                 patchParams({ numStandees: n });
                                 onNumStandeesChange?.(n);
