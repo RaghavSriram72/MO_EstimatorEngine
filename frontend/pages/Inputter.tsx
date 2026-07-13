@@ -667,9 +667,6 @@ export default function Inputter() {
         setElements((prev) => [...prev, ...mapped]);
     }
 
-    const isSignedIn =
-        typeof window !== "undefined" && Boolean(localStorage.getItem("username")?.trim());
-
     // ── Toast JSX (shared between both views) ─────────────────────────────
     const toastJsx = toast && (
         <div
@@ -840,7 +837,7 @@ export default function Inputter() {
                                     : "bg-[#E0E0E0] text-[#B1B3B6] cursor-not-allowed"
                             }`}
                         >
-                            {isSavingBeforeContinue ? "SAVING…" : "BUILD QUOTE"}{" "}
+                            {isSavingBeforeContinue ? "SAVING…" : activeProjectId ? "VIEW QUOTE" : "BUILD QUOTE"}{" "}
                             <img
                                 src="/submitarrow.svg"
                                 alt=""

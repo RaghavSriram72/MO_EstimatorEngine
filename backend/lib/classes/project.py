@@ -128,9 +128,17 @@ class Project[T: BaseInput]:
         return machine_cost
 
     def _get_zund_hours(self) -> float:
-        # combination of linear inches and provided minute estimates
-        zund_linear_inches = sum(form.get_linear_inches() for form in self.print_forms)
-        print_zund_hours = self._get_machine_time(UnitCostEntries.ZUND_CUTTER, zund_linear_inches)
+        if self._all_elements_have_linear_inches():
+            zund_linear_inches = sum(form.get_linear_inches() for form in self.print_forms)
+            print_zund_hours = self._get_machine_time(UnitCostEntries.ZUND_CUTTER, zund_linear_inches)
+        else:
+            # No linear inches provided: use per-form minute estimates instead of throughput
+            print_zund_hours = (
+                self.db.get_standee_data(self.standee_key, "zund_print_form_minutes")
+                * self.print_forms_per_standee
+                * self.num_standees
+            ) / 60
+
         structure_zund_hours = (
             self.db.get_standee_data(self.standee_key, "zund_blank_form_minutes")
             * self.structure_forms_per_standee

@@ -230,18 +230,26 @@ def _explain_zund_cut_cost(project: Any, _scenario_id: int) -> tuple[str | None,
     entry = _machine_entry(project.db, UnitCostEntries.ZUND_CUTTER)
     hourly = entry["cost"] * UNIT_MAP[entry["unit"]]
     hours = _get(project, "zund_hours", 0)
-    print_linear = sum(form.get_linear_inches() for form in project.print_forms)
-    structure_minutes = (
-        project.db.get_standee_data(project.standee_key, "zund_blank_form_minutes")
-        * project.structure_forms_per_standee
-        * project.num_standees
-    )
+    all_linear = project._all_elements_have_linear_inches()
+    blank_form_min = project.db.get_standee_data(project.standee_key, "zund_blank_form_minutes")
+    blank_form_count = project.structure_forms_per_standee * project.num_standees
+    structure_minutes = blank_form_min * blank_form_count
     setup = entry.get("setup_time", 0) * round(project.blank_forms_per_standee)
+    if all_linear:
+        print_linear = sum(form.get_linear_inches() for form in project.print_forms)
+        print_note = f"print: throughput method, linear_in={_num(print_linear)}"
+    else:
+        print_form_min = project.db.get_standee_data(project.standee_key, "zund_print_form_minutes")
+        print_form_count = project.print_forms_per_standee * project.num_standees
+        print_minutes = print_form_min * print_form_count
+        print_note = f"print: {_num(print_form_min)} min/form × {print_form_count} forms = {_num(print_minutes)} min (no linear inches)"
+    blank_note = f"blank: {_num(blank_form_min)} min/form × {blank_form_count} forms = {_num(structure_minutes)} min"
     return (
         "zund_cut_cost",
         f"Zund: {_money(hourly)}/hr × {_num(hours)} hrs = {_money(project.zund_cut_cost)}\n"
-        f"zund_hours = print cut time + structure time + setup\n"
-        f"print linear_in={_num(print_linear)}, structure={_num(structure_minutes)} min, setup={_num(setup)} hr",
+        f"zund_hours = print cut time + blank form time + setup\n"
+        f"{print_note}\n"
+        f"{blank_note}, setup={_num(setup)} hr",
     )
 
 

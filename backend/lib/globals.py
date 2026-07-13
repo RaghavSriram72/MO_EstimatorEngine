@@ -1,7 +1,7 @@
 FORM_95_WIDTH = 58.5
 FORM_95_LENGTH = 79.625
 FORM_95_AREA = FORM_95_WIDTH * FORM_95_LENGTH
-PRINT_95_FORM_LENGTH = 80.625  # used for print form cost calculation
+PRINT_95_FORM_LENGTH = 82  # used for print form cost calculation
 
 BUSMARK_FORM_WIDTH = 61
 BUSMARK_FORM_LENGTH = 84

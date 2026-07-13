@@ -1035,9 +1035,10 @@ export default function QuoteBreakdown({
                         <input
                             type="number"
                             min={0}
+                            step={0.1}
                             value={numStandees}
                             onChange={(e) => {
-                                const n = parseInt(e.target.value) || 0;
+                                const n = parseFloat(e.target.value) || 0;
                                 setOversPinned(false);
                                 patchParams({ numStandees: n });
                                 onNumStandeesChange?.(n);
@@ -1051,10 +1052,10 @@ export default function QuoteBreakdown({
                         <span className="text-[10px] font-black text-[#B1B3B6] uppercase tracking-widest">Print Forms / Standee</span>
                         <input
                             type="number"
-                            min={1}
-                            step={1}
+                            min={0}
+                            step={0.1}
                             value={printFormsPerStandee}
-                            onChange={(e) => patchParams({ printFormsPerStandee: Math.max(1, parseInt(e.target.value) || 1) })}
+                            onChange={(e) => patchParams({ printFormsPerStandee: Math.max(0, parseFloat(e.target.value) || 0) })}
                             disabled={isRecalculating}
                             className={`border-2 border-[#E0E0E0] rounded-sm px-3 py-1.5 text-sm font-black text-[#000005] outline-none focus:border-[#FFC843] w-[100px] text-right transition-colors disabled:opacity-50 ${printFormsPerStandee !== baseline.printFormsPerStandee ? "bg-[#FFC843]/20" : "bg-[#F8F8F8]"}`}
                         />
@@ -1064,9 +1065,9 @@ export default function QuoteBreakdown({
                         <input
                             type="number"
                             min={0}
-                            step={1}
+                            step={0.1}
                             value={structureFormsPerStandee}
-                            onChange={(e) => patchParams({ structureFormsPerStandee: Math.max(0, parseInt(e.target.value) || 0) })}
+                            onChange={(e) => patchParams({ structureFormsPerStandee: Math.max(0, parseFloat(e.target.value) || 0) })}
                             disabled={isRecalculating}
                             className={`border-2 border-[#E0E0E0] rounded-sm px-3 py-1.5 text-sm font-black text-[#000005] outline-none focus:border-[#FFC843] w-[100px] text-right transition-colors disabled:opacity-50 ${structureFormsPerStandee !== baseline.structureFormsPerStandee ? "bg-[#FFC843]/20" : "bg-[#F8F8F8]"}`}
                         />
@@ -1082,11 +1083,11 @@ export default function QuoteBreakdown({
                         <input
                             type="number"
                             min={0}
-                            step={1}
+                            step={0.1}
                             value={overs}
                             onChange={(e) => {
                                 setOversPinned(true);
-                                patchParams({ overs: Math.max(0, parseInt(e.target.value) || 0) });
+                                patchParams({ overs: Math.max(0, parseFloat(e.target.value) || 0) });
                             }}
                             disabled={isRecalculating}
                             className={`border-2 border-[#E0E0E0] rounded-sm px-3 py-1.5 text-sm font-black text-[#000005] outline-none focus:border-[#FFC843] w-[100px] text-right transition-colors disabled:opacity-50 ${overs !== baseline.overs ? "bg-[#FFC843]/20" : "bg-[#F8F8F8]"}`}
