@@ -94,6 +94,24 @@ const SCENARIO_KEYS: Record<ScenarioId, string[]> = {
     5: ["mount_die_buyout_cost", "litho_buyout_cost", "label_cost", "instruction_sheet_cost", "freight_cost", "die_cost", "packout"],
 };
 
+// Keys whose calculation is identical across multiple scenarios.
+// Editing one propagates the change to all others in its group.
+// Keys NOT listed here (pallet_*, freight_cost, mount_die_buyout_cost, litho_buyout_cost)
+// are calculated differently per scenario and remain independent.
+const SCENARIO_SYNC_GROUPS: Partial<Record<string, ScenarioId[]>> = {
+    corrugate_cost:            [1, 2, 3],       // InHouseProject._get_corrugate_cost()
+    print_form_cost:           [1, 2, 3, 4],    // same line key, user-synced across all print scenarios
+    print_cost:                [1, 2, 3],       // InHouseProject, same machine
+    rollx_cost:                [1, 2, 3],       // InHouseProject only
+    zund_cut_cost:             [1, 2, 3],       // InHouseProject._get_zund_hours()
+    shipping_box_cost:         [1, 2, 3],       // InHouseProject._get_shipping_box_and_label_cost()
+    label_cost:                [1, 2, 3, 4, 5], // All scenarios: same _get_shipping_box_and_label_cost()
+    kitting_and_assembly_cost: [1, 2],          // Only present in 1 & 2
+    instruction_sheet_cost:    [1, 3, 4, 5],   // All use _get_instruction_sheet_cost()
+    die_cost:                  [4, 5],          // OutsourceProject._get_die_cost()
+    packout:                   [3, 4, 5],       // Same packout formula
+};
+
 
 function lineTotal(l: CostLine) {
     if (l.rawTotal !== undefined) return l.rawTotal;
@@ -818,18 +836,35 @@ export default function QuoteBreakdown({
 
     function updateScenario(key: string, field: "qty" | "unitCost", value: number) {
         setManualDirty(true);
-        setScenarioLines((prev) => ({
-            ...prev,
-            [activeScenario]: prev[activeScenario].map((l) => (l.key === key ? { ...l, [field]: value } : l)),
-        }));
-        const orig = origScenarioLines.current[activeScenario]?.find((l) => l.key === key);
-        const cur  = scenarioLines[activeScenario]?.find((l) => l.key === key);
-        const next = cur ? { ...cur, [field]: value } : null;
+        const syncGroup = SCENARIO_SYNC_GROUPS[key];
+        const scenariosToUpdate: ScenarioId[] =
+            syncGroup?.includes(activeScenario) ? syncGroup : [activeScenario];
+
+        setScenarioLines((prev) => {
+            const next = { ...prev };
+            for (const sid of scenariosToUpdate) {
+                if (prev[sid]) {
+                    next[sid] = prev[sid].map((l) => l.key === key ? { ...l, [field]: value } : l);
+                }
+            }
+            return next;
+        });
+
         setEditedScenarioKeys((prev) => {
-            const s = new Set(prev[activeScenario]);
-            if (orig && next && orig.qty === next.qty && orig.unitCost === next.unitCost) s.delete(key);
-            else s.add(key);
-            return { ...prev, [activeScenario]: s };
+            const next = { ...prev };
+            for (const sid of scenariosToUpdate) {
+                const orig    = origScenarioLines.current[sid]?.find((l) => l.key === key);
+                const cur     = scenarioLines[sid]?.find((l) => l.key === key);
+                const updated = cur ? { ...cur, [field]: value } : null;
+                const s = new Set(prev[sid]);
+                if (orig && updated && orig.qty === updated.qty && orig.unitCost === updated.unitCost) {
+                    s.delete(key);
+                } else {
+                    s.add(key);
+                }
+                next[sid] = s;
+            }
+            return next;
         });
     }
 
