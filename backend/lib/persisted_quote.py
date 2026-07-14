@@ -1,24 +1,37 @@
 """MongoDB ``quotes`` collection — document shape for API / validation.
 
-**Stored fields** (v1):
+**Stored fields** (v2 — quote object with five scenario children):
 
 - ``schema_version`` — int, see ``QUOTE_SCHEMA_VERSION``
 - ``owner`` — username str
 - ``project_id`` — ``ObjectId`` in Mongo (str in request models; caller converts on insert)
 - ``quote_name`` — str
-- ``scenario`` — int (1–5)
+- ``scenario`` — int (1–5), the scenario tab that was active when saved
 - ``num_standees`` — int
-- ''contribution_margin'' - float
+- ``contribution_margin`` — float
 - ``standee_type`` — ``Simple`` / ``Moderate`` / ``Complex`` (same as projects)
 - ``elements`` — list of persisted elements (see ``PersistedElement`` in ``persisted_project``)
-- ``breakdown`` — BSON-safe dict containing:
+- ``scenarios`` — the five scenario children, keyed ``"1"`` … ``"5"``. Each child holds:
 
-  - ``scenario_1`` … ``scenario_5`` — outputs of ``to_serializable_dict()`` per scenario (cost lines source).
-  - Optional ``_breakdown_ui`` — user overrides from the breakdown UI:
+  - ``defaults`` — the raw backend ``to_serializable_dict()`` blob for that scenario, i.e. the
+    engine-computed values *before* any manual edits. Used to show "default: X" hints in the UI.
+  - ``line_edits`` — only the cost rows the user manually changed:
+    ``{"<cost_key>": {"qty": float, "unit_cost": float}}``.
+  - ``subtotal_override`` — str; manual scenario-subtotal override ("" when unset).
 
-    - ``universal_subtotal_override`` — keys ``\"1\"`` … ``\"5\"``; values are override strings (omit empty).
-    - ``scenario_subtotal_override`` — same key shape.
+- ``universal`` — shared (cross-scenario) breakdown state:
 
+  - ``line_edits`` — same shape as scenario ``line_edits`` for universal cost rows.
+  - ``subtotal_override`` — str.
+
+- ``params`` — the spec fields above the breakdown table:
+
+  - ``current`` — ``{num_standees, print_forms_per_standee, structure_forms_per_standee, overs}``
+  - ``defaults`` — same keys; engine-computed values from the last recalculate, so the UI can
+    display what a manually-edited field "was before".
+
+- ``breakdown`` — legacy v1 blob (``scenario_1`` … ``scenario_5`` + ``_breakdown_ui``). Kept for
+  old documents; new writes leave this empty.
 - ``created_at`` / ``updated_at`` — timezone-aware datetimes (set in ``main`` / insert path, not on Pydantic create body)
 
 Callers building insert documents should merge timestamps and ``ObjectId`` for ``project_id`` before ``insert_one``.
@@ -33,7 +46,7 @@ from pydantic import BaseModel, Field
 
 from lib.persisted_project import ComplexityStr, PersistedElement
 
-QUOTE_SCHEMA_VERSION = 1
+QUOTE_SCHEMA_VERSION = 2
 
 
 class PersistedQuoteCreate(BaseModel):
@@ -52,7 +65,10 @@ class PersistedQuoteCreate(BaseModel):
     contribution_margin: float = Field(..., ge=0, le=99.99)
     standee_type: ComplexityStr
     elements: list[PersistedElement] = Field(..., min_length=1)
-    breakdown: dict[str, Any] = Field(default_factory=dict)
+    scenarios: dict[str, Any] = Field(default_factory=dict, description='Five scenario children keyed "1"…"5"')
+    universal: dict[str, Any] = Field(default_factory=dict, description="Shared cost-line edits + subtotal override")
+    params: dict[str, Any] = Field(default_factory=dict, description="Spec fields: current + defaults")
+    breakdown: dict[str, Any] = Field(default_factory=dict, description="Legacy v1 blob; empty on new writes")
 
 
 class PersistedQuoteCreateBody(BaseModel):
@@ -66,7 +82,10 @@ class PersistedQuoteCreateBody(BaseModel):
     contribution_margin: float = Field(..., ge=0, le=99.99)
     standee_type: ComplexityStr
     elements: list[PersistedElement] = Field(..., min_length=1)
-    breakdown: dict[str, Any] = Field(default_factory=dict)
+    scenarios: dict[str, Any] = Field(default_factory=dict, description='Five scenario children keyed "1"…"5"')
+    universal: dict[str, Any] = Field(default_factory=dict, description="Shared cost-line edits + subtotal override")
+    params: dict[str, Any] = Field(default_factory=dict, description="Spec fields: current + defaults")
+    breakdown: dict[str, Any] = Field(default_factory=dict, description="Legacy v1 blob; empty on new writes")
 
 
 def persisted_quote_create_from_path(project_id: str, body: PersistedQuoteCreateBody) -> PersistedQuoteCreate:
@@ -87,7 +106,10 @@ class PersistedQuoteUpdateBody(BaseModel):
     scenario: int = Field(..., ge=1, le=5)
     standee_type: ComplexityStr
     elements: list[PersistedElement] = Field(..., min_length=1)
-    breakdown: dict[str, Any] = Field(default_factory=dict)
+    scenarios: dict[str, Any] = Field(default_factory=dict, description='Five scenario children keyed "1"…"5"')
+    universal: dict[str, Any] = Field(default_factory=dict, description="Shared cost-line edits + subtotal override")
+    params: dict[str, Any] = Field(default_factory=dict, description="Spec fields: current + defaults")
+    breakdown: dict[str, Any] = Field(default_factory=dict, description="Legacy v1 blob; empty on new writes")
 
 
 def persisted_quote_update_to_mongo_set(data: PersistedQuoteUpdateBody) -> dict[str, Any]:

@@ -45,6 +45,35 @@ export type QuoteData = {
     [key: string]: Record<string, number> | QuoteBreakdownUi | undefined;
 };
 
+// ── Persisted quote shape (v2) — quote object with five scenario children ──
+
+export type PersistedLineEdit = { qty: number; unit_cost: number };
+
+export type PersistedScenarioChild = {
+    /** Raw engine-computed scenario blob — values before any manual edits. */
+    defaults: Record<string, number>;
+    /** Only the cost rows the user manually changed, keyed by cost key. */
+    line_edits: Record<string, PersistedLineEdit>;
+    /** Manual scenario-subtotal override ("" when unset). */
+    subtotal_override: string;
+};
+
+export type PersistedSpecParams = {
+    num_standees: number;
+    print_forms_per_standee: number;
+    structure_forms_per_standee: number;
+    overs: number;
+};
+
+export type PersistedQuoteState = {
+    /** Five scenario children keyed "1" … "5". */
+    scenarios: Record<string, PersistedScenarioChild>;
+    /** Shared (cross-scenario) cost-line edits + subtotal override. */
+    universal: { line_edits: Record<string, PersistedLineEdit>; subtotal_override: string };
+    /** Spec fields: what the user set (current) vs what the engine computed (defaults). */
+    params: { current: PersistedSpecParams; defaults: PersistedSpecParams };
+};
+
 // Body shape sent to POST /generate_quote
 export type RequestPayload = {
     elements: { name: string; height: number; width: number; complexity: string; linear_inches: number | null; description: string | null }[];
@@ -73,6 +102,106 @@ function quoteDataFromGenerateResponse(data: Record<string, unknown>): QuoteData
         if (key.startsWith("scenario_")) out[key] = data[key] as Record<string, number>;
     }
     return out;
+}
+
+// Keeps only finite numbers — drops _debug_explanations and other non-numeric fields
+function numericFields(blob: Record<string, unknown>): Record<string, number> {
+    const out: Record<string, number> = {};
+    for (const [k, v] of Object.entries(blob)) {
+        if (typeof v === "number" && Number.isFinite(v)) out[k] = v;
+    }
+    return out;
+}
+
+// Builds a pristine persisted-quote state (five scenario children, no edits) from a
+// /generate_quote response — the engine outputs become the stored "defaults".
+function freshPersistedQuoteState(quoteResult: Record<string, unknown>, numStandees: number): PersistedQuoteState {
+    const scenarios: Record<string, PersistedScenarioChild> = {};
+    let seed: Record<string, number> | null = null;
+    for (const sid of [1, 2, 3, 4, 5]) {
+        const blob = quoteResult[`scenario_${sid}`];
+        if (!blob || typeof blob !== "object" || Array.isArray(blob)) continue;
+        const defaults = numericFields(blob as Record<string, unknown>);
+        scenarios[String(sid)] = { defaults, line_edits: {}, subtotal_override: "" };
+        if (!seed) seed = defaults;
+    }
+    const specDefaults: PersistedSpecParams = {
+        num_standees: numStandees,
+        print_forms_per_standee: seed?.print_forms_per_standee ?? 1,
+        structure_forms_per_standee: seed?.structure_forms_per_standee ?? 0,
+        overs: seed?.overs ?? 0,
+    };
+    return {
+        scenarios,
+        universal: { line_edits: {}, subtotal_override: "" },
+        params: { current: { ...specDefaults }, defaults: { ...specDefaults } },
+    };
+}
+
+// Parses a saved quote document (v2 shape — five scenario children) into breakdown state.
+// Returns null for legacy docs without usable scenario children (caller regenerates instead).
+function persistedStateFromQuoteDoc(doc: Record<string, unknown>): PersistedQuoteState | null {
+    const raw = doc.scenarios as Record<string, Partial<PersistedScenarioChild>> | undefined;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+    const scenarios: Record<string, PersistedScenarioChild> = {};
+    let seed: Record<string, number> | null = null;
+    for (const [sid, child] of Object.entries(raw)) {
+        const defaults = numericFields((child?.defaults ?? {}) as Record<string, unknown>);
+        if (Object.keys(defaults).length === 0) continue;
+        scenarios[sid] = {
+            defaults,
+            line_edits: child?.line_edits ?? {},
+            subtotal_override: child?.subtotal_override ?? "",
+        };
+        if (!seed) seed = defaults;
+    }
+    if (!seed) return null;
+    const universalRaw = doc.universal as Partial<PersistedQuoteState["universal"]> | undefined;
+    const paramsRaw = doc.params as Partial<PersistedQuoteState["params"]> | undefined;
+    const fallbackSpec: PersistedSpecParams = {
+        num_standees: typeof doc.num_standees === "number" ? doc.num_standees : 1,
+        print_forms_per_standee: seed.print_forms_per_standee ?? 1,
+        structure_forms_per_standee: seed.structure_forms_per_standee ?? 0,
+        overs: seed.overs ?? 0,
+    };
+    return {
+        scenarios,
+        universal: {
+            line_edits: universalRaw?.line_edits ?? {},
+            subtotal_override: universalRaw?.subtotal_override ?? "",
+        },
+        params: {
+            current: paramsRaw?.current ?? { ...fallbackSpec },
+            defaults: paramsRaw?.defaults ?? { ...fallbackSpec },
+        },
+    };
+}
+
+// The scenario children's defaults are the breakdown's scenario blobs
+function quoteDataFromPersistedState(state: PersistedQuoteState): QuoteData {
+    const out: QuoteData = {};
+    for (const [sid, child] of Object.entries(state.scenarios)) {
+        out[`scenario_${sid}`] = child.defaults;
+    }
+    return out;
+}
+
+// Rebuilds the /generate_quote payload from a saved quote doc (used by Recalculate)
+function payloadFromQuoteDoc(doc: Record<string, unknown>, state: PersistedQuoteState): RequestPayload {
+    const standeeTypeMap: Record<string, number> = { Simple: 1, Moderate: 2, Complex: 3 };
+    const rows = Array.isArray(doc.elements) ? (doc.elements as ApiPersistedElement[]) : [];
+    return {
+        elements: rows.map((e) => ({
+            name: e.name ?? "",
+            height: e.length,
+            width: e.width,
+            complexity: e.complexity,
+            linear_inches: e.linear_inches ?? null,
+            description: "",
+        })),
+        num_standees: state.params.current.num_standees,
+        standee_type: standeeTypeMap[String(doc.standee_type)] ?? 1,
+    };
 }
 
 
@@ -193,6 +322,7 @@ export default function Inputter() {
     const [activeQuoteName, setActiveQuoteName]               = useState<string | null>(null);
     const [activeQuoteContributionMargin, setActiveQuoteContributionMargin] = useState<number | null>(null);
     const [activePersistedQuoteId, setActivePersistedQuoteId] = useState<string | null>(null);
+    const [activePersistedQuoteState, setActivePersistedQuoteState] = useState<PersistedQuoteState | null>(null);
     const [isQuoteGenerating, setIsQuoteGenerating]           = useState(false);
 
     // ── Saved quotes list (inside workspace) — commented, restore with QuotesSidebar ──
@@ -318,6 +448,7 @@ export default function Inputter() {
         setProjectSearchQuery("");
         // setQuoteSearchQuery("");
         setActivePersistedQuoteId(null);
+        setActivePersistedQuoteState(null);
     }
 
     // POST /create-project  or  PATCH /projects/:id  → save current form to MongoDB
@@ -408,6 +539,7 @@ export default function Inputter() {
             setActiveQuoteName(null);
             // setSavedQuoteList([]);
             setActivePersistedQuoteId(null);
+            setActivePersistedQuoteState(null);
         } catch {
             setProjectListError("Could not load project");
         } finally {
@@ -459,7 +591,32 @@ export default function Inputter() {
         };
     }
 
-    // "Continue" button — saves project, fires all 5 scenarios, auto-saves quote
+    // GET /projects/:id/quotes → opens the newest saved quote (with its manual edits).
+    // Returns false when the project has no usable saved quote yet.
+    async function openLatestSavedQuote(projectId: string, owner: string): Promise<boolean> {
+        try {
+            const res = await fetch(
+                `${API_BASE}/projects/${encodeURIComponent(projectId)}/quotes?owner=${encodeURIComponent(owner)}`,
+            );
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !Array.isArray(data.quotes) || data.quotes.length === 0) return false;
+            const doc = data.quotes[0] as Record<string, unknown>; // list is newest-first
+            const state = persistedStateFromQuoteDoc(doc);
+            if (!state) return false; // legacy doc without scenario children — regenerate instead
+            setActiveQuotePayload(payloadFromQuoteDoc(doc, state));
+            setActiveQuoteName(typeof doc.quote_name === "string" ? doc.quote_name : "Quote");
+            setActiveQuoteContributionMargin(typeof doc.contribution_margin === "number" ? doc.contribution_margin : 0);
+            setActiveQuoteData(quoteDataFromPersistedState(state));
+            setActivePersistedQuoteId(typeof doc._id === "string" ? doc._id : null);
+            setActivePersistedQuoteState(state);
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    // "Continue" button — opens the saved quote if one exists; otherwise saves the
+    // project, fires all 5 scenarios, and auto-saves a new quote.
     async function handleContinue() {
         if (!canCalculate || isSavingBeforeContinue) return;
         const owner = typeof window !== "undefined" ? localStorage.getItem("username")?.trim() : null;
@@ -486,6 +643,10 @@ export default function Inputter() {
         const pid         = projectId;
 
         try {
+            // A saved quote already exists → view it instead of recalculating,
+            // so manual spec/cost edits made in the breakdown are preserved.
+            if (owner && pid && (await openLatestSavedQuote(pid, owner))) return;
+
             const res  = await fetch(`${API_BASE}/generate_quote`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -496,18 +657,16 @@ export default function Inputter() {
 
             const quoteResult = data as Record<string, unknown>;
             const quoteData   = quoteDataFromGenerateResponse(quoteResult);
+            const persistedState = freshPersistedQuoteState(quoteResult, num);
             setActiveQuotePayload(corePayload);
             setActiveQuoteName(quoteName);
             setActiveQuoteContributionMargin(0);
             setActiveQuoteData(quoteData);
             setActivePersistedQuoteId(null);
+            setActivePersistedQuoteState(persistedState);
 
-            // Auto-save the quote to the project if signed in
+            // Auto-save the quote to the project if signed in — quote object + five scenario children
             if (owner && pid) {
-                const breakdownPayload: Record<string, unknown> = {};
-                for (const key of Object.keys(quoteResult)) {
-                    if (key.startsWith("scenario_")) breakdownPayload[key] = quoteResult[key];
-                }
                 const saveRes = await fetch(`${API_BASE}/projects/${encodeURIComponent(pid)}/quotes`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -519,7 +678,9 @@ export default function Inputter() {
                         contribution_margin: 0,
                         standee_type: standeeType,
                         elements: elementsForApi(elements),
-                        breakdown: breakdownPayload,
+                        scenarios: persistedState.scenarios,
+                        universal: persistedState.universal,
+                        params: persistedState.params,
                     }),
                 });
                 const saveData = await saveRes.json().catch(() => ({}));
@@ -643,6 +804,7 @@ export default function Inputter() {
         setActiveQuotePayload(null);
         setActiveQuoteName(null);
         setActivePersistedQuoteId(null);
+        setActivePersistedQuoteState(null);
     }
 
     function handleActiveQuoteNumStandeesChange(numStandees: number) {
@@ -715,6 +877,7 @@ export default function Inputter() {
                     quoteName={activeQuoteName}
                     initialContributionMargin={activeQuoteContributionMargin}
                     persistedQuoteId={activePersistedQuoteId}
+                    persistedState={activePersistedQuoteState}
                     quoteOwner={typeof window !== "undefined" ? localStorage.getItem("username") : null}
                     onBack={clearActiveQuote}
                     onNumStandeesChange={handleActiveQuoteNumStandeesChange}

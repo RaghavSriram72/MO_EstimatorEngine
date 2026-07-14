@@ -1,7 +1,15 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { type QuoteData, type QuoteBreakdownUi, type CostLineOverride, type ScenarioCostLineOverrides, type RequestPayload } from "@/pages/Inputter";
+import {
+    type QuoteData,
+    type QuoteBreakdownUi,
+    type RequestPayload,
+    type PersistedQuoteState,
+    type PersistedScenarioChild,
+    type PersistedLineEdit,
+    type PersistedSpecParams,
+} from "@/pages/Inputter";
 import { API_BASE } from "@/lib/config";
 import { COST_LINE_TOOLTIPS } from "@/lib/costLineTooltips";
 import { COST_DEBUG_ENABLED, extractDebugExplanations, debugExplanationsFromQuoteResponse, hasDebugExplanations, type CostDebugExplanations } from "@/lib/costDebugConfig";
@@ -35,6 +43,8 @@ type Props = {
     initialContributionMargin?: number | null;
     /** When set with ``quoteOwner``, edits can be persisted via PATCH. */
     persistedQuoteId?: string | null;
+    /** Saved quote state (five scenario children) used to rehydrate edits + defaults. */
+    persistedState?: PersistedQuoteState | null;
     quoteOwner?: string | null;
     onBack: () => void;
     /** Keeps parent sidebar / payload in sync when standee count is edited. */
@@ -149,18 +159,6 @@ const QTY_FROM_SOURCE: Partial<Record<string, (s: Record<string, number>) => num
 const UNIT_COST_FROM_SOURCE: Partial<Record<string, (s: Record<string, number>) => number>> = {
     litho_buyout_cost:     (s) => s.litho_buyout_unit_cost     ?? 0,
     mount_die_buyout_cost: (s) => s.mount_die_buyout_unit_cost ?? 0,
-};
-
-/** Persist edited row quantities back into scenario source fields (see QTY_FROM_SOURCE). */
-const LINE_KEY_TO_QTY_SOURCE: Partial<Record<string, string>> = {
-    imposition_cost: "imposition_hours",
-    blank_comp_cost: "blank_comp_count",
-    color_comp_cost: "color_comp_count",
-    print_cost: "print_hours",
-    rollx_cost: "rollx_hours",
-    zund_cut_cost: "zund_hours",
-    pallet_material_cost: "pallet_count",
-    pallet_labor_cost: "pallet_count",
 };
 
 function buildLines(keys: string[], defs: Record<string, LineDef>): CostLine[] {
@@ -280,86 +278,69 @@ function scenarioSubtotalOverridesFromUi(ui: QuoteBreakdownUi | undefined): Reco
     return out;
 }
 
-function serializeScenarioToSource(
-    id: ScenarioId,
-    sharedParams: ScenarioParams,
-    universalLines: CostLine[],
-    scenarioLines: Record<ScenarioId, CostLine[]>,
-    initialSources: Record<ScenarioId, Record<string, unknown>>,
-): Record<string, number> {
-    const base: Record<string, number> = {};
-    const src0 = initialSources[id] ?? {};
-    for (const k of Object.keys(src0)) {
-        const v = src0[k];
-        if (typeof v === "number" && Number.isFinite(v)) {
-            base[k] = v;
-        }
+// ── Persisted quote (v2) helpers — quote object with five scenario children ─
+
+/** Keeps only finite numbers — strips _debug_explanations etc. before storing in Mongo. */
+function numericOnly(blob: Record<string, unknown>): Record<string, number> {
+    const out: Record<string, number> = {};
+    for (const [k, v] of Object.entries(blob)) {
+        if (typeof v === "number" && Number.isFinite(v)) out[k] = v;
     }
-    const p = sharedParams;
-    base.num_standees = p.numStandees;
-    base.print_forms_per_standee = p.printFormsPerStandee;
-    base.structure_forms_per_standee = p.structureFormsPerStandee;
-    base.blank_forms_per_standee = p.printFormsPerStandee + p.structureFormsPerStandee;
-    base.overs = p.overs;
-    for (const line of universalLines) {
-        base[line.key] = lineTotal(line);
-        const qtySrc = LINE_KEY_TO_QTY_SOURCE[line.key];
-        if (qtySrc) base[qtySrc] = line.qty;
-    }
-    for (const line of scenarioLines[id]) {
-        base[line.key] = lineTotal(line);
-        const qtySrc = LINE_KEY_TO_QTY_SOURCE[line.key];
-        if (qtySrc) base[qtySrc] = line.qty;
-    }
-    return base;
+    return out;
 }
 
-function buildBreakdownUiPayloadFromState(
-    universalLines: CostLine[],
-    universalSubtotalOverride: string,
-    scenarioLines: Record<ScenarioId, CostLine[]>,
-    scenarioSubtotalOverride: Record<ScenarioId, string>,
-): QuoteBreakdownUi | null {
-    const universal_subtotal_override: Record<string, string> = {};
-    const scenario_subtotal_override: Record<string, string> = {};
-    const cost_line_overrides: Record<string, ScenarioCostLineOverrides> = {};
-
-    const u = universalSubtotalOverride.trim();
-    if (u) {
-        for (const id of [1, 2, 3, 4, 5] as ScenarioId[]) {
-            universal_subtotal_override[String(id)] = u;
-        }
-    }
-
-    const universal: Record<string, CostLineOverride> = {};
-    for (const line of universalLines) {
-        if (line.unit === "standees") continue;
-        universal[line.key] = { qty: line.qty, unitCost: line.unitCost };
-    }
-
-    for (const id of [1, 2, 3, 4, 5] as ScenarioId[]) {
-        const s = scenarioSubtotalOverride[id]?.trim() ?? "";
-        if (s) scenario_subtotal_override[String(id)] = s;
-
-        const scenario: Record<string, CostLineOverride> = {};
-        for (const line of scenarioLines[id] ?? []) {
-            if (line.unit === "standees") continue;
-            scenario[line.key] = { qty: line.qty, unitCost: line.unitCost };
-        }
-        if (Object.keys(universal).length > 0 || Object.keys(scenario).length > 0) {
-            cost_line_overrides[String(id)] = {
-                ...(Object.keys(universal).length > 0 ? { universal } : {}),
-                ...(Object.keys(scenario).length > 0 ? { scenario } : {}),
-            };
-        }
-    }
-
-    const out: QuoteBreakdownUi = {};
-    if (Object.keys(universal_subtotal_override).length > 0) out.universal_subtotal_override = universal_subtotal_override;
-    if (Object.keys(scenario_subtotal_override).length > 0) out.scenario_subtotal_override = scenario_subtotal_override;
-    if (Object.keys(cost_line_overrides).length > 0) out.cost_line_overrides = cost_line_overrides;
-    return Object.keys(out).length > 0 ? out : null;
+/** Re-applies saved manual edits on top of default-seeded lines. */
+function applyPersistedEdits(
+    lines: CostLine[],
+    edits: Record<string, PersistedLineEdit> | undefined,
+): CostLine[] {
+    if (!edits) return lines;
+    return lines.map((l) => {
+        const e = edits[l.key];
+        return e ? { ...l, qty: e.qty, unitCost: e.unit_cost } : l;
+    });
 }
+
+/** Collects only the manually edited rows into the persisted line_edits shape. */
+function lineEditsFor(lines: CostLine[], editedKeys: Set<string>): Record<string, PersistedLineEdit> {
+    const out: Record<string, PersistedLineEdit> = {};
+    for (const line of lines) {
+        if (editedKeys.has(line.key)) out[line.key] = { qty: line.qty, unit_cost: line.unitCost };
+    }
+    return out;
+}
+
+function toSpecParams(p: ScenarioParams): PersistedSpecParams {
+    return {
+        num_standees: p.numStandees,
+        print_forms_per_standee: p.printFormsPerStandee,
+        structure_forms_per_standee: p.structureFormsPerStandee,
+        overs: p.overs,
+    };
+}
+
+function fromSpecParams(p: PersistedSpecParams): ScenarioParams {
+    return {
+        numStandees: p.num_standees,
+        printFormsPerStandee: p.print_forms_per_standee,
+        structureFormsPerStandee: p.structure_forms_per_standee,
+        overs: p.overs,
+    };
+}
+
+/** Everything needed to write one full persisted-quote snapshot. */
+type QuoteSnapshot = {
+    params: ScenarioParams;
+    paramDefaults: ScenarioParams;
+    universalLines: CostLine[];
+    universalEdited: Set<string>;
+    universalSubtotalOverride: string;
+    scenarioLines: Record<ScenarioId, CostLine[]>;
+    scenarioEdited: Record<ScenarioId, Set<string>>;
+    scenarioSubtotalOverride: Record<ScenarioId, string>;
+    /** Latest raw backend blobs per scenario (the stored "defaults"). */
+    sources: Record<ScenarioId, Record<string, unknown>>;
+};
 
 function standeeTypeToPersistLabel(n: number): "Simple" | "Moderate" | "Complex" {
     const m: Record<number, "Simple" | "Moderate" | "Complex"> = {
@@ -533,7 +514,7 @@ function CostRow({
                             />
                         )}
                         {qtyChanged && origLine && (
-                            <span className="text-[9px] text-[#B1B3B6] font-medium">
+                            <span className="text-[9px] text-red-600 font-semibold">
                                 default: {parseFloat(origLine.qty.toFixed(2))}
                             </span>
                         )}
@@ -553,7 +534,7 @@ function CostRow({
                         className="border border-[#E0E0E0] rounded-sm px-2 py-1 text-xs text-[#000005] outline-none bg-[#F8F8F8] focus:border-[#FFC843] focus:bg-white w-[96px] text-right transition-colors font-semibold"
                     />
                     {unitCostChanged && origLine && (
-                        <span className="text-[9px] text-[#B1B3B6] font-medium">
+                        <span className="text-[9px] text-red-600 font-semibold">
                             default: ${parseFloat(origLine.unitCost.toFixed(2))}
                         </span>
                     )}
@@ -563,7 +544,7 @@ function CostRow({
                     <span className="text-[9px] text-[#B1B3B6] uppercase font-bold tracking-wider">total</span>
                     <span className="text-xs font-black text-[#000005]">${fmt(total)}</span>
                     {isEdited && origTotal != null && Math.abs(origTotal - total) > 0.005 && (
-                        <span className="text-[9px] text-[#B1B3B6] font-medium">
+                        <span className="text-[9px] text-red-600 font-semibold">
                             default: ${fmt(origTotal)}
                         </span>
                     )}
@@ -622,6 +603,7 @@ export default function QuoteBreakdown({
     quoteName,
     initialContributionMargin = null,
     persistedQuoteId = null,
+    persistedState = null,
     quoteOwner = null,
     onBack,
     onNumStandeesChange,
@@ -631,12 +613,16 @@ export default function QuoteBreakdown({
     );
     const [isRecalculating, setIsRecalculating] = useState(false);
 
+    const persistedChild = (id: ScenarioId): PersistedScenarioChild | undefined =>
+        persistedState?.scenarios?.[String(id)];
+
+    // Saved defaults (engine outputs before edits) win over the raw quoteData blobs.
     const initialSources: Record<ScenarioId, Record<string, unknown>> = {
-        1: (quoteData["scenario_1"] as Record<string, unknown>) ?? {},
-        2: (quoteData["scenario_2"] as Record<string, unknown>) ?? {},
-        3: (quoteData["scenario_3"] as Record<string, unknown>) ?? {},
-        4: (quoteData["scenario_4"] as Record<string, unknown>) ?? {},
-        5: (quoteData["scenario_5"] as Record<string, unknown>) ?? {},
+        1: persistedChild(1)?.defaults ?? (quoteData["scenario_1"] as Record<string, unknown>) ?? {},
+        2: persistedChild(2)?.defaults ?? (quoteData["scenario_2"] as Record<string, unknown>) ?? {},
+        3: persistedChild(3)?.defaults ?? (quoteData["scenario_3"] as Record<string, unknown>) ?? {},
+        4: persistedChild(4)?.defaults ?? (quoteData["scenario_4"] as Record<string, unknown>) ?? {},
+        5: persistedChild(5)?.defaults ?? (quoteData["scenario_5"] as Record<string, unknown>) ?? {},
     };
 
     const builtInitial = buildScenarioState(
@@ -650,21 +636,45 @@ export default function QuoteBreakdown({
         builtInitial.scenarioLines,
         persistedBreakdownUi,
     );
-    const [params, setParams] = useState<ScenarioParams>(() => builtInitial.params);
-    const [baseline, setBaseline] = useState<ScenarioParams>(() => builtInitial.params);
+    // Re-apply saved manual edits (v2 quote shape) on top of the default-seeded lines.
+    const hydratedUniversalLines = applyPersistedEdits(
+        initialLineState.universalLines,
+        persistedState?.universal?.line_edits,
+    );
+    const hydratedScenarioLines = {} as Record<ScenarioId, CostLine[]>;
+    for (const id of [1, 2, 3, 4, 5] as ScenarioId[]) {
+        hydratedScenarioLines[id] = applyPersistedEdits(initialLineState.scenarioLines[id], persistedChild(id)?.line_edits);
+    }
+
+    const initialParams: ScenarioParams = persistedState?.params?.current
+        ? fromSpecParams(persistedState.params.current)
+        : builtInitial.params;
+    const initialParamDefaults: ScenarioParams = persistedState?.params?.defaults
+        ? fromSpecParams(persistedState.params.defaults)
+        : builtInitial.params;
+
+    const [params, setParams] = useState<ScenarioParams>(() => initialParams);
+    const [baseline, setBaseline] = useState<ScenarioParams>(() => initialParams);
+    // Engine-computed spec values — "what it was before" for the red default hints.
+    const [paramDefaults, setParamDefaults] = useState<ScenarioParams>(() => initialParamDefaults);
     // Once the user edits the overs field, keep sending it on every recalc so it doesn't
     // get overwritten by the backend's num_standees-derived default.
-    const [oversPinned, setOversPinned] = useState(false);
-    const [universalLines, setUniversalLines] = useState<CostLine[]>(() => initialLineState.universalLines);
-    const [universalSubtotalOverride, setUniversalSubtotalOverride] = useState<string>(
-        () => universalSubtotalOverrideFromUi(persistedBreakdownUi),
+    const [oversPinned, setOversPinned] = useState(() => initialParams.overs !== initialParamDefaults.overs);
+    const [universalLines, setUniversalLines] = useState<CostLine[]>(() => hydratedUniversalLines);
+    const [universalSubtotalOverride, setUniversalSubtotalOverride] = useState<string>(() =>
+        persistedState
+            ? (persistedState.universal?.subtotal_override ?? "")
+            : universalSubtotalOverrideFromUi(persistedBreakdownUi),
     );
     const [scenarioLines, setScenarioLines] = useState<Record<ScenarioId, CostLine[]>>(
-        () => initialLineState.scenarioLines,
+        () => hydratedScenarioLines,
     );
-    const [scenarioSubtotalOverride, setScenarioSubtotalOverride] = useState<Record<ScenarioId, string>>(() =>
-        scenarioSubtotalOverridesFromUi(persistedBreakdownUi),
-    );
+    const [scenarioSubtotalOverride, setScenarioSubtotalOverride] = useState<Record<ScenarioId, string>>(() => {
+        if (!persistedState) return scenarioSubtotalOverridesFromUi(persistedBreakdownUi);
+        const out: Record<ScenarioId, string> = { 1: "", 2: "", 3: "", 4: "", 5: "" };
+        for (const id of [1, 2, 3, 4, 5] as ScenarioId[]) out[id] = persistedChild(id)?.subtotal_override ?? "";
+        return out;
+    });
     const [debugExplanations, setDebugExplanations] = useState<Record<ScenarioId, CostDebugExplanations>>(() =>
         extractDebugExplanations(initialSources),
     );
@@ -676,10 +686,21 @@ export default function QuoteBreakdown({
     const [universalCostsExpanded, setUniversalCostsExpanded] = useState(COST_DEBUG_ENABLED);
     const [scenarioCostsExpanded, setScenarioCostsExpanded] = useState(COST_DEBUG_ENABLED);
     const [manualDirty, setManualDirty] = useState(false);
-    const [editedUniversalKeys, setEditedUniversalKeys] = useState<Set<string>>(new Set());
-    const [editedScenarioKeys, setEditedScenarioKeys] = useState<Record<ScenarioId, Set<string>>>({ 1: new Set(), 2: new Set(), 3: new Set(), 4: new Set(), 5: new Set() });
-    const origUniversalLines = useRef<CostLine[]>(initialLineState.universalLines);
-    const origScenarioLines  = useRef<Record<ScenarioId, CostLine[]>>(initialLineState.scenarioLines);
+    const [editedUniversalKeys, setEditedUniversalKeys] = useState<Set<string>>(
+        () => new Set(Object.keys(persistedState?.universal?.line_edits ?? {})),
+    );
+    const [editedScenarioKeys, setEditedScenarioKeys] = useState<Record<ScenarioId, Set<string>>>(() => ({
+        1: new Set(Object.keys(persistedChild(1)?.line_edits ?? {})),
+        2: new Set(Object.keys(persistedChild(2)?.line_edits ?? {})),
+        3: new Set(Object.keys(persistedChild(3)?.line_edits ?? {})),
+        4: new Set(Object.keys(persistedChild(4)?.line_edits ?? {})),
+        5: new Set(Object.keys(persistedChild(5)?.line_edits ?? {})),
+    }));
+    // Pristine default lines (pre-edit) — the "what it was before" values.
+    const origUniversalLines = useRef<CostLine[]>(builtInitial.universalLines);
+    const origScenarioLines  = useRef<Record<ScenarioId, CostLine[]>>(builtInitial.scenarioLines);
+    // Latest raw backend blobs per scenario; persisted as each child's "defaults".
+    const sourcesRef = useRef<Record<ScenarioId, Record<string, unknown>>>(initialSources);
     const [contributionMargin, setContributionMargin] = useState(() =>
         initialContributionMargin != null ? String(initialContributionMargin) : "",
     );
@@ -763,29 +784,28 @@ export default function QuoteBreakdown({
     const canPersistQuote = Boolean(persistedQuoteId?.trim() && quoteOwner?.trim());
     const needsSave = canPersistQuote && (isDirty || manualDirty);
 
-    async function persistQuoteSnapshots(
-        sharedParams: ScenarioParams,
-        ul: CostLine[],
-        uso: string,
-        sl: Record<ScenarioId, CostLine[]>,
-        sso: Record<ScenarioId, string>,
-    ): Promise<boolean> {
+    async function persistQuoteSnapshot(snapshot: QuoteSnapshot): Promise<boolean> {
         const qid = persistedQuoteId?.trim();
         const owner = quoteOwner?.trim();
         if (!qid || !owner) return false;
-        const breakdown: Record<string, unknown> = {};
+
+        // Five scenario children: engine defaults + only the manually edited rows.
+        const scenarios: Record<string, PersistedScenarioChild> = {};
         for (const id of [1, 2, 3, 4, 5] as ScenarioId[]) {
-            if (quoteData[`scenario_${id}`] === undefined) continue;
-            breakdown[`scenario_${id}`] = serializeScenarioToSource(id, sharedParams, ul, sl, initialSources);
+            if (quoteData[`scenario_${id}`] === undefined && persistedChild(id) === undefined) continue;
+            scenarios[String(id)] = {
+                defaults: numericOnly(snapshot.sources[id] ?? {}),
+                line_edits: lineEditsFor(snapshot.scenarioLines[id] ?? [], snapshot.scenarioEdited[id] ?? new Set()),
+                subtotal_override: (snapshot.scenarioSubtotalOverride[id] ?? "").trim(),
+            };
         }
-        const ui = buildBreakdownUiPayloadFromState(ul, uso, sl, sso);
-        if (ui) breakdown._breakdown_ui = ui;
+
         const parsedMargin = parseFloat(contributionMargin);
         const contribution_margin =
             Number.isFinite(parsedMargin) && parsedMargin >= 0 && parsedMargin < 100 ? parsedMargin : 0;
         const body = {
             quote_name: (quoteName ?? "").trim() || "Untitled quote",
-            num_standees: sharedParams.numStandees,
+            num_standees: snapshot.params.numStandees,
             contribution_margin,
             scenario: activeScenario,
             standee_type: standeeTypeToPersistLabel(requestPayload.standee_type),
@@ -796,7 +816,15 @@ export default function QuoteBreakdown({
                 linear_inches: e.linear_inches,
                 complexity: e.complexity,
             })),
-            breakdown,
+            scenarios,
+            universal: {
+                line_edits: lineEditsFor(snapshot.universalLines, snapshot.universalEdited),
+                subtotal_override: snapshot.universalSubtotalOverride.trim(),
+            },
+            params: {
+                current: toSpecParams(snapshot.params),
+                defaults: toSpecParams(snapshot.paramDefaults),
+            },
         };
         const res = await fetch(`${API_BASE}/quotes/${encodeURIComponent(qid)}?owner=${encodeURIComponent(owner)}`, {
             method: "PATCH",
@@ -816,13 +844,17 @@ export default function QuoteBreakdown({
         setIsSavingQuote(true);
         setSaveQuoteError(null);
         try {
-            const ok = await persistQuoteSnapshots(
+            const ok = await persistQuoteSnapshot({
                 params,
+                paramDefaults,
                 universalLines,
+                universalEdited: editedUniversalKeys,
                 universalSubtotalOverride,
                 scenarioLines,
+                scenarioEdited: editedScenarioKeys,
                 scenarioSubtotalOverride,
-            );
+                sources: sourcesRef.current,
+            });
             if (ok) {
                 setBaseline({ ...params });
                 setManualDirty(false);
@@ -958,21 +990,30 @@ export default function QuoteBreakdown({
             );
             const newSl = { ...scenarioLines } as Record<ScenarioId, CostLine[]>;
             const newDebug = { ...debugExplanations } as Record<ScenarioId, CostDebugExplanations>;
+            const newSources = { ...sourcesRef.current };
             for (const sid of [1, 2, 3, 4, 5] as ScenarioId[]) {
                 const src = (data[`scenario_${sid}`] ?? {}) as Record<string, number>;
                 if (data[`scenario_${sid}`]) {
                     newSl[sid] = seedLines(buildLines(SCENARIO_KEYS[sid], SCENARIO_LINE_DEFS), src);
                     newDebug[sid] = extractDebugExplanations({ [sid]: src })[sid] ?? {};
+                    newSources[sid] = data[`scenario_${sid}`] as Record<string, unknown>;
                 }
             }
             const newParams: ScenarioParams = { ...params, overs: firstSrc.overs ?? params.overs };
+            // Unpinned overs come back engine-computed, so they become the new default.
+            const nextParamDefaults: ScenarioParams = {
+                ...paramDefaults,
+                ...(oversPinned ? {} : { overs: firstSrc.overs ?? paramDefaults.overs }),
+            };
             const newSso: Record<ScenarioId, string> = { 1: "", 2: "", 3: "", 4: "", 5: "" };
+            sourcesRef.current = newSources;
             setUniversalLines(newUniversalLines);
             setUniversalSubtotalOverride("");
             setScenarioLines(newSl);
             setScenarioSubtotalOverride(newSso);
             setParams(newParams);
             setBaseline({ ...newParams });
+            setParamDefaults(nextParamDefaults);
             setDebugExplanations(newDebug);
             setManualDirty(false);
             setEditedUniversalKeys(new Set());
@@ -982,7 +1023,17 @@ export default function QuoteBreakdown({
             if (canPersistQuote) {
                 setIsSavingQuote(true);
                 try {
-                    const ok = await persistQuoteSnapshots(newParams, newUniversalLines, "", newSl, newSso);
+                    const ok = await persistQuoteSnapshot({
+                        params: newParams,
+                        paramDefaults: nextParamDefaults,
+                        universalLines: newUniversalLines,
+                        universalEdited: new Set(),
+                        universalSubtotalOverride: "",
+                        scenarioLines: newSl,
+                        scenarioEdited: { 1: new Set(), 2: new Set(), 3: new Set(), 4: new Set(), 5: new Set() },
+                        scenarioSubtotalOverride: newSso,
+                        sources: newSources,
+                    });
                     if (!ok) setSaveQuoteError("Could not save quote after recalculate");
                 } catch {
                     setSaveQuoteError("Could not save quote after recalculate");
@@ -1135,6 +1186,9 @@ export default function QuoteBreakdown({
                             disabled={isRecalculating}
                             className={`border-2 border-[#E0E0E0] rounded-sm px-3 py-1.5 text-sm font-black text-[#000005] outline-none focus:border-[#FFC843] w-[140px] text-right transition-colors disabled:opacity-50 ${numStandees !== baseline.numStandees ? "bg-[#FFC843]/20" : "bg-[#F8F8F8]"}`}
                         />
+                        {numStandees !== paramDefaults.numStandees && (
+                            <span className="text-[9px] text-red-600 font-bold">default: {paramDefaults.numStandees}</span>
+                        )}
                     </div>
                     <div className="h-10 w-px bg-[#E0E0E0]" />
                     <div className="flex flex-col gap-1">
@@ -1148,6 +1202,9 @@ export default function QuoteBreakdown({
                             disabled={isRecalculating}
                             className={`border-2 border-[#E0E0E0] rounded-sm px-3 py-1.5 text-sm font-black text-[#000005] outline-none focus:border-[#FFC843] w-[100px] text-right transition-colors disabled:opacity-50 ${printFormsPerStandee !== baseline.printFormsPerStandee ? "bg-[#FFC843]/20" : "bg-[#F8F8F8]"}`}
                         />
+                        {printFormsPerStandee !== paramDefaults.printFormsPerStandee && (
+                            <span className="text-[9px] text-red-600 font-bold">default: {paramDefaults.printFormsPerStandee}</span>
+                        )}
                     </div>
                     <div className="flex flex-col gap-1">
                         <span className="text-[10px] font-black text-[#B1B3B6] uppercase tracking-widest">Structure Forms / Standee</span>
@@ -1160,12 +1217,21 @@ export default function QuoteBreakdown({
                             disabled={isRecalculating}
                             className={`border-2 border-[#E0E0E0] rounded-sm px-3 py-1.5 text-sm font-black text-[#000005] outline-none focus:border-[#FFC843] w-[100px] text-right transition-colors disabled:opacity-50 ${structureFormsPerStandee !== baseline.structureFormsPerStandee ? "bg-[#FFC843]/20" : "bg-[#F8F8F8]"}`}
                         />
+                        {structureFormsPerStandee !== paramDefaults.structureFormsPerStandee && (
+                            <span className="text-[9px] text-red-600 font-bold">default: {paramDefaults.structureFormsPerStandee}</span>
+                        )}
                     </div>
                     <div className="flex flex-col gap-1">
                         <span className="text-[10px] font-black text-[#B1B3B6] uppercase tracking-widest">Blank Forms / Standee</span>
                         <span className="text-sm font-black text-[#000005] text-right py-1.5">
                             {printFormsPerStandee + structureFormsPerStandee}
                         </span>
+                        {printFormsPerStandee + structureFormsPerStandee !==
+                            paramDefaults.printFormsPerStandee + paramDefaults.structureFormsPerStandee && (
+                            <span className="text-[9px] text-red-600 font-bold">
+                                default: {paramDefaults.printFormsPerStandee + paramDefaults.structureFormsPerStandee}
+                            </span>
+                        )}
                     </div>
                     <div className="flex flex-col gap-1">
                         <span className="text-[10px] font-black text-[#B1B3B6] uppercase tracking-widest">Overs / Standee</span>
@@ -1181,6 +1247,9 @@ export default function QuoteBreakdown({
                             disabled={isRecalculating}
                             className={`border-2 border-[#E0E0E0] rounded-sm px-3 py-1.5 text-sm font-black text-[#000005] outline-none focus:border-[#FFC843] w-[100px] text-right transition-colors disabled:opacity-50 ${overs !== baseline.overs ? "bg-[#FFC843]/20" : "bg-[#F8F8F8]"}`}
                         />
+                        {overs !== paramDefaults.overs && (
+                            <span className="text-[9px] text-red-600 font-bold">default: {paramDefaults.overs}</span>
+                        )}
                     </div>
                     <div className="h-10 w-px bg-[#E0E0E0]" />
                     <div className="flex flex-col items-start gap-1.5">
