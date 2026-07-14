@@ -528,7 +528,7 @@ function CostRow({
                         )}
                         {qtyChanged && origLine && (
                             <span className="text-[9px] text-red-600 font-semibold">
-                                default: {parseFloat(origLine.qty.toFixed(2))}
+                                previous: {parseFloat(origLine.qty.toFixed(2))}
                             </span>
                         )}
                     </div>
@@ -548,7 +548,7 @@ function CostRow({
                     />
                     {unitCostChanged && origLine && (
                         <span className="text-[9px] text-red-600 font-semibold">
-                            default: ${parseFloat(origLine.unitCost.toFixed(2))}
+                            previous: ${parseFloat(origLine.unitCost.toFixed(2))}
                         </span>
                     )}
                 </div>
@@ -558,7 +558,7 @@ function CostRow({
                     <span className="text-xs font-black text-[#000005]">${fmt(total)}</span>
                     {isEdited && origTotal != null && Math.abs(origTotal - total) > 0.005 && (
                         <span className="text-[9px] text-red-600 font-semibold">
-                            default: ${fmt(origTotal)}
+                            previous: ${fmt(origTotal)}
                         </span>
                     )}
                 </div>
@@ -1208,7 +1208,7 @@ export default function QuoteBreakdown({
                             className={`border-2 border-[#E0E0E0] rounded-sm px-3 py-1.5 text-sm font-black text-[#000005] outline-none focus:border-[#FFC843] w-[140px] text-right transition-colors disabled:opacity-50 ${numStandees !== baseline.numStandees ? "bg-[#FFC843]/20" : "bg-[#F8F8F8]"}`}
                         />
                         {numStandees !== paramDefaults.numStandees && (
-                            <span className="text-[9px] text-red-600 font-bold">default: {paramDefaults.numStandees}</span>
+                            <span className="text-[9px] text-red-600 font-bold">previous: {paramDefaults.numStandees}</span>
                         )}
                     </div>
                     <div className="h-10 w-px bg-[#E0E0E0]" />
@@ -1224,7 +1224,7 @@ export default function QuoteBreakdown({
                             className={`border-2 border-[#E0E0E0] rounded-sm px-3 py-1.5 text-sm font-black text-[#000005] outline-none focus:border-[#FFC843] w-[100px] text-right transition-colors disabled:opacity-50 ${printFormsPerStandee !== baseline.printFormsPerStandee ? "bg-[#FFC843]/20" : "bg-[#F8F8F8]"}`}
                         />
                         {printFormsPerStandee !== paramDefaults.printFormsPerStandee && (
-                            <span className="text-[9px] text-red-600 font-bold">default: {paramDefaults.printFormsPerStandee}</span>
+                            <span className="text-[9px] text-red-600 font-bold">previous: {paramDefaults.printFormsPerStandee}</span>
                         )}
                     </div>
                     <div className="flex flex-col gap-1">
@@ -1239,7 +1239,7 @@ export default function QuoteBreakdown({
                             className={`border-2 border-[#E0E0E0] rounded-sm px-3 py-1.5 text-sm font-black text-[#000005] outline-none focus:border-[#FFC843] w-[100px] text-right transition-colors disabled:opacity-50 ${structureFormsPerStandee !== baseline.structureFormsPerStandee ? "bg-[#FFC843]/20" : "bg-[#F8F8F8]"}`}
                         />
                         {structureFormsPerStandee !== paramDefaults.structureFormsPerStandee && (
-                            <span className="text-[9px] text-red-600 font-bold">default: {paramDefaults.structureFormsPerStandee}</span>
+                            <span className="text-[9px] text-red-600 font-bold">previous: {paramDefaults.structureFormsPerStandee}</span>
                         )}
                     </div>
                     <div className="flex flex-col gap-1">
@@ -1250,7 +1250,7 @@ export default function QuoteBreakdown({
                         {printFormsPerStandee + structureFormsPerStandee !==
                             paramDefaults.printFormsPerStandee + paramDefaults.structureFormsPerStandee && (
                             <span className="text-[9px] text-red-600 font-bold">
-                                default: {paramDefaults.printFormsPerStandee + paramDefaults.structureFormsPerStandee}
+                                previous: {paramDefaults.printFormsPerStandee + paramDefaults.structureFormsPerStandee}
                             </span>
                         )}
                     </div>
@@ -1269,7 +1269,7 @@ export default function QuoteBreakdown({
                             className={`border-2 border-[#E0E0E0] rounded-sm px-3 py-1.5 text-sm font-black text-[#000005] outline-none focus:border-[#FFC843] w-[100px] text-right transition-colors disabled:opacity-50 ${overs !== baseline.overs ? "bg-[#FFC843]/20" : "bg-[#F8F8F8]"}`}
                         />
                         {overs !== paramDefaults.overs && (
-                            <span className="text-[9px] text-red-600 font-bold">default: {paramDefaults.overs}</span>
+                            <span className="text-[9px] text-red-600 font-bold">previous: {paramDefaults.overs}</span>
                         )}
                     </div>
                     <div className="h-10 w-px bg-[#E0E0E0]" />
