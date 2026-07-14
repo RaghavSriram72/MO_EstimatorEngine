@@ -12,7 +12,7 @@ from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
 from scipy.optimize import curve_fit
 
-from lib.globals import UNIT_MAP
+from lib.globals import UNIT_MAP, project_short_id
 
 
 def _fit_supplier_curve(amounts: list[float], costs: list[float]) -> dict[str, float]:
@@ -120,7 +120,22 @@ class MidnightOilDB:
     def insert_persisted_project(self, doc: dict[str, Any]) -> str:
         """Insert a canonical v1 project document; returns the new document id as a string."""
         result = self.projects_collection.insert_one(doc)
-        return str(result.inserted_id)
+        project_id = str(result.inserted_id)
+        self.projects_collection.update_one(
+            {"_id": result.inserted_id},
+            {"$set": {"short_id": project_short_id(project_id)}},
+        )
+        return project_id
+
+    def _ensure_project_short_id(self, doc: dict[str, Any]) -> dict[str, Any]:
+        """Backfill ``short_id`` on legacy project docs (``doc['_id']`` must already be a str)."""
+        if not doc.get("short_id"):
+            doc["short_id"] = project_short_id(doc["_id"])
+            self.projects_collection.update_one(
+                {"_id": ObjectId(doc["_id"])},
+                {"$set": {"short_id": doc["short_id"]}},
+            )
+        return doc
 
     def list_projects_by_owner(self, owner: str) -> list[dict[str, Any]]:
         """Return all project documents for an owner, newest ``_id`` first."""
@@ -129,7 +144,7 @@ class MidnightOilDB:
         for row in cursor:
             doc = dict(row)
             doc["_id"] = str(doc["_id"])
-            out.append(doc)
+            out.append(self._ensure_project_short_id(doc))
         return out
 
     def get_project_by_owner(self, project_id: str, owner: str) -> dict[str, Any] | None:
@@ -143,6 +158,7 @@ class MidnightOilDB:
             return None
         doc = dict(row)
         doc["_id"] = str(doc["_id"])
+        doc = self._ensure_project_short_id(doc)
         return doc
 
     def update_persisted_project(self, project_id: str, owner: str, fields: dict[str, Any]) -> bool:

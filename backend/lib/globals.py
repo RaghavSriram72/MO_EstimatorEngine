@@ -1,3 +1,12 @@
+import hashlib
+
+
+def project_short_id(project_id: str) -> str:
+    """Deterministic 8-digit hash ID derived from the project's Mongo id string."""
+    digest = hashlib.sha256(project_id.encode()).hexdigest()
+    return f"{int(digest, 16) % 10**8:08d}"
+
+
 FORM_95_WIDTH = 58.5
 FORM_95_LENGTH = 79.625
 FORM_95_AREA = FORM_95_WIDTH * FORM_95_LENGTH

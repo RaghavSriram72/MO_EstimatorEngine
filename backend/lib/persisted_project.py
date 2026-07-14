@@ -6,6 +6,8 @@
  4. num_standees
  5. standee_type
  6. elements list
+ 7. short_id — 8-digit hash ID shown in the UI, derived from the Mongo ``_id``
+    (see ``project_short_id``); set on insert and lazily backfilled on read.
 **Notes**  
 - ``length`` / ``width``: inches; same as ``Element.length`` / ``Element.width``.  
 - ``schema_version``: currently ``1``; bump when the shape changes and migrate loaders.
@@ -18,6 +20,9 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator
 
 from lib.classes import Complexity, Element
+
+# Canonical impl lives in lib.globals (avoids an import cycle with lib.classes.db); re-exported here.
+from lib.globals import project_short_id as project_short_id
 
 PROJECT_SCHEMA_VERSION = 1
 

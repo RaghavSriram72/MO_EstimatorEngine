@@ -311,6 +311,7 @@ export default function Inputter() {
 
     // ── Saved project state ────────────────────────────────────────────────
     const [activeProjectId, setActiveProjectId]     = useState<string | null>(null);
+    const [activeProjectShortId, setActiveProjectShortId] = useState<string | null>(null);
     const [projectList, setProjectList]             = useState<ProjectSummary[]>([]);
     const [projectListLoading, setProjectListLoading] = useState(false);
     const [projectListError, setProjectListError]   = useState<string | null>(null);
@@ -416,7 +417,10 @@ export default function Inputter() {
 
     const filteredProjects = useMemo(() =>
         projectList.filter((p) =>
-            searchMatches(projectSearchQuery, `${p.project_name || ""} ${p.num_standees} ${p.standee_type} ${p._id}`),
+            searchMatches(
+                projectSearchQuery,
+                `${p.project_name || ""} ${p.num_standees} ${p.standee_type} ${p._id} ${p.short_id ?? ""} #${p.short_id ?? ""}`,
+            ),
         ),
     [projectList, projectSearchQuery]);
 
@@ -438,6 +442,7 @@ export default function Inputter() {
         setElementListKey((k) => k + 1);
         setProjectName("Untitled project");
         setActiveProjectId(null);
+        setActiveProjectShortId(null);
         setActiveQuoteData(null);
         setActiveQuotePayload(null);
         setIsQuoteGenerating(false);
@@ -452,7 +457,7 @@ export default function Inputter() {
     }
 
     // POST /create-project  or  PATCH /projects/:id  → save current form to MongoDB
-    async function saveCurrentProject(): Promise<{ success: boolean; projectId?: string; errorMessage?: string }> {
+    async function saveCurrentProject(): Promise<{ success: boolean; projectId?: string; shortId?: string; errorMessage?: string }> {
         const owner = localStorage.getItem("username");
         if (!owner?.trim()) return { success: false, errorMessage: "Not signed in" };
         if (!canCalculate)  return { success: false, errorMessage: "Add standees and at least one element" };
@@ -476,7 +481,20 @@ export default function Inputter() {
                 );
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok) return { success: false, errorMessage: apiErrorMessage(data) ?? "Could not update project" };
-                return { success: true, projectId: activeProjectId };
+                let shortId = activeProjectShortId ?? undefined;
+                // Older sessions may not have the short id yet — pick it up from the doc
+                // (the backend backfills short_id on read).
+                if (!shortId) {
+                    const docRes = await fetch(
+                        `${API_BASE}/projects/${encodeURIComponent(activeProjectId)}?owner=${encodeURIComponent(owner)}`,
+                    );
+                    const doc = await docRes.json().catch(() => ({}));
+                    if (docRes.ok && typeof doc.short_id === "string") {
+                        shortId = doc.short_id;
+                        setActiveProjectShortId(doc.short_id);
+                    }
+                }
+                return { success: true, projectId: activeProjectId, shortId };
             }
             // POST /create-project → create a new project
             const res = await fetch(`${API_BASE}/create-project`, {
@@ -494,8 +512,10 @@ export default function Inputter() {
             const data = await res.json().catch(() => ({}));
             if (!res.ok) return { success: false, errorMessage: apiErrorMessage(data) ?? "Could not save project" };
             if (typeof data.project_id !== "string") return { success: false, errorMessage: "Could not save project" };
+            const shortId = typeof data.short_id === "string" ? data.short_id : undefined;
             setActiveProjectId(data.project_id);
-            return { success: true, projectId: data.project_id };
+            setActiveProjectShortId(shortId ?? null);
+            return { success: true, projectId: data.project_id, shortId };
         } catch (e) {
             console.error("Save failed:", e);
             return { success: false, errorMessage: "Save failed" };
@@ -518,6 +538,7 @@ export default function Inputter() {
                 return;
             }
             setActiveProjectId(doc._id);
+            setActiveProjectShortId(typeof doc.short_id === "string" ? doc.short_id : null);
             setProjectName(typeof doc.project_name === "string" ? doc.project_name : "Untitled project");
             setStandeeType((doc.standee_type as StandeeType) || "Simple");
             setStandeeCount(typeof doc.num_standees === "number" ? doc.num_standees : "");
@@ -705,7 +726,7 @@ export default function Inputter() {
         const r = await saveCurrentProject();
         if (r.success) {
             setProjectListRefreshKey((v) => v + 1);
-            showToast("Project saved", "save");
+            showToast(r.shortId ? `Project saved — ID #${r.shortId}` : "Project saved", "save");
         } else if (r.errorMessage) console.error(r.errorMessage);
     }
 
@@ -911,7 +932,17 @@ export default function Inputter() {
             <div className="flex flex-col items-center flex-1 min-w-0 min-h-0 overflow-hidden px-8 py-6 bg-white">
                 <div className="w-full max-w-2xl mb-4 shrink-0">
                     <div className="text-xs font-bold text-[#FFC843] tracking-widest uppercase mb-1">// ESTIMATOR</div>
-                    <div className="text-3xl font-black text-[#000005] uppercase tracking-tight">Quote Estimate</div>
+                    <div className="flex items-center gap-3 flex-wrap">
+                        <div className="text-3xl font-black text-[#000005] uppercase tracking-tight">Quote Estimate</div>
+                        {activeProjectShortId && (
+                            <span
+                                title="Project ID"
+                                className="text-[11px] font-black tracking-widest text-[#000005] bg-[#FFC843]/25 border border-[#FFC843] rounded-sm px-2 py-1 tabular-nums"
+                            >
+                                ID #{activeProjectShortId}
+                            </span>
+                        )}
+                    </div>
                     <p className="text-xs text-[#B1B3B6] mt-1 font-semibold">Configure parameters to generate a cost estimate</p>
                 </div>
 

@@ -4,6 +4,8 @@ import ConfirmAlert from "@/components/ConfirmAlert";
 
 export type ProjectSummary = {
     _id: string;
+    /** 8-digit hash ID shown to users and searchable in the sidebar. */
+    short_id?: string;
     project_name: string;
     num_standees: number;
     standee_type: "Simple" | "Moderate" | "Complex";
@@ -93,7 +95,7 @@ export default function ProjectSidebar({
             onConfirm={confirmDelete}
             onCancel={() => setPendingDelete(null)}
         />
-        <aside className="shrink-0 w-[250px] flex flex-col border-r-2 border-[#E0E0E0] bg-white px-3 py-5 gap-3">
+        <aside className="shrink-0 w-[285px] flex flex-col border-r-2 border-[#E0E0E0] bg-white px-3 py-5 gap-3">
             <div className="flex flex-col gap-0.5 pl-3">
                 <span className="text-[11px] font-bold tracking-[0.2em] uppercase text-[#B1B3B6]">Your Work</span>
                 <div className="flex items-center gap-2">
@@ -168,9 +170,14 @@ export default function ProjectSidebar({
                                         {p.project_name || "Untitled"}
                                     </div>
                                 )}
-                                <div className="flex items-center gap-1.5 mt-1.5">
-                                    <span className="text-[9px] text-[#B1B3B6] font-semibold">{p.num_standees} standees</span>
-                                    <span className={`text-[8.5px] font-bold px-1.5 py-0.5 rounded-full ${STANDEE_BADGE[p.standee_type] ?? "bg-[#F0F0F0] text-[#888]"}`}>
+                                <div className="flex items-center gap-1.5 mt-1.5 whitespace-nowrap overflow-hidden">
+                                    {p.short_id && (
+                                        <span className="shrink-0 text-[9px] font-black text-[#8a6d1f] bg-[#FFC843]/20 rounded-sm px-1 py-0.5 tabular-nums">
+                                            #{p.short_id}
+                                        </span>
+                                    )}
+                                    <span className="shrink-0 text-[9px] text-[#B1B3B6] font-semibold">{p.num_standees} standees</span>
+                                    <span className={`shrink-0 text-[8.5px] font-bold px-1.5 py-0.5 rounded-full ${STANDEE_BADGE[p.standee_type] ?? "bg-[#F0F0F0] text-[#888]"}`}>
                                         {p.standee_type}
                                     </span>
                                 </div>

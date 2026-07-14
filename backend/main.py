@@ -40,6 +40,7 @@ from lib.persisted_project import (
     elements_to_persisted,
     persisted_create_to_mongo_document,
     persisted_update_to_mongo_set,
+    project_short_id,
 )
 from lib.persisted_quote import (
     PersistedQuoteCreateBody,
@@ -525,7 +526,11 @@ async def create_project(payload: PersistedProjectCreate):
     project_id = db.insert_persisted_project(doc)
     return JSONResponse(
         status_code=201,
-        content={"project_id": project_id, "message": "Project created successfully"},
+        content={
+            "project_id": project_id,
+            "short_id": project_short_id(project_id),
+            "message": "Project created successfully",
+        },
     )
 
 
