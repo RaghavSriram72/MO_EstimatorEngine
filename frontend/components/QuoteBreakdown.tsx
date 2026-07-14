@@ -782,7 +782,7 @@ export default function QuoteBreakdown({
         overs !== baseline.overs;
 
     const canPersistQuote = Boolean(persistedQuoteId?.trim() && quoteOwner?.trim());
-    const needsSave = canPersistQuote && (isDirty || manualDirty);
+    const needsSave = canPersistQuote && manualDirty;
 
     async function persistQuoteSnapshot(snapshot: QuoteSnapshot): Promise<boolean> {
         const qid = persistedQuoteId?.trim();
