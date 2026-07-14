@@ -49,6 +49,9 @@ type Props = {
     onBack: () => void;
     /** Keeps parent sidebar / payload in sync when standee count is edited. */
     onNumStandeesChange?: (numStandees: number) => void;
+    /** Fires after a successful recalculate with a new standee count, so the
+     * parent can persist it back to the project. */
+    onNumStandeesCommitted?: (numStandees: number) => void;
 };
 
 function resolveInitialActiveScenario(quoteData: QuoteData, hint?: ScenarioId): ScenarioId {
@@ -617,6 +620,7 @@ export default function QuoteBreakdown({
     quoteOwner = null,
     onBack,
     onNumStandeesChange,
+    onNumStandeesCommitted,
 }: Props) {
     const [activeScenario, setActiveScenario] = useState<ScenarioId>(() =>
         resolveInitialActiveScenario(quoteData, initialActiveScenario),
@@ -1033,6 +1037,10 @@ export default function QuoteBreakdown({
             setEditedScenarioKeys({ 1: new Set(), 2: new Set(), 3: new Set(), 4: new Set(), 5: new Set() });
             origUniversalLines.current = newUniversalLines;
             origScenarioLines.current  = newSl;
+            // Standee count is now committed to the quote — sync it back to the project.
+            if (newParams.numStandees !== baseline.numStandees) {
+                onNumStandeesCommitted?.(newParams.numStandees);
+            }
             if (canPersistQuote) {
                 setIsSavingQuote(true);
                 try {

@@ -834,6 +834,33 @@ export default function Inputter() {
         // if (activeId) setSavedQuoteList((prev) => prev.map((q) => (q._id === activeId ? { ...q, num_standees: numStandees } : q)));
     }
 
+    // Fired after a successful recalculate changed the standee count — sync the
+    // estimator form and persist it to the project so the sidebar stays accurate.
+    async function handleActiveQuoteNumStandeesCommitted(numStandees: number) {
+        setStandeeCount(numStandees);
+        const owner = localStorage.getItem("username");
+        if (!owner?.trim() || !activeProjectId) return;
+        try {
+            const res = await fetch(
+                `${API_BASE}/projects/${encodeURIComponent(activeProjectId)}?owner=${encodeURIComponent(owner)}`,
+                {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        project_name: projectName.trim() || "Untitled project",
+                        num_standees: numStandees,
+                        standee_type: standeeType,
+                        elements: elementsForApi(elements),
+                    }),
+                },
+            );
+            if (res.ok) setProjectListRefreshKey((v) => v + 1);
+            else console.error("Could not sync standee count to project:", await res.json().catch(() => ({})));
+        } catch (e) {
+            console.error("Could not sync standee count to project:", e);
+        }
+    }
+
     // Called when vision processing completes and returns detected elements
     function handleVisionElementsLoaded(raw: { id: number; width: number; height: number; mask_b64?: string }[]) {
         const mapped: Element[] = raw.map((r, i) => ({
@@ -902,6 +929,7 @@ export default function Inputter() {
                     quoteOwner={typeof window !== "undefined" ? localStorage.getItem("username") : null}
                     onBack={clearActiveQuote}
                     onNumStandeesChange={handleActiveQuoteNumStandeesChange}
+                    onNumStandeesCommitted={(n) => void handleActiveQuoteNumStandeesCommitted(n)}
                 />
                 {toastJsx}
             </>
