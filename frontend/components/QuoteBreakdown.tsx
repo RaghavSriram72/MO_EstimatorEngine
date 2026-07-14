@@ -104,22 +104,27 @@ const SCENARIO_KEYS: Record<ScenarioId, string[]> = {
     5: ["mount_die_buyout_cost", "litho_buyout_cost", "label_cost", "instruction_sheet_cost", "freight_cost", "die_cost", "packout"],
 };
 
-// Keys whose calculation is identical across multiple scenarios.
-// Editing one propagates the change to all others in its group.
-// Keys NOT listed here (pallet_*, freight_cost, mount_die_buyout_cost, litho_buyout_cost)
-// are calculated differently per scenario and remain independent.
+// Manual edits to a cost row propagate to every scenario that shares the same
+// line key, keeping specs consistent across scenarios. Each group lists all
+// scenarios containing that key (see SCENARIO_KEYS). Engine-computed defaults
+// stay per-scenario — only user edits are synced.
 const SCENARIO_SYNC_GROUPS: Partial<Record<string, ScenarioId[]>> = {
-    corrugate_cost:            [1, 2, 3],       // InHouseProject._get_corrugate_cost()
-    print_form_cost:           [1, 2, 3, 4],    // same line key, user-synced across all print scenarios
-    print_cost:                [1, 2, 3],       // InHouseProject, same machine
-    rollx_cost:                [1, 2, 3],       // InHouseProject only
-    zund_cut_cost:             [1, 2, 3],       // InHouseProject._get_zund_hours()
-    shipping_box_cost:         [1, 2, 3],       // InHouseProject._get_shipping_box_and_label_cost()
-    label_cost:                [1, 2, 3, 4, 5], // All scenarios: same _get_shipping_box_and_label_cost()
-    kitting_and_assembly_cost: [1, 2],          // Only present in 1 & 2
-    instruction_sheet_cost:    [1, 3, 4, 5],   // All use _get_instruction_sheet_cost()
-    die_cost:                  [4, 5],          // OutsourceProject._get_die_cost()
-    packout:                   [3, 4, 5],       // Same packout formula
+    corrugate_cost:            [1, 2, 3],
+    print_form_cost:           [1, 2, 3, 4],
+    print_cost:                [1, 2, 3, 4],
+    rollx_cost:                [1, 2, 3],
+    zund_cut_cost:             [1, 2, 3],
+    shipping_box_cost:         [1, 2, 3, 4],
+    label_cost:                [1, 2, 3, 4, 5],
+    kitting_and_assembly_cost: [1, 2],
+    instruction_sheet_cost:    [1, 3, 4, 5],
+    pallet_material_cost:      [3, 4],
+    pallet_labor_cost:         [3, 4],
+    freight_cost:              [3, 4, 5],
+    mount_die_buyout_cost:     [4, 5],
+    die_cost:                  [4, 5],
+    packout:                   [3, 4, 5],
+    // litho_buyout_cost only exists in scenario 5 — nothing to sync.
 };
 
 
@@ -289,7 +294,9 @@ function numericOnly(blob: Record<string, unknown>): Record<string, number> {
     return out;
 }
 
-/** Re-applies saved manual edits on top of default-seeded lines. */
+/** Re-applies saved manual edits on top of default-seeded lines.
+ * rawTotal is dropped on edited rows so totals recompute as qty × unitCost,
+ * matching live editing behavior. */
 function applyPersistedEdits(
     lines: CostLine[],
     edits: Record<string, PersistedLineEdit> | undefined,
@@ -297,7 +304,7 @@ function applyPersistedEdits(
     if (!edits) return lines;
     return lines.map((l) => {
         const e = edits[l.key];
-        return e ? { ...l, qty: e.qty, unitCost: e.unit_cost } : l;
+        return e ? { ...l, qty: e.qty, unitCost: e.unit_cost, rawTotal: undefined } : l;
     });
 }
 
@@ -455,7 +462,7 @@ function CostRow({
     debugExplanation?: string;
     debugPending?: boolean;
     isEdited?: boolean;
-    origLine?: { qty: number; unitCost: number };
+    origLine?: { qty: number; unitCost: number; rawTotal?: number };
 }) {
     const isFlat        = line.unit === "flat";
     const isStandees    = line.unit === "standees";
@@ -465,7 +472,10 @@ function CostRow({
 
     const qtyChanged      = isEdited && origLine != null && Math.abs(origLine.qty - line.qty) > 0.00005;
     const unitCostChanged = isEdited && origLine != null && Math.abs(origLine.unitCost - line.unitCost) > 0.00005;
-    const origTotal       = origLine != null ? (isFlat ? origLine.unitCost : origLine.qty * origLine.unitCost) : null;
+    const origTotal       =
+        origLine != null
+            ? origLine.rawTotal ?? (isFlat ? origLine.unitCost : origLine.qty * origLine.unitCost)
+            : null;
 
     return (
         <div className={`grid grid-cols-[1fr_auto] items-center gap-6 px-8  py-2.5 rounded-lg border-[#F0F0F0] last:border-0 -mx-4 px-4 transition-colors ${isEdited ? "bg-[#ffc400]/47 border-l-[3px] border-l-[#FFC843]" : ""}`}>
@@ -875,7 +885,9 @@ export default function QuoteBreakdown({
 
     function updateUniversal(key: string, field: "qty" | "unitCost", value: number) {
         setManualDirty(true);
-        setUniversalLines((prev) => prev.map((l) => l.key === key ? { ...l, [field]: value } : l));
+        // Manual edits take over the row: drop any backend-provided rawTotal so the
+        // displayed total becomes qty × unitCost.
+        setUniversalLines((prev) => prev.map((l) => l.key === key ? { ...l, [field]: value, rawTotal: undefined } : l));
         const orig = origUniversalLines.current.find((l) => l.key === key);
         const cur  = universalLines.find((l) => l.key === key);
         const next = cur ? { ...cur, [field]: value } : null;
@@ -900,7 +912,8 @@ export default function QuoteBreakdown({
             const next = { ...prev };
             for (const sid of scenariosToUpdate) {
                 if (!prev[sid]) continue;
-                let lines = prev[sid].map((l) => l.key === key ? { ...l, [field]: value } : l);
+                // Drop rawTotal on manual edit so buyout rows recompute as qty × unitCost.
+                let lines = prev[sid].map((l) => l.key === key ? { ...l, [field]: value, rawTotal: undefined } : l);
                 // Proportionally scale print/rollx/zund hours when form count changes
                 if (key === "print_form_cost" && field === "qty") {
                     const oldForms = prev[sid].find((l) => l.key === "print_form_cost")?.qty ?? 0;
