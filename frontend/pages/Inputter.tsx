@@ -3,6 +3,7 @@ import ElementsManager from "@/components/ElementsManager";
 import Dropdown from "@/components/Dropdown";
 import QuoteBreakdown from "@/components/QuoteBreakdown";
 import UploadBlueModal from "@/components/UploadBlueModal";
+import HistoryModal from "@/components/HistoryModal";
 import ProjectSidebar, { type ProjectSummary } from "@/components/inputter/ProjectSidebar";
 // import BuildQuoteModal from "@/components/BuildQuoteModal";
 // import QuotesSidebar, { type SavedQuoteListItem } from "@/components/inputter/QuotesSidebar";
@@ -336,6 +337,7 @@ export default function Inputter() {
     const [projectSearchQuery, setProjectSearchQuery]   = useState("");
     // const [quoteSearchQuery, setQuoteSearchQuery]     = useState("");
     const [uploadBlueOpen, setUploadBlueOpen]           = useState(false);
+    const [historyModalOpen, setHistoryModalOpen]       = useState(false);
     const [isSavingBeforeContinue, setIsSavingBeforeContinue] = useState(false);
     const [toast, setToast]                             = useState<{ message: string; type: "save" | "delete" } | null>(null);
     const [toastVisible, setToastVisible]               = useState(false);
@@ -940,6 +942,18 @@ export default function Inputter() {
     return (
         <>
         <UploadBlueModal open={uploadBlueOpen} onClose={() => setUploadBlueOpen(false)} onElementsLoaded={handleVisionElementsLoaded} />
+        {activeProjectId && (
+            <HistoryModal
+                open={historyModalOpen}
+                onClose={() => setHistoryModalOpen(false)}
+                projectId={activeProjectId}
+                owner={typeof window !== "undefined" ? localStorage.getItem("username") ?? "" : ""}
+                onReverted={(entityType, label) => {
+                    if (entityType === "project") void loadProject(activeProjectId);
+                    showToast(`Reverted ${label}`, "save");
+                }}
+            />
+        )}
         <div className="flex flex-row w-full flex-1 min-h-0 overflow-hidden bg-[#F8F8F8]">
 
             <ProjectSidebar
@@ -1030,10 +1044,10 @@ export default function Inputter() {
                     {/* Action buttons */}
                     <div className="flex w-full flex-row items-center px-4 py-3 gap-3 shrink-0 flex-wrap">
                         <div
-                            onClick={resetEstimatorForm}
+                            onClick={activeProjectId ? () => setHistoryModalOpen(true) : resetEstimatorForm}
                             className="text-xs text-center font-black text-[#B1B3B6] border-2 border-[#E0E0E0] py-3 rounded-sm flex-1 min-w-[100px] cursor-pointer hover:bg-[#F4F4F4] hover:text-[#000005] hover:border-[#B1B3B6] transition-all duration-200 uppercase tracking-widest"
                         >
-                            CLEAR
+                            {activeProjectId ? "VIEW HISTORY" : "CLEAR"}
                         </div>
                         <div
                             onClick={() => setUploadBlueOpen(true)}

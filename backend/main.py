@@ -616,7 +616,7 @@ async def update_quote(
     if not db.check_username_exists(owner):
         return JSONResponse(status_code=404, content={"error": "Unknown owner"})
     fields = persisted_quote_update_to_mongo_set(payload)
-    if not db.update_persisted_quote(quote_id, owner, fields):
+    if not db.update_persisted_quote(quote_id, owner, fields, changed_by=owner, change_type="update"):
         return JSONResponse(status_code=404, content={"error": "Quote not found"})
     return {"message": "Quote updated successfully", "quote_id": quote_id}
 
@@ -635,7 +635,9 @@ async def rename_quote(
     db = _ensure_db()
     if not db.check_username_exists(owner):
         return JSONResponse(status_code=404, content={"error": "Unknown owner"})
-    if not db.update_persisted_quote(quote_id, owner, {"quote_name": payload.quote_name.strip()}):
+    if not db.update_persisted_quote(
+        quote_id, owner, {"quote_name": payload.quote_name.strip()}, changed_by=owner, change_type="rename"
+    ):
         return JSONResponse(status_code=404, content={"error": "Quote not found"})
     return {"message": "Quote renamed", "quote_id": quote_id, "quote_name": payload.quote_name.strip()}
 
@@ -665,7 +667,7 @@ async def update_project(
     if not db.check_username_exists(owner):
         return JSONResponse(status_code=404, content={"error": "Unknown owner"})
     fields = persisted_update_to_mongo_set(payload)
-    if not db.update_persisted_project(project_id, owner, fields):
+    if not db.update_persisted_project(project_id, owner, fields, changed_by=owner, change_type="update"):
         return JSONResponse(status_code=404, content={"error": "Project not found"})
     return {"message": "Project updated successfully", "project_id": project_id}
 
@@ -684,7 +686,9 @@ async def rename_project(
     db = _ensure_db()
     if not db.check_username_exists(owner):
         return JSONResponse(status_code=404, content={"error": "Unknown owner"})
-    if not db.update_persisted_project(project_id, owner, {"project_name": payload.project_name.strip()}):
+    if not db.update_persisted_project(
+        project_id, owner, {"project_name": payload.project_name.strip()}, changed_by=owner, change_type="rename"
+    ):
         return JSONResponse(status_code=404, content={"error": "Project not found"})
     return {"message": "Project renamed", "project_id": project_id, "project_name": payload.project_name.strip()}
 
@@ -701,6 +705,52 @@ async def delete_project(
     if not db.delete_persisted_project(project_id, owner):
         return JSONResponse(status_code=404, content={"error": "Project not found"})
     return {"message": "Project deleted", "project_id": project_id}
+
+
+@app.get("/projects/{project_id}/history")
+async def list_project_history(
+    project_id: str,
+    owner: str = Query(..., description="Must match the document's owner field"),
+):
+    """Combined project+quote history timeline for a project, newest first."""
+    db = _ensure_db()
+    if not db.check_username_exists(owner):
+        return JSONResponse(status_code=404, content={"error": "Unknown owner"})
+    if db.get_project_by_owner(project_id, owner) is None:
+        return JSONResponse(status_code=404, content={"error": "Project not found"})
+    return {"history": db.list_project_history(project_id, owner)}
+
+
+@app.get("/projects/{project_id}/history/{history_id}")
+async def get_project_history_entry(
+    project_id: str,
+    history_id: str,
+    owner: str = Query(..., description="Must match the document's owner field"),
+):
+    """Return one history entry including its full snapshot, for the preview pane."""
+    db = _ensure_db()
+    if not db.check_username_exists(owner):
+        return JSONResponse(status_code=404, content={"error": "Unknown owner"})
+    entry = db.get_history_entry(project_id, history_id, owner)
+    if entry is None:
+        return JSONResponse(status_code=404, content={"error": "History entry not found"})
+    return entry
+
+
+@app.post("/projects/{project_id}/history/{history_id}/revert")
+async def revert_project_history(
+    project_id: str,
+    history_id: str,
+    owner: str = Query(..., description="Must match the document's owner field"),
+):
+    """Restore a project or quote to a past snapshot; records a new 'revert' history entry."""
+    db = _ensure_db()
+    if not db.check_username_exists(owner):
+        return JSONResponse(status_code=404, content={"error": "Unknown owner"})
+    result = db.revert_history_entry(project_id, history_id, owner, changed_by=owner)
+    if result is None:
+        return JSONResponse(status_code=404, content={"error": "History entry not found"})
+    return result
 
 
 @app.post("/create-account")

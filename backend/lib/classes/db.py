@@ -14,6 +14,22 @@ from scipy.optimize import curve_fit
 
 from lib.globals import UNIT_MAP, project_short_id
 
+# Fields a caller may set via update_persisted_project / update_persisted_quote — also
+# the field set snapshotted into a history entry's "snapshot" and restored on revert.
+_PROJECT_UPDATE_ALLOWED_FIELDS = {"project_name", "num_standees", "standee_type", "elements"}
+_QUOTE_UPDATE_ALLOWED_FIELDS = {
+    "quote_name",
+    "breakdown",
+    "scenarios",
+    "universal",
+    "params",
+    "num_standees",
+    "scenario",
+    "standee_type",
+    "elements",
+    "contribution_margin",
+}
+
 
 def _fit_supplier_curve(amounts: list[float], costs: list[float]) -> dict[str, float]:
     """Fit a power-law curve to supplier price breaks and return params plus R²."""
@@ -75,6 +91,8 @@ class MidnightOilDB:
         self.users_collection = self.db["users"]
         self.projects_collection = self.db["projects"]
         self.quotes_collection = self.db["quotes"]
+        self.history_collection = self.db["history"]
+        self.history_collection.create_index([("project_id", 1), ("created_at", -1)])
         self._load_cache()
         return self
 
@@ -117,6 +135,41 @@ class MidnightOilDB:
         """Retrieve a user document by username."""
         return self.users_collection.find_one({"username": username})
 
+    def _record_history(
+        self,
+        *,
+        project_id: str,
+        owner: str,
+        entity_type: str,
+        change_type: str,
+        changed_by: str,
+        label: str,
+        snapshot: dict[str, Any],
+        quote_id: str | None = None,
+        scenario: int | None = None,
+        reverted_from_history_id: str | None = None,
+    ) -> None:
+        """Append one history entry. ``changed_by`` is the ``owner`` query param on the
+        write request — there is no separate session/identity layer in this app, and
+        every write is already scoped to ``{"_id": ..., "owner": owner}``, so today
+        ``changed_by`` always equals the document's own ``owner``.
+        """
+        self.history_collection.insert_one(
+            {
+                "project_id": ObjectId(project_id),
+                "owner": owner,
+                "entity_type": entity_type,
+                "quote_id": ObjectId(quote_id) if quote_id else None,
+                "scenario": scenario,
+                "change_type": change_type,
+                "changed_by": changed_by,
+                "label": label,
+                "snapshot": snapshot,
+                "reverted_from_history_id": ObjectId(reverted_from_history_id) if reverted_from_history_id else None,
+                "created_at": datetime.now(UTC),
+            }
+        )
+
     def insert_persisted_project(self, doc: dict[str, Any]) -> str:
         """Insert a canonical v1 project document; returns the new document id as a string."""
         result = self.projects_collection.insert_one(doc)
@@ -124,6 +177,15 @@ class MidnightOilDB:
         self.projects_collection.update_one(
             {"_id": result.inserted_id},
             {"$set": {"short_id": project_short_id(project_id)}},
+        )
+        self._record_history(
+            project_id=project_id,
+            owner=doc["owner"],
+            entity_type="project",
+            change_type="create",
+            changed_by=doc["owner"],
+            label=doc.get("project_name", "Untitled project"),
+            snapshot={k: doc[k] for k in _PROJECT_UPDATE_ALLOWED_FIELDS if k in doc},
         )
         return project_id
 
@@ -161,18 +223,36 @@ class MidnightOilDB:
         doc = self._ensure_project_short_id(doc)
         return doc
 
-    def update_persisted_project(self, project_id: str, owner: str, fields: dict[str, Any]) -> bool:
+    def update_persisted_project(
+        self,
+        project_id: str,
+        owner: str,
+        fields: dict[str, Any],
+        changed_by: str | None = None,
+        change_type: str = "update",
+    ) -> bool:
         """Update an existing project MongoDB entry."""
         try:
             oid = ObjectId(project_id)
         except (InvalidId, TypeError):
             return False
-        allowed = {"project_name", "num_standees", "standee_type", "elements"}
-        update_doc = {k: v for k, v in fields.items() if k in allowed}
+        update_doc = {k: v for k, v in fields.items() if k in _PROJECT_UPDATE_ALLOWED_FIELDS}
         if not update_doc:
             return False
         result = self.projects_collection.update_one({"_id": oid, "owner": owner}, {"$set": update_doc})
         self._load_cache()
+        if result.matched_count > 0:
+            full_doc = self.get_project_by_owner(project_id, owner)
+            if full_doc is not None:
+                self._record_history(
+                    project_id=project_id,
+                    owner=owner,
+                    entity_type="project",
+                    change_type=change_type,
+                    changed_by=changed_by or owner,
+                    label=full_doc.get("project_name", "Untitled project"),
+                    snapshot={k: full_doc[k] for k in _PROJECT_UPDATE_ALLOWED_FIELDS if k in full_doc},
+                )
         return result.matched_count > 0
 
     def delete_persisted_project(self, project_id: str, owner: str) -> bool:
@@ -196,7 +276,19 @@ class MidnightOilDB:
         Returns the new ``_id`` as a string.
         """
         result = self.quotes_collection.insert_one(doc)
-        return str(result.inserted_id)
+        quote_id = str(result.inserted_id)
+        self._record_history(
+            project_id=str(doc["project_id"]),
+            owner=doc["owner"],
+            entity_type="quote",
+            change_type="create",
+            changed_by=doc["owner"],
+            label=f'{doc.get("quote_name", "Untitled quote")} — Scenario {doc.get("scenario")}',
+            snapshot={k: doc[k] for k in _QUOTE_UPDATE_ALLOWED_FIELDS if k in doc},
+            quote_id=quote_id,
+            scenario=doc.get("scenario"),
+        )
+        return quote_id
 
     def get_quote_by_owner(self, quote_id: str, owner: str) -> dict[str, Any] | None:
         """Return one quote document if it exists and belongs to ``owner``."""
@@ -233,29 +325,38 @@ class MidnightOilDB:
             out.append(doc)
         return out
 
-    def update_persisted_quote(self, quote_id: str, owner: str, fields: dict[str, Any]) -> bool:
+    def update_persisted_quote(
+        self,
+        quote_id: str,
+        owner: str,
+        fields: dict[str, Any],
+        changed_by: str | None = None,
+        change_type: str = "update",
+    ) -> bool:
         """Update allowed fields on a quote owned by ``owner``."""
         try:
             qid = ObjectId(quote_id)
         except (InvalidId, TypeError):
             return False
-        allowed = {
-            "quote_name",
-            "breakdown",
-            "scenarios",
-            "universal",
-            "params",
-            "num_standees",
-            "scenario",
-            "standee_type",
-            "elements",
-            "contribution_margin",
-        }
-        update_doc_final = {k: v for k, v in fields.items() if k in allowed}
+        update_doc_final = {k: v for k, v in fields.items() if k in _QUOTE_UPDATE_ALLOWED_FIELDS}
         if not update_doc_final:
             return False
         update_doc_final["updated_at"] = datetime.now(UTC)
         result = self.quotes_collection.update_one({"_id": qid, "owner": owner}, {"$set": update_doc_final})
+        if result.matched_count > 0:
+            full_doc = self.get_quote_by_owner(quote_id, owner)
+            if full_doc is not None:
+                self._record_history(
+                    project_id=full_doc["project_id"],
+                    owner=owner,
+                    entity_type="quote",
+                    change_type=change_type,
+                    changed_by=changed_by or owner,
+                    label=f'{full_doc.get("quote_name", "Untitled quote")} — Scenario {full_doc.get("scenario")}',
+                    snapshot={k: full_doc[k] for k in _QUOTE_UPDATE_ALLOWED_FIELDS if k in full_doc},
+                    quote_id=quote_id,
+                    scenario=full_doc.get("scenario"),
+                )
         return result.matched_count > 0
 
     def delete_persisted_quote(self, quote_id: str, owner: str) -> bool:
@@ -275,6 +376,117 @@ class MidnightOilDB:
             return 0
         result = self.quotes_collection.delete_many({"project_id": oid, "owner": owner})
         return result.deleted_count
+
+    def list_project_history(self, project_id: str, owner: str) -> list[dict[str, Any]]:
+        """Combined project+quote history for a project, metadata only (no ``snapshot``), newest first."""
+        try:
+            pid = ObjectId(project_id)
+        except (InvalidId, TypeError):
+            return []
+        # Sort by _id as a tiebreak: ObjectIds are monotonically increasing even when two
+        # entries share the same ``created_at`` timestamp, so this keeps "which one is
+        # newest" deterministic (load-bearing for picking the single "current version").
+        cursor = self.history_collection.find(
+            {"project_id": pid, "owner": owner},
+            {"snapshot": 0},
+        ).sort([("created_at", -1), ("_id", -1)])
+        out: list[dict[str, Any]] = []
+        for row in cursor:
+            doc = dict(row)
+            doc["_id"] = str(doc["_id"])
+            doc["project_id"] = str(doc["project_id"])
+            if doc.get("quote_id"):
+                doc["quote_id"] = str(doc["quote_id"])
+            if doc.get("reverted_from_history_id"):
+                doc["reverted_from_history_id"] = str(doc["reverted_from_history_id"])
+            if hasattr(doc.get("created_at"), "isoformat"):
+                doc["created_at"] = doc["created_at"].isoformat()
+            out.append(doc)
+        return out
+
+    def get_history_entry(self, project_id: str, history_id: str, owner: str) -> dict[str, Any] | None:
+        """Return one history entry including its full ``snapshot``, for the preview pane."""
+        try:
+            pid = ObjectId(project_id)
+            hid = ObjectId(history_id)
+        except (InvalidId, TypeError):
+            return None
+        row = self.history_collection.find_one({"_id": hid, "project_id": pid, "owner": owner})
+        if row is None:
+            return None
+        doc = dict(row)
+        doc["_id"] = str(doc["_id"])
+        doc["project_id"] = str(doc["project_id"])
+        if doc.get("quote_id"):
+            doc["quote_id"] = str(doc["quote_id"])
+        if doc.get("reverted_from_history_id"):
+            doc["reverted_from_history_id"] = str(doc["reverted_from_history_id"])
+        if hasattr(doc.get("created_at"), "isoformat"):
+            doc["created_at"] = doc["created_at"].isoformat()
+        return doc
+
+    def revert_history_entry(
+        self, project_id: str, history_id: str, owner: str, changed_by: str
+    ) -> dict[str, Any] | None:
+        """Restore a past snapshot as the current state of its project or quote.
+
+        Records a new ``"revert"`` history entry rather than mutating or removing
+        the entry being reverted to — the audit trail is append-only.
+        """
+        try:
+            pid = ObjectId(project_id)
+            hid = ObjectId(history_id)
+        except (InvalidId, TypeError):
+            return None
+        entry = self.history_collection.find_one({"_id": hid, "project_id": pid, "owner": owner})
+        if entry is None:
+            return None
+
+        if entry["entity_type"] == "project":
+            restorable = dict(entry["snapshot"])
+            result = self.projects_collection.update_one({"_id": pid, "owner": owner}, {"$set": restorable})
+            if result.matched_count == 0:
+                return None
+            self._load_cache()
+            full_doc = self.get_project_by_owner(project_id, owner)
+            if full_doc is None:
+                return None
+            self._record_history(
+                project_id=project_id,
+                owner=owner,
+                entity_type="project",
+                change_type="revert",
+                changed_by=changed_by,
+                label=full_doc.get("project_name", "Untitled project"),
+                snapshot={k: full_doc[k] for k in _PROJECT_UPDATE_ALLOWED_FIELDS if k in full_doc},
+                reverted_from_history_id=history_id,
+            )
+            return {"entity_type": "project", "quote_id": None, "doc": full_doc}
+
+        quote_id = str(entry["quote_id"])
+        restorable = dict(entry["snapshot"])
+        restorable["updated_at"] = datetime.now(UTC)
+        result = self.quotes_collection.update_one(
+            {"_id": ObjectId(quote_id), "owner": owner}, {"$set": restorable}
+        )
+        if result.matched_count == 0:
+            return None
+        full_doc = self.get_quote_by_owner(quote_id, owner)
+        if full_doc is None:
+            return None
+        self._record_history(
+            project_id=project_id,
+            owner=owner,
+            entity_type="quote",
+            change_type="revert",
+            changed_by=changed_by,
+            label=f'{full_doc.get("quote_name", "Untitled quote")} — Scenario {full_doc.get("scenario")}',
+            snapshot={k: full_doc[k] for k in _QUOTE_UPDATE_ALLOWED_FIELDS if k in full_doc},
+            quote_id=quote_id,
+            scenario=full_doc.get("scenario"),
+            reverted_from_history_id=history_id,
+        )
+        return {"entity_type": "quote", "quote_id": quote_id, "doc": full_doc}
 
     def get_unit_cost_entry(self, cost_name: str) -> dict:
         """Return the entire unit cost entry for a given cost name."""
