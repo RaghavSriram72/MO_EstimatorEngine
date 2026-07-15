@@ -1259,11 +1259,11 @@ export default function QuoteBreakdown({
                         <input
                             type="number"
                             min={0}
-                            step={0.1}
+                            step={1}
                             value={overs}
                             onChange={(e) => {
                                 setOversPinned(true);
-                                patchParams({ overs: Math.max(0, parseFloat(e.target.value) || 0) });
+                                patchParams({ overs: Math.max(0, parseInt(e.target.value) || 0) });
                             }}
                             disabled={isRecalculating}
                             className={`border-2 border-[#E0E0E0] rounded-sm px-3 py-1.5 text-sm font-black text-[#000005] outline-none focus:border-[#FFC843] w-[100px] text-right transition-colors disabled:opacity-50 ${overs !== baseline.overs ? "bg-[#FFC843]/20" : "bg-[#F8F8F8]"}`}

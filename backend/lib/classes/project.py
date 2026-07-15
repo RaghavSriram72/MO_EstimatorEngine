@@ -67,7 +67,7 @@ class Project[T: BaseInput]:
         self.hardware_cost = db.get_standee_data(self.standee_key, "hardware_cost") * self.num_standees
 
         # misc costs and project vars
-        self.overs = input.num_overs or db.get_overs(self.num_standees)
+        self.overs = db.get_overs(self.num_standees) if input.num_overs is None else input.num_overs
         self.print_form_total = self._get_net_print_forms()
         self.engineering_design_cost = db.get_standee_data(self.standee_key, "engineering_design_cost_per_project")
         self.blank_comp_count = input.blank_comp_count or 1
