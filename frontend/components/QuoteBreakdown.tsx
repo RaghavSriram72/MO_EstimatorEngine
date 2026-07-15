@@ -212,8 +212,8 @@ function buildScenarioState(
     const seedSource = sources[initialScenario] ?? sources[1] ?? {};
     const params: ScenarioParams = {
         numStandees: initialStandees,
-        printFormsPerStandee: seedSource.print_forms_per_standee ?? 1,
-        structureFormsPerStandee: seedSource.structure_forms_per_standee ?? 0,
+        printFormsPerStandee: Math.ceil(seedSource.print_forms_per_standee ?? 1),
+        structureFormsPerStandee: Math.ceil(seedSource.structure_forms_per_standee ?? 0),
         overs: seedSource.overs ?? 0,
     };
     const universalLines = seedLines(
@@ -332,8 +332,8 @@ function toSpecParams(p: ScenarioParams): PersistedSpecParams {
 function fromSpecParams(p: PersistedSpecParams): ScenarioParams {
     return {
         numStandees: p.num_standees,
-        printFormsPerStandee: p.print_forms_per_standee,
-        structureFormsPerStandee: p.structure_forms_per_standee,
+        printFormsPerStandee: Math.ceil(p.print_forms_per_standee),
+        structureFormsPerStandee: Math.ceil(p.structure_forms_per_standee),
         overs: p.overs,
     };
 }
@@ -1217,9 +1217,9 @@ export default function QuoteBreakdown({
                         <input
                             type="number"
                             min={0}
-                            step={0.1}
+                            step={1}
                             value={printFormsPerStandee}
-                            onChange={(e) => patchParams({ printFormsPerStandee: Math.max(0, parseFloat(e.target.value) || 0) })}
+                            onChange={(e) => patchParams({ printFormsPerStandee: Math.max(0, parseInt(e.target.value) || 0) })}
                             disabled={isRecalculating}
                             className={`border-2 border-[#E0E0E0] rounded-sm px-3 py-1.5 text-sm font-black text-[#000005] outline-none focus:border-[#FFC843] w-[100px] text-right transition-colors disabled:opacity-50 ${printFormsPerStandee !== baseline.printFormsPerStandee ? "bg-[#FFC843]/20" : "bg-[#F8F8F8]"}`}
                         />
@@ -1232,9 +1232,9 @@ export default function QuoteBreakdown({
                         <input
                             type="number"
                             min={0}
-                            step={0.1}
+                            step={1}
                             value={structureFormsPerStandee}
-                            onChange={(e) => patchParams({ structureFormsPerStandee: Math.max(0, parseFloat(e.target.value) || 0) })}
+                            onChange={(e) => patchParams({ structureFormsPerStandee: Math.max(0, parseInt(e.target.value) || 0) })}
                             disabled={isRecalculating}
                             className={`border-2 border-[#E0E0E0] rounded-sm px-3 py-1.5 text-sm font-black text-[#000005] outline-none focus:border-[#FFC843] w-[100px] text-right transition-colors disabled:opacity-50 ${structureFormsPerStandee !== baseline.structureFormsPerStandee ? "bg-[#FFC843]/20" : "bg-[#F8F8F8]"}`}
                         />
