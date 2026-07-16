@@ -209,6 +209,16 @@ class MidnightOilDB:
             out.append(self._ensure_project_short_id(doc))
         return out
 
+    def list_all_projects(self) -> list[dict[str, Any]]:
+        """Return every project document across all owners, newest ``_id`` first."""
+        cursor = self.projects_collection.find({}).sort("_id", -1)
+        out: list[dict[str, Any]] = []
+        for row in cursor:
+            doc = dict(row)
+            doc["_id"] = str(doc["_id"])
+            out.append(self._ensure_project_short_id(doc))
+        return out
+
     def get_project_by_owner(self, project_id: str, owner: str) -> dict[str, Any] | None:
         """Return one project document if it exists and belongs to ``owner``."""
         try:
@@ -314,6 +324,20 @@ class MidnightOilDB:
         except (InvalidId, TypeError):
             return []
         cursor = self.quotes_collection.find({"project_id": pid, "owner": owner}).sort("_id", -1)
+        out: list[dict[str, Any]] = []
+        for row in cursor:
+            doc = dict(row)
+            doc["_id"] = str(doc["_id"])
+            doc["project_id"] = str(doc["project_id"])
+            for key in ("created_at", "updated_at"):
+                if key in doc and hasattr(doc[key], "isoformat"):
+                    doc[key] = doc[key].isoformat()
+            out.append(doc)
+        return out
+
+    def list_all_quotes(self) -> list[dict[str, Any]]:
+        """Return every quote document across all owners, newest ``_id`` first."""
+        cursor = self.quotes_collection.find({}).sort("_id", -1)
         out: list[dict[str, Any]] = []
         for row in cursor:
             doc = dict(row)

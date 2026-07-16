@@ -283,6 +283,27 @@ function searchMatches(query: string, text: string): boolean {
     return q.split(/\s+/).filter(Boolean).every((term) => blob.includes(term));
 }
 
+/** Searchable text for a project row in the sidebar. */
+function projectSearchBlob(p: ProjectSummary): string {
+    return `${p.project_name || ""} ${p.num_standees} ${p.standee_type} ${p._id} ${p.short_id ?? ""} #${p.short_id ?? ""} ${p.owner ?? ""}`;
+}
+
+type QuoteSearchSummary = {
+    _id: string;
+    project_id: string;
+    owner?: string;
+    quote_name?: string;
+    scenario?: number;
+    num_standees?: number;
+};
+
+/** Searchable text for a quote linked to a project. */
+function quoteSearchBlob(q: QuoteSearchSummary): string {
+    const scen = typeof q.scenario === "number" ? `scenario ${q.scenario}` : "";
+    const ns = typeof q.num_standees === "number" ? `${q.num_standees} standees` : "";
+    return `${q.quote_name || ""} ${scen} ${ns} ${q._id} ${q.owner ?? ""} ${q.project_id}`;
+}
+
 // Extracts a user-readable error message from a failed API response body
 function apiErrorMessage(data: unknown): string | null {
     if (!data || typeof data !== "object") return null;
@@ -313,7 +334,9 @@ export default function Inputter() {
     // ── Saved project state ────────────────────────────────────────────────
     const [activeProjectId, setActiveProjectId]     = useState<string | null>(null);
     const [activeProjectShortId, setActiveProjectShortId] = useState<string | null>(null);
+    const [activeProjectOwner, setActiveProjectOwner] = useState<string | null>(null);
     const [projectList, setProjectList]             = useState<ProjectSummary[]>([]);
+    const [quoteList, setQuoteList]                 = useState<QuoteSearchSummary[]>([]);
     const [projectListLoading, setProjectListLoading] = useState(false);
     const [projectListError, setProjectListError]   = useState<string | null>(null);
     const [projectListRefreshKey, setProjectListRefreshKey] = useState(0); // bumped to re-fetch list
@@ -360,24 +383,29 @@ export default function Inputter() {
 
     // ── Data fetching ──────────────────────────────────────────────────────
 
-    // GET /projects?owner=... → refresh the sidebar project list
+    // GET /projects + GET /quotes → sidebar search spans every saved project and quote
     const refreshProjectList = useCallback(async () => {
-        const owner = typeof window !== "undefined" ? localStorage.getItem("username") : null;
-        if (!owner) { setProjectList([]); return; }
         setProjectListLoading(true);
         setProjectListError(null);
         try {
-            const res  = await fetch(`${API_BASE}/projects?owner=${encodeURIComponent(owner)}`);
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok) {
-                setProjectListError(typeof data.error === "string" ? data.error : "Could not load projects");
+            const [projectsRes, quotesRes] = await Promise.all([
+                fetch(`${API_BASE}/projects`),
+                fetch(`${API_BASE}/quotes`),
+            ]);
+            const projectsData = await projectsRes.json().catch(() => ({}));
+            const quotesData = await quotesRes.json().catch(() => ({}));
+            if (!projectsRes.ok) {
+                setProjectListError(typeof projectsData.error === "string" ? projectsData.error : "Could not load projects");
                 setProjectList([]);
+                setQuoteList([]);
                 return;
             }
-            setProjectList(Array.isArray(data.projects) ? data.projects : []);
+            setProjectList(Array.isArray(projectsData.projects) ? projectsData.projects : []);
+            setQuoteList(quotesRes.ok && Array.isArray(quotesData.quotes) ? quotesData.quotes : []);
         } catch {
             setProjectListError("Could not load projects");
             setProjectList([]);
+            setQuoteList([]);
         } finally {
             setProjectListLoading(false);
         }
@@ -417,23 +445,34 @@ export default function Inputter() {
 
     // ── Filtered sidebar lists ─────────────────────────────────────────────
 
-    const filteredProjects = useMemo(() =>
-        projectList.filter((p) =>
-            searchMatches(
-                projectSearchQuery,
-                `${p.project_name || ""} ${p.num_standees} ${p.standee_type} ${p._id} ${p.short_id ?? ""} #${p.short_id ?? ""}`,
-            ),
-        ),
-    [projectList, projectSearchQuery]);
+    const quotesByProjectId = useMemo(() => {
+        const map = new Map<string, QuoteSearchSummary[]>();
+        for (const q of quoteList) {
+            const pid = q.project_id;
+            if (!pid) continue;
+            const bucket = map.get(pid) ?? [];
+            bucket.push(q);
+            map.set(pid, bucket);
+        }
+        return map;
+    }, [quoteList]);
 
-    // const filteredSavedQuotes = useMemo(() =>
-    //     savedQuoteList.filter((q) => {
-    //         const name = (q.quote_name || "Untitled").trim();
-    //         const scen = typeof q.scenario === "number" ? `scenario ${q.scenario}` : "";
-    //         const ns   = typeof q.num_standees === "number" ? `${q.num_standees} standees` : "";
-    //         return searchMatches(quoteSearchQuery, `${name} ${scen} ${ns} ${q._id}`);
-    //     }),
-    // [savedQuoteList, quoteSearchQuery]);
+    const filteredProjects = useMemo(() =>
+        projectList.filter((p) => {
+            if (searchMatches(projectSearchQuery, projectSearchBlob(p))) return true;
+            const quotes = quotesByProjectId.get(p._id) ?? [];
+            return quotes.some((q) => searchMatches(projectSearchQuery, quoteSearchBlob(q)));
+        }),
+    [projectList, projectSearchQuery, quotesByProjectId]);
+
+    // Owner of a project in the sidebar list (needed for owner-scoped API calls on
+    // projects that belong to other users).
+    function ownerForProject(projectId: string): string | null {
+        const fromList = projectList.find((p) => p._id === projectId)?.owner;
+        if (fromList) return fromList;
+        if (activeProjectId === projectId && activeProjectOwner) return activeProjectOwner;
+        return typeof window !== "undefined" ? localStorage.getItem("username") : null;
+    }
 
     // ── Project actions ────────────────────────────────────────────────────
 
@@ -445,6 +484,7 @@ export default function Inputter() {
         setProjectName("Untitled project");
         setActiveProjectId(null);
         setActiveProjectShortId(null);
+        setActiveProjectOwner(null);
         setActiveQuoteData(null);
         setActiveQuotePayload(null);
         setIsQuoteGenerating(false);
@@ -467,9 +507,11 @@ export default function Inputter() {
         const apiElems   = elementsForApi(elements);
         try {
             if (activeProjectId) {
-                // PATCH /projects/:id → update existing project
+                // PATCH /projects/:id → update existing project (scoped to its own owner,
+                // which can differ from the signed-in user)
+                const docOwner = activeProjectOwner ?? owner;
                 const res = await fetch(
-                    `${API_BASE}/projects/${encodeURIComponent(activeProjectId)}?owner=${encodeURIComponent(owner)}`,
+                    `${API_BASE}/projects/${encodeURIComponent(activeProjectId)}?owner=${encodeURIComponent(docOwner)}`,
                     {
                         method: "PATCH",
                         headers: { "Content-Type": "application/json" },
@@ -488,7 +530,7 @@ export default function Inputter() {
                 // (the backend backfills short_id on read).
                 if (!shortId) {
                     const docRes = await fetch(
-                        `${API_BASE}/projects/${encodeURIComponent(activeProjectId)}?owner=${encodeURIComponent(owner)}`,
+                        `${API_BASE}/projects/${encodeURIComponent(activeProjectId)}?owner=${encodeURIComponent(docOwner)}`,
                     );
                     const doc = await docRes.json().catch(() => ({}));
                     if (docRes.ok && typeof doc.short_id === "string") {
@@ -517,6 +559,7 @@ export default function Inputter() {
             const shortId = typeof data.short_id === "string" ? data.short_id : undefined;
             setActiveProjectId(data.project_id);
             setActiveProjectShortId(shortId ?? null);
+            setActiveProjectOwner(owner.trim());
             return { success: true, projectId: data.project_id, shortId };
         } catch (e) {
             console.error("Save failed:", e);
@@ -526,7 +569,7 @@ export default function Inputter() {
 
     // GET /projects/:id → load a saved project into the estimator form
     async function loadProject(projectId: string) {
-        const owner = localStorage.getItem("username");
+        const owner = ownerForProject(projectId);
         if (!owner) return;
         setProjectListLoading(true);
         setProjectListError(null);
@@ -541,6 +584,7 @@ export default function Inputter() {
             }
             setActiveProjectId(doc._id);
             setActiveProjectShortId(typeof doc.short_id === "string" ? doc.short_id : null);
+            setActiveProjectOwner(typeof doc.owner === "string" ? doc.owner : owner);
             setProjectName(typeof doc.project_name === "string" ? doc.project_name : "Untitled project");
             setStandeeType((doc.standee_type as StandeeType) || "Simple");
             setStandeeCount(typeof doc.num_standees === "number" ? doc.num_standees : "");
@@ -572,7 +616,7 @@ export default function Inputter() {
 
     // DELETE /projects/:id → remove a project and clear form if it was active
     async function deleteProject(projectId: string, projectLabel: string) {
-        const owner = localStorage.getItem("username");
+        const owner = ownerForProject(projectId);
         if (!owner) return;
         setProjectListError(null);
         try {
@@ -643,6 +687,8 @@ export default function Inputter() {
     async function handleContinue() {
         if (!canCalculate || isSavingBeforeContinue) return;
         const owner = typeof window !== "undefined" ? localStorage.getItem("username")?.trim() : null;
+        // Quotes are scoped to the project's owner, which can differ from the signed-in user.
+        const projectOwner = activeProjectOwner ?? owner;
         let projectId = activeProjectId;
 
         // Ensure the project is saved so we have a project ID to attach the quote to
@@ -668,7 +714,7 @@ export default function Inputter() {
         try {
             // A saved quote already exists → view it instead of recalculating,
             // so manual spec/cost edits made in the breakdown are preserved.
-            if (owner && pid && (await openLatestSavedQuote(pid, owner))) return;
+            if (projectOwner && pid && (await openLatestSavedQuote(pid, projectOwner))) return;
 
             const res  = await fetch(`${API_BASE}/generate_quote`, {
                 method: "POST",
@@ -689,12 +735,12 @@ export default function Inputter() {
             setActivePersistedQuoteState(persistedState);
 
             // Auto-save the quote to the project if signed in — quote object + five scenario children
-            if (owner && pid) {
+            if (projectOwner && pid) {
                 const saveRes = await fetch(`${API_BASE}/projects/${encodeURIComponent(pid)}/quotes`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
-                        owner,
+                        owner: projectOwner,
                         quote_name: quoteName,
                         scenario: 1,
                         num_standees: num,
@@ -734,7 +780,7 @@ export default function Inputter() {
 
     // PATCH /projects/:id/rename → rename a project
     async function renameProject(projectId: string, newName: string) {
-        const owner = localStorage.getItem("username");
+        const owner = ownerForProject(projectId);
         if (!owner) return;
         try {
             const res = await fetch(
@@ -840,7 +886,7 @@ export default function Inputter() {
     // estimator form and persist it to the project so the sidebar stays accurate.
     async function handleActiveQuoteNumStandeesCommitted(numStandees: number) {
         setStandeeCount(numStandees);
-        const owner = localStorage.getItem("username");
+        const owner = activeProjectOwner ?? localStorage.getItem("username");
         if (!owner?.trim() || !activeProjectId) return;
         try {
             const res = await fetch(
@@ -928,7 +974,7 @@ export default function Inputter() {
                     initialContributionMargin={activeQuoteContributionMargin}
                     persistedQuoteId={activePersistedQuoteId}
                     persistedState={activePersistedQuoteState}
-                    quoteOwner={typeof window !== "undefined" ? localStorage.getItem("username") : null}
+                    quoteOwner={activeProjectOwner ?? (typeof window !== "undefined" ? localStorage.getItem("username") : null)}
                     onBack={clearActiveQuote}
                     onNumStandeesChange={handleActiveQuoteNumStandeesChange}
                     onNumStandeesCommitted={(n) => void handleActiveQuoteNumStandeesCommitted(n)}
@@ -947,7 +993,7 @@ export default function Inputter() {
                 open={historyModalOpen}
                 onClose={() => setHistoryModalOpen(false)}
                 projectId={activeProjectId}
-                owner={typeof window !== "undefined" ? localStorage.getItem("username") ?? "" : ""}
+                owner={activeProjectOwner ?? (typeof window !== "undefined" ? localStorage.getItem("username") ?? "" : "")}
                 onReverted={(entityType, label) => {
                     if (entityType === "project") void loadProject(activeProjectId);
                     showToast(`Reverted ${label}`, "save");
@@ -982,6 +1028,14 @@ export default function Inputter() {
                                 className="text-[11px] font-black tracking-widest text-[#000005] bg-[#FFC843]/25 border border-[#FFC843] rounded-sm px-2 py-1 tabular-nums"
                             >
                                 ID #{activeProjectShortId}
+                            </span>
+                        )}
+                        {activeProjectOwner && (
+                            <span
+                                title="Created by"
+                                className="text-[11px] font-bold tracking-wide text-[#64748B] bg-[#F1F5F9] border border-[#E0E0E0] rounded-sm px-2 py-1"
+                            >
+                                Created by {activeProjectOwner}
                             </span>
                         )}
                     </div>

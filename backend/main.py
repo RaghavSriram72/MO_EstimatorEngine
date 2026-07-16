@@ -535,9 +535,13 @@ async def create_project(payload: PersistedProjectCreate):
 
 
 @app.get("/projects")
-async def list_projects(owner: str = Query(..., description="Username of the account that owns the projects")):
-    """List all projects owned by the specified user."""
+async def list_projects(
+    owner: str | None = Query(None, description="Optional: filter to one owner; omit for every project in the database"),
+):
+    """List projects — every saved project when ``owner`` is omitted, or one owner's projects."""
     db = _ensure_db()
+    if owner is None:
+        return {"projects": db.list_all_projects()}
     if not db.check_username_exists(owner):
         return JSONResponse(status_code=404, content={"error": "Unknown owner"})
     projects = db.list_projects_by_owner(owner)
@@ -588,6 +592,24 @@ async def create_project_quote(project_id: str, payload: PersistedQuoteCreateBod
         status_code=201,
         content={"quote_id": quote_id, "message": "Quote created successfully"},
     )
+
+
+@app.get("/quotes")
+async def list_quotes(
+    owner: str | None = Query(None, description="Optional: filter to one owner; omit for every quote in the database"),
+):
+    """List quotes — every saved quote when ``owner`` is omitted, or one owner's quotes."""
+    db = _ensure_db()
+    if owner is None:
+        return {"quotes": db.list_all_quotes()}
+    if not db.check_username_exists(owner):
+        return JSONResponse(status_code=404, content={"error": "Unknown owner"})
+    projects = db.list_projects_by_owner(owner)
+    quotes: list[dict[str, Any]] = []
+    for project in projects:
+        quotes.extend(db.list_quotes_for_project(project["_id"], owner))
+    quotes.sort(key=lambda q: q.get("_id", ""), reverse=True)
+    return {"quotes": quotes}
 
 
 @app.get("/quotes/{quote_id}")

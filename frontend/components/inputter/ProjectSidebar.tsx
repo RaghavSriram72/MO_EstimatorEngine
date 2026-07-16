@@ -4,8 +4,8 @@ import ConfirmAlert from "@/components/ConfirmAlert";
 
 export type ProjectSummary = {
     _id: string;
-    /** 8-digit hash ID shown to users and searchable in the sidebar. */
     short_id?: string;
+    owner?: string;
     project_name: string;
     num_standees: number;
     standee_type: "Simple" | "Moderate" | "Complex";
@@ -95,8 +95,8 @@ export default function ProjectSidebar({
             onConfirm={confirmDelete}
             onCancel={() => setPendingDelete(null)}
         />
-        <aside className="shrink-0 w-[285px] flex flex-col border-r-2 border-[#E0E0E0] bg-white px-3 py-5 gap-3">
-            <div className="flex flex-col gap-0.5 pl-3">
+        <aside className="shrink-0 w-[300px] h-full min-h-0 flex flex-col border-r-2 border-[#E0E0E0] bg-white px-3 py-5 gap-3">
+            <div className="flex flex-col gap-0.5 pl-3 shrink-0">
                 <span className="text-[11px] font-bold tracking-[0.2em] uppercase text-[#B1B3B6]">Your Work</span>
                 <div className="flex items-center gap-2">
                     <span className="text-[1.25em] font-bold text-[#000005]">Projects</span>
@@ -105,7 +105,7 @@ export default function ProjectSidebar({
             <button
                 type="button"
                 onClick={onNewProject}
-                className="text-[10px] font-black text-center uppercase tracking-widest py-2.5 rounded-sm border-2 border-[#000005] bg-[#000005] text-white hover:bg-[#FFC843] hover:border-[#FFC843] hover:text-[#000005] transition-all duration-200"
+                className="shrink-0 text-[10px] font-black text-center uppercase tracking-widest py-2.5 rounded-sm border-2 border-[#000005] bg-[#000005] text-white hover:bg-[#FFC843] hover:border-[#FFC843] hover:text-[#000005] transition-all duration-200"
             >
                 + NEW PROJECT
             </button>
@@ -114,11 +114,11 @@ export default function ProjectSidebar({
                 type="search"
                 value={searchQuery}
                 onChange={(e) => onSearchChange(e.target.value)}
-                placeholder="Search projects…"
-                className={SIDEBAR_INPUT_CLASS}
+                placeholder="Search all projects..."
+                className={`shrink-0 ${SIDEBAR_INPUT_CLASS}`}
                 autoComplete="off"
             />
-            <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-1.5">
+            <div className="flex-1 min-h-0 overflow-y-scroll overscroll-contain flex flex-col gap-1.5 pr-0.5 [scrollbar-gutter:stable] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#C8C8C8] [&::-webkit-scrollbar-track]:bg-[#F0F0F0]">
                 {isLoading && projects.length === 0 && (
                     <div className="text-[11px] text-[#B1B3B6] font-semibold px-1">Loading…</div>
                 )}
@@ -137,7 +137,7 @@ export default function ProjectSidebar({
                     return (
                         <div
                             key={p._id}
-                            className={`flex items-stretch rounded-md border transition-all duration-200 overflow-hidden ${
+                            className={`flex items-stretch rounded-md border transition-all duration-200 overflow-hidden shrink-0 ${
                                 isActive
                                     ? "border-[#FFC843] bg-[#FFFBEE] shadow-sm hover:cursor-pointer"
                                     : "border-[#E8E8E8] bg-white hover:border-[#C8C8C8] hover:shadow-sm hover:cursor-pointer"
@@ -168,6 +168,11 @@ export default function ProjectSidebar({
                                 ) : (
                                     <div className="text-[13px] font-bold text-[#000005] tracking-tight line-clamp-2 leading-tight">
                                         {p.project_name || "Untitled"}
+                                    </div>
+                                )}
+                                {p.owner && (
+                                    <div className="mt-1 text-[9px] font-bold text-[#64748B] truncate" title={p.owner}>
+                                        Created by {p.owner}
                                     </div>
                                 )}
                                 <div className="flex items-center gap-1.5 mt-1.5 whitespace-nowrap overflow-hidden">
