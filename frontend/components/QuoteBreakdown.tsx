@@ -14,9 +14,9 @@ import { API_BASE } from "@/lib/config";
 import { COST_LINE_TOOLTIPS } from "@/lib/costLineTooltips";
 import { COST_DEBUG_ENABLED, extractDebugExplanations, debugExplanationsFromQuoteResponse, hasDebugExplanations, type CostDebugExplanations } from "@/lib/costDebugConfig";
 
-type ScenarioId = 1 | 2 | 3 | 4 | 5;
+export type ScenarioId = 1 | 2 | 3 | 4 | 5;
 
-type CostLine = {
+export type CostLine = {
     key: string;
     label: string;
     unit: string;
@@ -70,9 +70,9 @@ const SCENARIO_META: Record<ScenarioId, { short: string; sub: string }> = {
     5: { short: "External",  sub: "Full Outsource" },
 };
 
-type LineDef = { label: string; unit: string; readonlyQty?: boolean };
+export type LineDef = { label: string; unit: string; readonlyQty?: boolean };
 
-const UNIVERSAL_LINE_DEFS: Record<string, LineDef> = {
+export const UNIVERSAL_LINE_DEFS: Record<string, LineDef> = {
     imposition_cost:         { label: "Imposition Labor",     unit: "hrs"      },
     blank_comp_cost:         { label: "Blank Comp",           unit: "units"    },
     color_comp_cost:         { label: "Color Comp",           unit: "units"    },
@@ -80,7 +80,7 @@ const UNIVERSAL_LINE_DEFS: Record<string, LineDef> = {
     hardware_cost:           { label: "Hardware",             unit: "standees" },
 };
 
-const SCENARIO_LINE_DEFS: Record<string, LineDef> = {
+export const SCENARIO_LINE_DEFS: Record<string, LineDef> = {
     corrugate_cost:         { label: "Corrugate",            unit: "forms"    },
     print_form_cost:        { label: "Print Form Material",  unit: "forms"    },
     print_cost:             { label: "Rho Print",            unit: "hrs"      },
@@ -99,7 +99,7 @@ const SCENARIO_LINE_DEFS: Record<string, LineDef> = {
     mount_die_buyout_cost:      { label: "Mount & Die Cut Buyout",        unit: "standees", readonlyQty: true },
 };
 
-const SCENARIO_KEYS: Record<ScenarioId, string[]> = {
+export const SCENARIO_KEYS: Record<ScenarioId, string[]> = {
     1: ["corrugate_cost", "print_form_cost", "print_cost", "rollx_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "kitting_and_assembly_cost"],
     2: ["corrugate_cost", "print_form_cost", "print_cost", "rollx_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "kitting_and_assembly_cost"],
     3: ["corrugate_cost", "print_form_cost", "print_cost", "rollx_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "pallet_material_cost", "pallet_labor_cost", "freight_cost", "packout"],
@@ -131,12 +131,12 @@ const SCENARIO_SYNC_GROUPS: Partial<Record<string, ScenarioId[]>> = {
 };
 
 
-function lineTotal(l: CostLine) {
+export function lineTotal(l: CostLine) {
     if (l.rawTotal !== undefined) return l.rawTotal;
     return l.unit === "flat" ? l.unitCost : l.qty * l.unitCost;
 }
 
-function fmt(value: number): string {
+export function fmt(value: number): string {
     return value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 

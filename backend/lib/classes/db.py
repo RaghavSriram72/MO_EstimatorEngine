@@ -293,7 +293,8 @@ class MidnightOilDB:
             entity_type="quote",
             change_type="create",
             changed_by=doc["owner"],
-            label=f'{doc.get("quote_name", "Untitled quote")} — Scenario {doc.get("scenario")}',
+            # No "— Scenario N" suffix here: the history row already shows a "Quote · Scenario N" badge.
+            label=doc.get("quote_name") or "Untitled quote",
             snapshot={k: doc[k] for k in _QUOTE_UPDATE_ALLOWED_FIELDS if k in doc},
             quote_id=quote_id,
             scenario=doc.get("scenario"),
@@ -376,7 +377,8 @@ class MidnightOilDB:
                     entity_type="quote",
                     change_type=change_type,
                     changed_by=changed_by or owner,
-                    label=f'{full_doc.get("quote_name", "Untitled quote")} — Scenario {full_doc.get("scenario")}',
+                    # No "— Scenario N" suffix here: the history row already shows a "Quote · Scenario N" badge.
+                    label=full_doc.get("quote_name") or "Untitled quote",
                     snapshot={k: full_doc[k] for k in _QUOTE_UPDATE_ALLOWED_FIELDS if k in full_doc},
                     quote_id=quote_id,
                     scenario=full_doc.get("scenario"),
@@ -504,7 +506,8 @@ class MidnightOilDB:
             entity_type="quote",
             change_type="revert",
             changed_by=changed_by,
-            label=f'{full_doc.get("quote_name", "Untitled quote")} — Scenario {full_doc.get("scenario")}',
+            # No "— Scenario N" suffix here: the history row already shows a "Quote · Scenario N" badge.
+            label=full_doc.get("quote_name") or "Untitled quote",
             snapshot={k: full_doc[k] for k in _QUOTE_UPDATE_ALLOWED_FIELDS if k in full_doc},
             quote_id=quote_id,
             scenario=full_doc.get("scenario"),
