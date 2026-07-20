@@ -44,7 +44,10 @@ export default function UnitCostsModule() {
             cost: rec.cost,
             unit: rec.unit,
             type: rec.type,
-            ...(rec.type === "machine" ? { throughput: rec.throughput ?? 0 } : {}),
+            ...(rec.type === "machine" ? {
+                throughput: rec.throughput ?? 0,
+                throughput_unit: rec.throughput_unit ?? "linear_foot",
+            } : {}),
         });
     }
 
@@ -62,7 +65,8 @@ export default function UnitCostsModule() {
             editedFields.unit !== savedRecord.unit ||
             editedFields.type !== savedRecord.type ||
             editedFields.display_name !== savedRecord.display_name ||
-            editedFields.throughput !== savedRecord.throughput);
+            editedFields.throughput !== savedRecord.throughput ||
+            (editedFields.throughput_unit ?? "linear_foot") !== (savedRecord.throughput_unit ?? "linear_foot"));
 
     async function saveChanges() {
         if (!savedRecord || !editedFields || !hasUnsavedChanges) return;
@@ -72,6 +76,7 @@ export default function UnitCostsModule() {
         if (editedFields.type !== savedRecord.type) changedFields.type = editedFields.type;
         if (editedFields.display_name !== savedRecord.display_name) changedFields.display_name = editedFields.display_name;
         if (editedFields.throughput !== undefined && editedFields.throughput !== savedRecord.throughput) changedFields.throughput = editedFields.throughput;
+        if (editedFields.throughput_unit !== undefined && editedFields.throughput_unit !== savedRecord.throughput_unit) changedFields.throughput_unit = editedFields.throughput_unit;
         setIsSaving(true);
         try {
             // PATCH /unit-costs/:name → save only the changed fields
@@ -91,7 +96,10 @@ export default function UnitCostsModule() {
                     cost: updatedRec.cost,
                     unit: updatedRec.unit,
                     type: updatedRec.type,
-                    ...(updatedRec.type === "machine" ? { throughput: updatedRec.throughput ?? 0 } : {}),
+                    ...(updatedRec.type === "machine" ? {
+                        throughput: updatedRec.throughput ?? 0,
+                        throughput_unit: updatedRec.throughput_unit ?? "linear_foot",
+                    } : {}),
                 });
             }
         } catch (e) { console.error(e); }
@@ -151,14 +159,15 @@ export default function UnitCostsModule() {
                             <div className="text-xs">UNIT</div>
                             <div className="text-[1.2em] font-instrument">{savedRecord.unit}</div>
                         </div>
-                        <div className="flex flex-col justify-center items-start p-4 border-2 flex-1 h-[100px] border-[#EDEAEA] rounded-md">
-                            <div className="text-xs">TYPE</div>
-                            <div className="text-[1.2em] font-instrument">{savedRecord.type}</div>
-                        </div>
                         {savedRecord.type === "machine" && (
                             <div className="flex flex-col justify-center items-start p-4 border-2 flex-1 h-[100px] border-[#EDEAEA] rounded-md">
                                 <div className="text-xs">THROUGHPUT</div>
-                                <div className="text-[1.2em] font-instrument">{savedRecord.throughput}</div>
+                                <div className="text-[1.2em] font-instrument">
+                                    {savedRecord.throughput}
+                                    <span className="text-xs text-[#FFB604] ml-1">
+                                        {savedRecord.throughput_unit === "linear_inch" ? "in/hr" : "ft/hr"}
+                                    </span>
+                                </div>
                             </div>
                         )}
                         <div className="flex flex-col justify-center items-start p-4 border-2 flex-1 h-[100px] border-[#EDEAEA] rounded-md">
@@ -175,7 +184,7 @@ export default function UnitCostsModule() {
             <div className="flex flex-col items-start w-full flex-1 p-5">
                 <div className="text-[10px] m-2">03 — UPDATE VALUES</div>
                 {editedFields ? (
-                    <div className="flex flex-row gap-4 items-start w-full flex-wrap">
+                    <div className="flex flex-row gap-4 items-start w-full">
                         <div className="flex-[2] min-w-[200px]">
                             <div className="text-xs font-bold m-2 flex items-center gap-2">
                                 Display Name
@@ -220,37 +229,39 @@ export default function UnitCostsModule() {
                                 className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
                             />
                         </div>
-                        <div className="flex-1 min-w-[110px]">
-                            <div className="text-xs font-bold m-2 flex items-center gap-2">
-                                Type
-                                {editedFields.type !== savedRecord?.type && (
-                                    <span className="text-[9px] text-[#FFB604] font-bold tracking-wider">CHANGED</span>
-                                )}
-                            </div>
-                            <input
-                                type="text"
-                                value={editedFields.type}
-                                onChange={(e) => updateField("type", e.target.value)}
-                                className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
-                            />
-                        </div>
                         {savedRecord?.type === "machine" && (
-                            <div className="flex-1 min-w-[110px]">
-                                <div className="text-xs font-bold m-2 flex items-center gap-2">
-                                    Throughput
-                                    {editedFields.throughput !== savedRecord?.throughput && (
-                                        <span className="text-[9px] text-[#FFB604] font-bold tracking-wider">CHANGED</span>
-                                    )}
+                            <>
+                                <div className="flex-1 min-w-[110px]">
+                                    <div className="text-xs font-bold m-2 flex items-center gap-2">
+                                        Throughput
+                                        {editedFields.throughput !== savedRecord?.throughput && (
+                                            <span className="text-[9px] text-[#FFB604] font-bold tracking-wider">CHANGED</span>
+                                        )}
+                                    </div>
+                                    <input
+                                        type="number"
+                                        min={0}
+                                        step={1}
+                                        value={editedFields.throughput}
+                                        onChange={(e) => updateField("throughput", e.target.value)}
+                                        className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
+                                    />
                                 </div>
-                                <input
-                                    type="number"
-                                    min={0}
-                                    step={1}
-                                    value={editedFields.throughput}
-                                    onChange={(e) => updateField("throughput", e.target.value)}
-                                    className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
-                                />
-                            </div>
+                                <div className="w-[155px] shrink-0">
+                                    <div className="text-xs font-bold m-2 flex items-center gap-2 whitespace-nowrap">
+                                        Throughput Unit
+                                        {(editedFields.throughput_unit ?? "linear_foot") !== (savedRecord?.throughput_unit ?? "linear_foot") && (
+                                            <span className="text-[9px] text-[#FFB604] font-bold tracking-wider">CHANGED</span>
+                                        )}
+                                    </div>
+                                    <Dropdown
+                                        options={["Linear Foot", "Linear Inch"]}
+                                        currOption={editedFields.throughput_unit === "linear_inch" ? "Linear Inch" : "Linear Foot"}
+                                        onSelect={(val: string) => updateField("throughput_unit", val === "Linear Inch" ? "linear_inch" : "linear_foot")}
+                                        width="w-full"
+                                    />
+                                </div>
+                            </>
                         )}
                     </div>
                 ) : (

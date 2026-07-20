@@ -39,6 +39,7 @@ export type UnitCostRecord = {
     type: string;
     display_name: string;
     throughput?: number;
+    throughput_unit?: string;
 };
 
 export type UnitEditFields = {
@@ -47,6 +48,7 @@ export type UnitEditFields = {
     unit: string;
     type: string;
     throughput?: number;
+    throughput_unit?: string;
 };
 
 // GET /standee-static-costs?standee_type=...
