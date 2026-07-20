@@ -903,9 +903,6 @@ export default function QuoteBreakdown({
         });
     }
 
-    // Keys that scale proportionally when print_form_cost qty changes
-    const PRINT_FORM_DERIVED_KEYS = ["print_cost", "rollx_cost", "zund_cut_cost"] as const;
-
     function updateScenario(key: string, field: "qty" | "unitCost", value: number) {
         setManualDirty(true);
         const syncGroup = SCENARIO_SYNC_GROUPS[key];
@@ -917,19 +914,7 @@ export default function QuoteBreakdown({
             for (const sid of scenariosToUpdate) {
                 if (!prev[sid]) continue;
                 // Drop rawTotal on manual edit so buyout rows recompute as qty × unitCost.
-                let lines = prev[sid].map((l) => l.key === key ? { ...l, [field]: value, rawTotal: undefined } : l);
-                // Proportionally scale print/rollx/zund hours when form count changes
-                if (key === "print_form_cost" && field === "qty") {
-                    const oldForms = prev[sid].find((l) => l.key === "print_form_cost")?.qty ?? 0;
-                    if (oldForms > 0) {
-                        const ratio = value / oldForms;
-                        lines = lines.map((l) =>
-                            (PRINT_FORM_DERIVED_KEYS as readonly string[]).includes(l.key)
-                                ? { ...l, qty: parseFloat((l.qty * ratio).toFixed(4)) }
-                                : l
-                        );
-                    }
-                }
+                const lines = prev[sid].map((l) => l.key === key ? { ...l, [field]: value, rawTotal: undefined } : l);
                 next[sid] = lines;
             }
             return next;
@@ -946,24 +931,6 @@ export default function QuoteBreakdown({
                     s.delete(key);
                 } else {
                     s.add(key);
-                }
-                // Also mark derived keys as edited when form count changes
-                if (key === "print_form_cost" && field === "qty") {
-                    const oldForms = scenarioLines[sid]?.find((l) => l.key === "print_form_cost")?.qty ?? 0;
-                    if (oldForms > 0) {
-                        const ratio = value / oldForms;
-                        for (const dk of PRINT_FORM_DERIVED_KEYS) {
-                            const dOrig = origScenarioLines.current[sid]?.find((l) => l.key === dk);
-                            const dCur  = scenarioLines[sid]?.find((l) => l.key === dk);
-                            if (!dCur) continue;
-                            const newQty = parseFloat((dCur.qty * ratio).toFixed(4));
-                            if (dOrig && Math.abs(dOrig.qty - newQty) < 0.005 && Math.abs(dOrig.unitCost - dCur.unitCost) < 0.005) {
-                                s.delete(dk);
-                            } else {
-                                s.add(dk);
-                            }
-                        }
-                    }
                 }
                 next[sid] = s;
             }

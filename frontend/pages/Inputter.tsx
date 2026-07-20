@@ -362,6 +362,8 @@ export default function Inputter() {
     const [uploadBlueOpen, setUploadBlueOpen]           = useState(false);
     const [historyModalOpen, setHistoryModalOpen]       = useState(false);
     const [isSavingBeforeContinue, setIsSavingBeforeContinue] = useState(false);
+    const [isDirty, setIsDirty]                         = useState(false);
+    const [needsRecalc, setNeedsRecalc]                 = useState(false);
     const [toast, setToast]                             = useState<{ message: string; type: "save" | "delete" } | null>(null);
     const [toastVisible, setToastVisible]               = useState(false);
 
@@ -483,6 +485,8 @@ export default function Inputter() {
         setElementListKey((k) => k + 1);
         setProjectName("Untitled project");
         setActiveProjectId(null);
+        setIsDirty(false);
+        setNeedsRecalc(false);
         setActiveProjectShortId(null);
         setActiveProjectOwner(null);
         setActiveQuoteData(null);
@@ -607,6 +611,8 @@ export default function Inputter() {
             // setSavedQuoteList([]);
             setActivePersistedQuoteId(null);
             setActivePersistedQuoteState(null);
+            setIsDirty(false);
+            setNeedsRecalc(false);
         } catch {
             setProjectListError("Could not load project");
         } finally {
@@ -640,6 +646,15 @@ export default function Inputter() {
     // ── Quote actions ──────────────────────────────────────────────────────
 
     const canCalculate = (standeeCount !== "" && standeeCount > 0) && elements.length > 0;
+
+    // Wrap setElements for ElementsManager so any user-driven element change marks the project dirty
+    const dirtySetElements = useCallback(
+        (value: React.SetStateAction<Element[]>) => {
+            setElements(value);
+            if (activeProjectId) setIsDirty(true);
+        },
+        [activeProjectId],
+    );
 
     // Builds the base request body for POST /generate_quote (all 5 scenarios)
     function buildQuotePayload(numStandees: number): RequestPayload {
@@ -714,7 +729,8 @@ export default function Inputter() {
         try {
             // A saved quote already exists → view it instead of recalculating,
             // so manual spec/cost edits made in the breakdown are preserved.
-            if (projectOwner && pid && (await openLatestSavedQuote(pid, projectOwner))) return;
+            // Skip this when needsRecalc — inputs changed since last save, force fresh calculation.
+            if (!needsRecalc && projectOwner && pid && (await openLatestSavedQuote(pid, projectOwner))) return;
 
             const res  = await fetch(`${API_BASE}/generate_quote`, {
                 method: "POST",
@@ -733,6 +749,7 @@ export default function Inputter() {
             setActiveQuoteData(quoteData);
             setActivePersistedQuoteId(null);
             setActivePersistedQuoteState(persistedState);
+            setNeedsRecalc(false);
 
             // Auto-save the quote to the project if signed in — quote object + five scenario children
             if (projectOwner && pid) {
@@ -773,6 +790,7 @@ export default function Inputter() {
         if (!localStorage.getItem("username")?.trim()) return;
         const r = await saveCurrentProject();
         if (r.success) {
+            if (isDirty) { setIsDirty(false); setNeedsRecalc(true); }
             setProjectListRefreshKey((v) => v + 1);
             showToast(r.shortId ? `Project saved — ID #${r.shortId}` : "Project saved", "save");
         } else if (r.errorMessage) console.error(r.errorMessage);
@@ -923,6 +941,7 @@ export default function Inputter() {
             originalWidth: r.width,
         }));
         setElements((prev) => [...prev, ...mapped]);
+        if (activeProjectId) setIsDirty(true);
     }
 
     // ── Toast JSX (shared between both views) ─────────────────────────────
@@ -1055,7 +1074,7 @@ export default function Inputter() {
                                 <input
                                     type="text"
                                     value={projectName}
-                                    onChange={(e) => setProjectName(e.target.value)}
+                                    onChange={(e) => { setProjectName(e.target.value); if (activeProjectId) setIsDirty(true); }}
                                     placeholder="Untitled project"
                                     className="border-2 bg-white border-[#E0E0E0] rounded-sm p-1.5 outline-none text-[#000005] text-xs w-full bg-[#F8F8F8] focus:border-[#FFC843] font-semibold transition-colors"
                                 />
@@ -1066,7 +1085,7 @@ export default function Inputter() {
                                     key={elementListKey}
                                     options={["Simple", "Moderate", "Complex"]}
                                     currOption={standeeType}
-                                    onSelect={(val: StandeeType) => setStandeeType(val)}
+                                    onSelect={(val: StandeeType) => { setStandeeType(val); if (activeProjectId) setIsDirty(true); }}
                                     width="w-full"
                                 />
                             </div>
@@ -1076,7 +1095,7 @@ export default function Inputter() {
                                     type="number"
                                     min={0}
                                     value={standeeCount}
-                                    onChange={(e) => setStandeeCount(e.target.value === "" ? "" : Number(e.target.value))}
+                                    onChange={(e) => { setStandeeCount(e.target.value === "" ? "" : Number(e.target.value)); if (activeProjectId) setIsDirty(true); }}
                                     placeholder="0"
                                     className="border-2 bg-white border-[#E0E0E0] rounded-sm p-1.5 outline-none text-[#000005] text-xs w-full bg-[#F8F8F8] focus:border-[#FFC843] font-semibold transition-colors"
                                 />
@@ -1091,7 +1110,7 @@ export default function Inputter() {
                             <span className="ml-2 text-[#FFC843] font-bold">({elements.length} added)</span>
                         </div>
                         <div className="w-full flex flex-col flex-1 min-h-0 overflow-hidden">
-                            <ElementsManager key={elementListKey} elements={elements} setElements={setElements} />
+                            <ElementsManager key={elementListKey} elements={elements} setElements={dirtySetElements} />
                         </div>
                     </div>
 
@@ -1120,19 +1139,23 @@ export default function Inputter() {
                             SAVE
                         </div>
                         <div
-                            onClick={canCalculate && !isSavingBeforeContinue ? () => void handleContinue() : undefined}
+                            onClick={canCalculate && !isSavingBeforeContinue && !(activeProjectId && isDirty) ? () => void handleContinue() : undefined}
                             className={`group flex flex-row justify-center gap-4 text-xs font-black py-3 rounded-sm flex-[2] min-w-[180px] transition-all duration-200 ease-in-out uppercase tracking-widest ${
-                                canCalculate && !isSavingBeforeContinue
+                                canCalculate && !isSavingBeforeContinue && !(activeProjectId && isDirty)
                                     ? "bg-[#FFC843] text-[#000005] hover:bg-[#000005] hover:text-white cursor-pointer"
                                     : "bg-[#E0E0E0] text-[#B1B3B6] cursor-not-allowed"
                             }`}
                         >
-                            {isSavingBeforeContinue ? "SAVING…" : activeProjectId ? "VIEW QUOTE" : "BUILD QUOTE"}{" "}
+                            {isSavingBeforeContinue ? "SAVING…"
+                                : activeProjectId && isDirty ? "VIEW QUOTE"
+                                : activeProjectId && needsRecalc ? "RE-CALCULATE QUOTE"
+                                : activeProjectId ? "VIEW QUOTE"
+                                : "BUILD QUOTE"}{" "}
                             <img
                                 src="/submitarrow.svg"
                                 alt=""
                                 className={`transition-all duration-300 ease-in-out ${
-                                    canCalculate && !isSavingBeforeContinue
+                                    canCalculate && !isSavingBeforeContinue && !(activeProjectId && isDirty)
                                         ? "group-hover:translate-x-1 group-hover:invert"
                                         : "opacity-40"
                                 }`}

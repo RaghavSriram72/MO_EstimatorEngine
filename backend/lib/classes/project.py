@@ -127,17 +127,23 @@ class Project[T: BaseInput]:
         machine_cost = machine_entry["cost"] * UNIT_MAP[machine_entry["unit"]] * machine_hours
         return machine_cost
 
+    def _get_zund_print_minutes_per_form(self) -> float:
+        """Minutes per form using project-level standee complexity (fallback for extra/manual forms)."""
+        return self.db.get_standee_data(self.standee_key, "zund_print_form_minutes")
+
     def _get_zund_hours(self) -> float:
         if self._all_elements_have_linear_inches():
             zund_linear_inches = sum(form.get_linear_inches() for form in self.print_forms)
             print_zund_hours = self._get_machine_time(UnitCostEntries.ZUND_CUTTER, zund_linear_inches)
         else:
-            # No linear inches provided: use per-form minute estimates instead of throughput
-            print_zund_hours = (
-                self.db.get_standee_data(self.standee_key, "zund_print_form_minutes")
-                * self.print_forms_per_standee
-                * self.num_standees
-            ) / 60
+            # Per-form complexity for bin-packed forms; extra manual forms use project standee complexity
+            packed_minutes = sum(
+                self.db.get_standee_data(STANDEE_MAP[form.complexity], "zund_print_form_minutes")
+                for form in self.print_forms
+            )
+            extra_forms = max(0, self.print_forms_per_standee - len(self.print_forms))
+            extra_minutes = extra_forms * self._get_zund_print_minutes_per_form()
+            print_zund_hours = (packed_minutes + extra_minutes) * self.num_standees / 60
 
         structure_zund_hours = (
             self.db.get_standee_data(self.standee_key, "zund_blank_form_minutes")
@@ -297,11 +303,14 @@ class InHouseProject[T: InHouseInput](Project[T]):
             zund_linear_inches = BUSMARK_PRINT_FORM_LENGTH * self.print_form_total
             print_zund_hours = self._get_machine_time(UnitCostEntries.ZUND_CUTTER, zund_linear_inches)
         else:
-            print_zund_hours = (
-                self.db.get_standee_data(self.standee_key, "zund_print_form_minutes")
-                * self.print_forms_per_standee
-                * self.num_standees
-            ) / 60
+            # Per-form complexity for bin-packed forms; extra manual forms use project standee complexity
+            packed_minutes = sum(
+                self.db.get_standee_data(STANDEE_MAP[form.complexity], "zund_print_form_minutes")
+                for form in self.print_forms
+            )
+            extra_forms = max(0, self.print_forms_per_standee - len(self.print_forms))
+            extra_minutes = extra_forms * self._get_zund_print_minutes_per_form()
+            print_zund_hours = (packed_minutes + extra_minutes) * self.num_standees / 60
         structure_zund_hours = (
             self.db.get_standee_data(self.standee_key, "zund_blank_form_minutes")
             * self.structure_forms_per_standee

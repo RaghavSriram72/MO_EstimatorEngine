@@ -10,8 +10,15 @@ from typing import Any
 
 import math
 
-from lib.classes.db_keys import UnitCostEntries
+from lib.classes import Complexity
+from lib.classes.db_keys import StandeeKey, UnitCostEntries
 from lib.globals import BUSMARK_PADDING, BUSMARK_PRINT_FORM_LENGTH, BUSMARK_ROLL_LENGTH, PRINT_95_FORM_LENGTH, UNIT_MAP
+
+_COMPLEXITY_TO_STANDEE: dict[Complexity, StandeeKey] = {
+    Complexity.SIMPLE: StandeeKey.SIMPLE,
+    Complexity.MODERATE: StandeeKey.MODERATE,
+    Complexity.COMPLEX: StandeeKey.COMPLEX,
+}
 
 
 def _print_form_length(scenario_id: int) -> float:
@@ -247,10 +254,28 @@ def _explain_zund_cut_cost(project: Any, _scenario_id: int) -> tuple[str | None,
         print_linear = sum(form.get_linear_inches() for form in project.print_forms)
         print_note = f"print: throughput method, linear_in={_num(print_linear)}"
     else:
-        print_form_min = project.db.get_standee_data(project.standee_key, "zund_print_form_minutes")
-        print_form_count = project.print_forms_per_standee * project.num_standees
-        print_minutes = print_form_min * print_form_count
-        print_note = f"print: {_num(print_form_min)} min/form × {print_form_count} forms = {_num(print_minutes)} min (no linear inches)"
+        # Group bin-packed forms by complexity; extra manual forms fall back to standee complexity
+        form_groups: dict[str, tuple[float, int]] = {}
+        for form in project.print_forms:
+            standee_key = _COMPLEXITY_TO_STANDEE[form.complexity]
+            min_per_form = project.db.get_standee_data(standee_key, "zund_print_form_minutes")
+            label = form.complexity.name.capitalize()
+            count = form_groups[label][1] + 1 if label in form_groups else 1
+            form_groups[label] = (min_per_form, count)
+        extra_forms = max(0, project.print_forms_per_standee - len(project.print_forms))
+        if extra_forms > 0:
+            fallback_min = project.db.get_standee_data(project.standee_key, "zund_print_form_minutes")
+            label = f"{project.standee_key.split()[0]} (extra)"
+            form_groups[label] = (fallback_min, extra_forms)
+        group_strs = [
+            f"{name} {_num(mpf)} min/form × {cnt} form(s)"
+            for name, (mpf, cnt) in form_groups.items()
+        ]
+        total_print_minutes = sum(mpf * cnt * project.num_standees for mpf, cnt in form_groups.values())
+        print_note = (
+            f"print (per-form complexity): {', '.join(group_strs)}\n"
+            f"  × {_num(project.num_standees, 0)} standees = {_num(total_print_minutes)} min total"
+        )
     blank_note = f"blank: {_num(blank_form_min)} min/form × {blank_form_count} forms = {_num(structure_minutes)} min"
     return (
         "zund_cut_cost",
