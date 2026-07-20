@@ -158,6 +158,14 @@ def _scenario_cost_input(sid: int, payload: QuoteRequest):
     raise ValueError(f"Unknown scenario id: {sid}")
 
 
+def _print_form_bins(label: str, bin_dict: dict) -> None:
+    """Debug print: which elements landed on which form, per print_form_calculator call."""
+    print(f"--- {label}: {len(bin_dict)} form(s) ---")
+    for bin_id, form in bin_dict.items():
+        names = [element.name for element in form.elements]
+        print(f"Form {bin_id}: {names}, complexity: {form.complexity}")
+
+
 def _compute_quote_scenarios(db: MidnightOilDB, elements: list[Element], payload: QuoteRequest) -> dict[str, Any]:
     _, busmark_bins = print_form_calculator(
         elements,
@@ -165,12 +173,14 @@ def _compute_quote_scenarios(db: MidnightOilDB, elements: list[Element], payload
         form_length=BUSMARK_FORM_LENGTH,
         padding=PADDING,
     )
+    _print_form_bins("Busmark forms", busmark_bins)
     _, form_95_bins = print_form_calculator(
         elements,
         form_width=FORM_95_WIDTH,
         form_length=FORM_95_LENGTH,
         padding=PADDING,
     )
+    _print_form_bins("95\" forms", form_95_bins)
     busmark_forms = list(busmark_bins.values())
     form_95_forms = list(form_95_bins.values())
 

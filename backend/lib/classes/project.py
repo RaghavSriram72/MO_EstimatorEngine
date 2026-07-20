@@ -292,6 +292,30 @@ class InHouseProject[T: InHouseInput](Project[T]):
         return BUSMARK_PRINT_FORM_LENGTH * self.print_form_total + BUSMARK_PADDING * self.busmark_web_ups
 
     @override
+    def _get_zund_hours(self) -> float:
+        if self._all_elements_have_linear_inches():
+            zund_linear_inches = BUSMARK_PRINT_FORM_LENGTH * self.print_form_total
+            print_zund_hours = self._get_machine_time(UnitCostEntries.ZUND_CUTTER, zund_linear_inches)
+        else:
+            print_zund_hours = (
+                self.db.get_standee_data(self.standee_key, "zund_print_form_minutes")
+                * self.print_forms_per_standee
+                * self.num_standees
+            ) / 60
+        structure_zund_hours = (
+            self.db.get_standee_data(self.standee_key, "zund_blank_form_minutes")
+            * self.structure_forms_per_standee
+            * self.num_standees
+        ) / 60
+        return (
+            print_zund_hours
+            + structure_zund_hours
+            + self._setup_time(
+                self.db.get_unit_cost_entry(UnitCostEntries.ZUND_CUTTER), round(self.blank_forms_per_standee)
+            )
+        )
+
+    @override
     def calculate_cost(self, input: T) -> None:
         super().calculate_cost(input)
         self.corrugate_cost = self._get_corrugate_cost()
@@ -313,7 +337,7 @@ class InHouseProject[T: InHouseInput](Project[T]):
         self.print_machine = input.print_machine
 
         self.rollx_hours = input.rollx_hours or (
-            self._get_machine_time(UnitCostEntries.ROLLX, self._get_print_form_linear_inches())
+            self._get_machine_time(UnitCostEntries.ROLLX, BUSMARK_PRINT_FORM_LENGTH * self.print_form_total)
         )
         self.rollx_cost = self._get_machine_cost(UnitCostEntries.ROLLX, self.rollx_hours)
 

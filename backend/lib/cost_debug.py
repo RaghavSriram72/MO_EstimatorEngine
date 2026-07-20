@@ -191,6 +191,7 @@ def _explain_machine_line(
     machine_key: str | None,
     label: str,
     machine_name: str | None = None,
+    include_webup: bool = False,
 ) -> tuple[str | None, str | None]:
     if not _has_cost(project, cost_key):
         return None, None
@@ -204,11 +205,18 @@ def _explain_machine_line(
     throughput_unit = entry["throughput_unit"]
     setup = entry.get("setup_time", 0) * project.print_forms_per_standee
     pfl = _print_form_length(scenario_id)
-    linear_inches = pfl * project.print_form_total
+    is_busmark = scenario_id in (1, 2, 3)
+    if include_webup and is_busmark:
+        web_ups = _get(project, "busmark_web_ups", 1)
+        linear_inches = pfl * project.print_form_total + BUSMARK_PADDING * web_ups
+        li_note = f" (incl. {web_ups} web-up(s) × {BUSMARK_PADDING}\" padding)"
+    else:
+        linear_inches = pfl * project.print_form_total
+        li_note = ""
     effective_throughput = throughput / UNIT_MAP[throughput_unit]
     lines = [
         f"{label}: {_money(hourly)}/hr × {_num(hours)} hrs = {_money(getattr(project, cost_key))}",
-        f"hours = linear_in ({_num(linear_inches)}) ÷ throughput "
+        f"hours = linear_in ({_num(linear_inches)}{li_note}) ÷ throughput "
         f"({_num(effective_throughput)}/hr) + setup ({_num(setup)})",
         f"machine={machine}, print_form_total={_num(project.print_form_total, 0)}",
     ]
@@ -217,7 +225,7 @@ def _explain_machine_line(
 
 def _explain_print_cost(project: Any, _scenario_id: int) -> tuple[str | None, str | None]:
     machine_name = UnitCostEntries.RHO_1312 if _scenario_id == 4 else None
-    return _explain_machine_line(project, _scenario_id, "print_cost", "print_hours", "print_machine", "Rho print", machine_name=machine_name)
+    return _explain_machine_line(project, _scenario_id, "print_cost", "print_hours", "print_machine", "Rho print", machine_name=machine_name, include_webup=True)
 
 
 def _explain_rollx_cost(project: Any, _scenario_id: int) -> tuple[str | None, str | None]:
