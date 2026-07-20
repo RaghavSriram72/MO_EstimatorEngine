@@ -164,7 +164,7 @@ export default function UnitCostsModule() {
                                 <div className="text-xs">THROUGHPUT</div>
                                 <div className="text-[1.2em] font-instrument">
                                     {savedRecord.throughput}
-                                    <span className="text-xs text-[#FFB604] ml-1">
+                                    <span className="text-[0.85em] text-[#FFB604] ml-1">
                                         {savedRecord.throughput_unit === "linear_inch" ? "in/hr" : "ft/hr"}
                                     </span>
                                 </div>
