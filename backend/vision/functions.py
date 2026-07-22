@@ -18,6 +18,12 @@ def kmeans_segmentation(image, k=5):
     pixel_values = image.reshape((-1, 3))
     pixel_values = np.float32(pixel_values)
 
+    # Mask out black pixels
+    print(pixel_values.shape)
+    mask = np.any(pixel_values > 10, axis=1)   # threshold of 10
+
+    pixels = pixel_values[mask]
+        
     # Stopping criteria
     criteria = (
         cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER,
@@ -27,7 +33,7 @@ def kmeans_segmentation(image, k=5):
 
     # Run K-means
     _, labels, centers = cv2.kmeans(
-        pixel_values,
+        pixels,
         k,
         None,
         criteria,
@@ -39,11 +45,18 @@ def kmeans_segmentation(image, k=5):
     centers = np.uint8(centers)
 
     # Rebuild segmented image
-    segmented_image = centers[labels.flatten()]
+    segmented_image = np.array(pixel_values)
+    segmented_image[mask] = centers[labels.flatten()]
     segmented_image = segmented_image.reshape(image.shape)
 
-    # Reshape labels back into image dimensions
-    label_image = labels.reshape(image.shape[:2])
+    # Create a label image initialized to a background label
+    label_image = np.full(mask.shape, -1, dtype=np.int32)  # or 255, or K
+
+    # Insert the labels back into their original positions
+    label_image[mask] = labels.flatten()
+
+    # Reshape to image dimensions
+    label_image = label_image.reshape(image.shape[:2])
 
     return segmented_image, label_image, centers
 
@@ -419,7 +432,7 @@ def main():
     cv2.imwrite(ANNOTATED_IMAGE_OUTPUT_PATH, annotated_image)
 
     #save_json(results, OUTPUT_JSON)
-    save_csv(results, RESULTS_FILE)
+    #save_csv(results, RESULTS_FILE)
 
     print("\nDetected Objects")
     print("=" * 70)
