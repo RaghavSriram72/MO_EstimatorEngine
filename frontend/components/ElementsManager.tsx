@@ -24,7 +24,7 @@ const complexityColor: Record<string, string> = {
 };
 
 const ELEMENT_GRID_COLUMNS =
-    "28px minmax(0,1fr) minmax(0,1fr) minmax(7.5rem,1.1fr) minmax(5rem,0.9fr) minmax(6rem,1.2fr) 1.75rem 3.25rem 1.75rem";
+    "28px minmax(0,1fr) minmax(0,1fr) minmax(7.5rem,1.1fr) minmax(5rem,0.9fr) minmax(6rem,1.2fr) 1.75rem 1.75rem 3.25rem 1.75rem";
 
 type Props = {
     elements: Element[];
@@ -70,6 +70,15 @@ export default function ElementsManager({ elements, setElements }: Props) {
         setComplexity("");
         setLinearInches("");
         setDescriptionDraft("");
+    }
+
+    function handleDuplicate(id: number) {
+        const idx = elements.findIndex((e) => e.id === id);
+        if (idx === -1) return;
+        const clone: Element = { ...elements[idx], id: Date.now() };
+        const next = [...elements];
+        next.splice(idx + 1, 0, clone);
+        setElements(next);
     }
 
     function handleDelete(id: number) {
@@ -235,6 +244,7 @@ export default function ElementsManager({ elements, setElements }: Props) {
                             <span className="text-center"> </span>
                             <span className="text-center"> </span>
                             <span className="text-center"> </span>
+                            <span className="text-center"> </span>
                         </div>
                         {elements.map((el, idx) => (
                             <div
@@ -327,6 +337,16 @@ export default function ElementsManager({ elements, setElements }: Props) {
                                 ) : (
                                     <span />
                                 )}
+                                <button
+                                    type="button"
+                                    title="Duplicate element"
+                                    onClick={() => handleDuplicate(el.id)}
+                                    className="justify-self-stretch flex items-center justify-center text-[#B1B3B6] border-2 border-[#E0E0E0] rounded-sm px-1 py-1 cursor-pointer hover:bg-[#E0E0E0] hover:text-[#000005] transition-all duration-200"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                                    </svg>
+                                </button>
                                 <button
                                     type="button"
                                     onClick={() => {

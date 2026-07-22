@@ -1037,7 +1037,7 @@ export default function Inputter() {
 
             {/* Main estimator form */}
             <div className="flex flex-col items-center flex-1 min-w-0 min-h-0 overflow-hidden px-8 py-6 bg-white">
-                <div className="w-full max-w-2xl mb-4 shrink-0">
+                <div className="w-full max-w-3xl mb-4 shrink-0">
                     <div className="text-xs font-bold text-[#FFC843] tracking-widest uppercase mb-1">// ESTIMATOR</div>
                     <div className="flex items-center gap-3 flex-wrap">
                         <div className="text-3xl font-black text-[#000005] uppercase tracking-tight">Quote Estimate</div>
@@ -1061,7 +1061,7 @@ export default function Inputter() {
                     <p className="text-xs text-[#B1B3B6] mt-1 font-semibold">Configure parameters to generate a cost estimate</p>
                 </div>
 
-                <div className="flex flex-col w-full max-w-3xl flex-1 min-h-0 border-2 bg-white border-[#E0E0E0] rounded-md text-[#B1B3B6] overflow-hidden">
+                <div className="flex flex-col w-full max-w-4xl flex-1 min-h-0 border-2 bg-white border-[#E0E0E0] rounded-md text-[#B1B3B6] overflow-hidden">
 
                     {/* 01 — project config */}
                     <div className="flex flex-col justify-center items-start w-full p-5 border-b-2 border-[#E0E0E0] shrink-0">
