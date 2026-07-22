@@ -4,6 +4,7 @@ import json
 import csv
 from scipy.spatial import Delaunay
 import math
+from pdf2image import convert_from_path
 
 # INTERNALLY: process_image is the most important function here
 
@@ -17,6 +18,12 @@ def kmeans_segmentation(image, k=5):
     pixel_values = image.reshape((-1, 3))
     pixel_values = np.float32(pixel_values)
 
+    # Mask out black pixels
+    print(pixel_values.shape)
+    mask = np.any(pixel_values > 10, axis=1)   # threshold of 10
+
+    pixels = pixel_values[mask]
+        
     # Stopping criteria
     criteria = (
         cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER,
@@ -26,7 +33,7 @@ def kmeans_segmentation(image, k=5):
 
     # Run K-means
     _, labels, centers = cv2.kmeans(
-        pixel_values,
+        pixels,
         k,
         None,
         criteria,
@@ -38,11 +45,18 @@ def kmeans_segmentation(image, k=5):
     centers = np.uint8(centers)
 
     # Rebuild segmented image
-    segmented_image = centers[labels.flatten()]
+    segmented_image = np.array(pixel_values)
+    segmented_image[mask] = centers[labels.flatten()]
     segmented_image = segmented_image.reshape(image.shape)
 
-    # Reshape labels back into image dimensions
-    label_image = labels.reshape(image.shape[:2])
+    # Create a label image initialized to a background label
+    label_image = np.full(mask.shape, -1, dtype=np.int32)  # or 255, or K
+
+    # Insert the labels back into their original positions
+    label_image[mask] = labels.flatten()
+
+    # Reshape to image dimensions
+    label_image = label_image.reshape(image.shape[:2])
 
     return segmented_image, label_image, centers
 
@@ -51,6 +65,39 @@ def load_image(image_path):
     if image is None:
         raise FileNotFoundError(f"Could not load image: {image_path}") 
     return image
+
+def process_pdf(slide_path, first_page = None, last_page = None,slide_ids = None, **kwargs):
+    """Run to process pdfs. 
+    For specific slides, either specify first and last page (last page inclusive I believe?), or slide_ids (0 indexed). 
+    If both are passed, the indexing will happen on the subset of slides, so make sure to
+    calculate properly. (e.g. start 2 index 0 will be equivalent to start none index 2)
+    kwargs are the kwargs that would be passed ot process_image, k_cluseters or min_area """
+
+    images = convert_from_path(slide_path, first_page=first_page, last_page=last_page)
+
+    if slide_ids is not None: #if slide ids are specified, pick them from the rasterized images
+        temp = []
+        for id in slide_ids:
+            temp.append(images[id])
+        images = temp
+
+    # convert to numpy array and bgr to pass to process_image as expected from cv2 conventions
+    images_np = [np.array(img) for img in images]
+    for i in range(len(images_np)):
+        images_np[i] = cv2.cvtColor(images_np[i], cv2.COLOR_RGB2BGR)
+
+    segmented_images = []
+    outputs = []
+    all_results_list = []
+    binary_masks_list = []
+    for image in images_np:
+        segmented_image, output, all_results, binary_masks = process_image(image, **kwargs)
+        segmented_images.append(segmented_image)
+        outputs.append(output)
+        all_results_list.append(all_results)
+        binary_masks_list.append(binary_masks)
+
+    return segmented_images, outputs, all_results_list, binary_masks_list
 
 def process_image(image, k_clusters = 6, min_area = 100):
 
@@ -385,7 +432,7 @@ def main():
     cv2.imwrite(ANNOTATED_IMAGE_OUTPUT_PATH, annotated_image)
 
     #save_json(results, OUTPUT_JSON)
-    save_csv(results, RESULTS_FILE)
+    #save_csv(results, RESULTS_FILE)
 
     print("\nDetected Objects")
     print("=" * 70)
