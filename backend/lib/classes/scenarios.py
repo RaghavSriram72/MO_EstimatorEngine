@@ -34,12 +34,13 @@ class Scenario2[T: Scenario2Input](InHouseProject[T]):
     @override
     def calculate_cost(self, input: T) -> None:
         super().calculate_cost(input)
+        self.instruction_sheet_cost = self._get_instruction_sheet_cost()
         self.kitting_and_assembly_cost = self._get_kitting_and_assembly_cost()
 
     @property
     def total_cost(self) -> float:
         """Calculate the total cost of the project, including both universal and scenario-specific costs."""
-        return super().total_cost + self.kitting_and_assembly_cost
+        return super().total_cost + self.instruction_sheet_cost + self.kitting_and_assembly_cost
 
 
 class Scenario3[T: Scenario3Input](InHouseProject[T]):
