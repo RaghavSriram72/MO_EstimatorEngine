@@ -725,6 +725,76 @@ async def rename_project(
     return {"message": "Project renamed", "project_id": project_id, "project_name": payload.project_name.strip()}
 
 
+class DuplicateProjectBody(BaseModel):
+    """Body for ``POST /projects/{project_id}/duplicate``."""
+
+    new_owner: str = Field(..., min_length=1, max_length=256, description="Username the copy will belong to")
+    project_name: str | None = Field(default=None, max_length=512)
+
+
+@app.post("/projects/{project_id}/duplicate")
+async def duplicate_project(
+    project_id: str,
+    payload: DuplicateProjectBody,
+    owner: str = Query(..., description="Must match the source project's owner field"),
+):
+    """Clone a project and all of its saved quotes into a brand-new project/quote set.
+
+    The copy gets its own fresh history (just its own "create" entries) — the source
+    project's edit history never carries over, since history is scoped to its own
+    project_id and only ever written by inserts/updates, never copied.
+    """
+    db = _ensure_db()
+    if not db.check_username_exists(owner):
+        return JSONResponse(status_code=404, content={"error": "Unknown owner"})
+    if not db.check_username_exists(payload.new_owner):
+        return JSONResponse(status_code=404, content={"error": "Unknown new_owner"})
+    source = db.get_project_by_owner(project_id, owner)
+    if source is None:
+        return JSONResponse(status_code=404, content={"error": "Project not found"})
+
+    new_project_doc = {
+        "schema_version": source.get("schema_version", 1),
+        "owner": payload.new_owner,
+        "project_name": payload.project_name or f"{source.get('project_name', 'Untitled project')} (Copy)",
+        "num_standees": source["num_standees"],
+        "standee_type": source["standee_type"],
+        "elements": source["elements"],
+    }
+    new_project_id = db.insert_persisted_project(new_project_doc)
+
+    quote_ids: list[str] = []
+    for quote in db.list_quotes_for_project(project_id, owner):
+        new_quote_doc = {
+            "schema_version": quote.get("schema_version", 2),
+            "owner": payload.new_owner,
+            "project_id": ObjectId(new_project_id),
+            "quote_name": quote.get("quote_name") or "Untitled quote",
+            "scenario": quote.get("scenario", 1),
+            "num_standees": quote["num_standees"],
+            "contribution_margin": quote.get("contribution_margin", 0),
+            "standee_type": quote["standee_type"],
+            "elements": quote["elements"],
+            "scenarios": quote.get("scenarios", {}),
+            "universal": quote.get("universal", {}),
+            "params": quote.get("params", {}),
+            "breakdown": quote.get("breakdown", {}),
+            "created_at": datetime.now(UTC),
+            "updated_at": datetime.now(UTC),
+        }
+        quote_ids.append(db.insert_persisted_quote(new_quote_doc))
+
+    return JSONResponse(
+        status_code=201,
+        content={
+            "project_id": new_project_id,
+            "short_id": project_short_id(new_project_id),
+            "quote_ids": quote_ids,
+            "message": "Project duplicated successfully",
+        },
+    )
+
+
 @app.delete("/projects/{project_id}")
 async def delete_project(
     project_id: str,

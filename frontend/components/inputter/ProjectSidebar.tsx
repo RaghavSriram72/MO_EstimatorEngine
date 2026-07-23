@@ -32,8 +32,15 @@ const IconPencil = () => (
     </svg>
 );
 
+const IconCopy = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+    </svg>
+);
+
 type Props = {
     activeProjectId: string | null;
+    currentUser: string | null;
     projects: ProjectSummary[];
     hasProjects: boolean;
     isLoading: boolean;
@@ -44,10 +51,12 @@ type Props = {
     onLoadProject: (id: string) => void;
     onDeleteProject: (id: string, label: string) => void;
     onRenameProject: (id: string, newName: string) => void;
+    onDuplicateProject: (id: string, label: string) => void;
 };
 
 export default function ProjectSidebar({
     activeProjectId,
+    currentUser,
     projects,
     hasProjects,
     isLoading,
@@ -58,6 +67,7 @@ export default function ProjectSidebar({
     onLoadProject,
     onDeleteProject,
     onRenameProject,
+    onDuplicateProject,
 }: Props) {
     const [pendingDelete, setPendingDelete] = useState<{ id: string; label: string } | null>(null);
     const [editingId, setEditingId] = useState<string | null>(null);
@@ -95,7 +105,7 @@ export default function ProjectSidebar({
             onConfirm={confirmDelete}
             onCancel={() => setPendingDelete(null)}
         />
-        <aside className="shrink-0 w-[300px] h-full min-h-0 flex flex-col border-r-2 border-[#E0E0E0] bg-white px-3 py-5 gap-3">
+        <aside className="shrink-0 w-[350px] h-full min-h-0 flex flex-col border-r-2 border-[#E0E0E0] bg-white px-3 py-5 gap-3">
             <div className="flex flex-col gap-0.5 pl-3 shrink-0">
                 <span className="text-[11px] font-bold tracking-[0.2em] uppercase text-[#B1B3B6]">Your Work</span>
                 <div className="flex items-center gap-2">
@@ -134,6 +144,7 @@ export default function ProjectSidebar({
                 {projects.map((p) => {
                     const isActive  = activeProjectId === p._id;
                     const isEditing = editingId === p._id;
+                    const isOwner   = !!currentUser && p.owner === currentUser;
                     return (
                         <div
                             key={p._id}
@@ -188,24 +199,49 @@ export default function ProjectSidebar({
                                 </div>
                             </button>
 
-                            {/* Edit button */}
+
+
+                             {/* Duplicate button */}
                             <button
                                 type="button"
+                                title="Duplicate Project"
+                                aria-label={`Duplicate project ${p.project_name || "Untitled"}`}
+                                onClick={(e) => { e.stopPropagation(); onDuplicateProject(p._id, p.project_name || "Untitled"); }}
+                                className="cursor-pointer shrink-0 w-7 flex items-center justify-center border-l border-[#F0F0F0] text-[#DEDEDE] hover:text-[#1565C0] hover:bg-[#E3F2FD] transition-colors"
+                            >
+                                <IconCopy />
+                            </button>
+
+                            {/* Edit button — only the owner may rename */}
+                            <button
+                                type="button"
+                                disabled={!isOwner}
+                                title={isOwner ? "Edit Project" : "Only the owner can rename this project"}
                                 aria-label={`Rename project ${p.project_name || "Untitled"}`}
-                                onClick={(e) => { e.stopPropagation(); isEditing ? cancelEdit() : startEdit(p._id, p.project_name || "Untitled"); }}
-                                className={`cursor-pointer shrink-0 w-7 flex items-center justify-center border-l border-[#F0F0F0] transition-colors ${
-                                    isEditing ? "text-[#64748B] bg-[#F1F5F9]" : "text-[#DEDEDE] hover:text-[#64748B] hover:bg-[#F1F5F9]"
+                                onClick={(e) => { e.stopPropagation(); if (!isOwner) return; isEditing ? cancelEdit() : startEdit(p._id, p.project_name || "Untitled"); }}
+                                className={`shrink-0 w-7 flex items-center justify-center border-l border-[#F0F0F0] transition-colors ${
+                                    !isOwner
+                                        ? "text-[#E8E8E8] cursor-not-allowed"
+                                        : isEditing
+                                            ? "cursor-pointer text-[#64748B] bg-[#F1F5F9]"
+                                            : "cursor-pointer text-[#DEDEDE] hover:text-[#64748B] hover:bg-[#F1F5F9]"
                                 }`}
                             >
                                 <IconPencil />
                             </button>
 
-                            {/* Delete button */}
+                            {/* Delete button — only the owner may delete */}
                             <button
                                 type="button"
+                                disabled={!isOwner}
+                                title={isOwner ? "Delete Project" : "Only the owner can delete this project"}
                                 aria-label={`Delete project ${p.project_name || "Untitled"}`}
-                                onClick={(e) => { e.stopPropagation(); setPendingDelete({ id: p._id, label: p.project_name || "Untitled" }); }}
-                                className="cursor-pointer shrink-0 w-7 flex items-center justify-center text-[#DEDEDE] hover:text-red-400 hover:bg-red-50 border-l border-[#F0F0F0] transition-colors"
+                                onClick={(e) => { e.stopPropagation(); if (!isOwner) return; setPendingDelete({ id: p._id, label: p.project_name || "Untitled" }); }}
+                                className={`shrink-0 w-7 flex items-center justify-center border-l border-[#F0F0F0] transition-colors ${
+                                    !isOwner
+                                        ? "text-[#E8E8E8] cursor-not-allowed"
+                                        : "cursor-pointer text-[#DEDEDE] hover:text-red-400 hover:bg-red-50"
+                                }`}
                             >
                                 <IconTrash />
                             </button>

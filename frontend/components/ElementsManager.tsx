@@ -15,6 +15,18 @@ type Element = {
     originalWidth?: number;
 };
 
+const IconPencil = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+    </svg>
+);
+
+const IconTrash = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+    </svg>
+);
+
 const complexityOptions = ["Simple", "Moderate", "Complex"];
 
 const complexityColor: Record<string, string> = {
@@ -341,7 +353,7 @@ export default function ElementsManager({ elements, setElements }: Props) {
                                     type="button"
                                     title="Duplicate element"
                                     onClick={() => handleDuplicate(el.id)}
-                                    className="justify-self-stretch flex items-center justify-center text-[#B1B3B6] border-2 border-[#E0E0E0] rounded-sm px-1 py-1 cursor-pointer hover:bg-[#E0E0E0] hover:text-[#000005] transition-all duration-200"
+                                    className="justify-self-stretch flex items-center justify-center text-[#B1B3B6] border-2 border-[#E0E0E0] rounded-sm px-1 py-1 cursor-pointer hover:bg-[#E3F2FD] hover:text-[#1565C0] transition-all duration-200"
                                 >
                                     <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                         <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
@@ -349,6 +361,7 @@ export default function ElementsManager({ elements, setElements }: Props) {
                                 </button>
                                 <button
                                     type="button"
+                                    title="Edit element"
                                     onClick={() => {
                                         if (editingId === el.id) {
                                             handleDone(el);
@@ -357,16 +370,17 @@ export default function ElementsManager({ elements, setElements }: Props) {
                                             setEditSnapshot({ id: el.id, height: el.height, width: el.width });
                                         }
                                     }}
-                                    className="justify-self-stretch text-center text-[10px] font-bold text-[#B1B3B6] border-2 border-[#E0E0E0] rounded-sm px-1 py-1 cursor-pointer hover:bg-[#E0E0E0] hover:text-[#000005] transition-all duration-200"
+                                    className="justify-self-stretch flex items-center justify-center text-[10px] font-bold text-[#B1B3B6] border-2 border-[#E0E0E0] rounded-sm px-1 py-1 cursor-pointer hover:bg-[#E2E8F0] hover:text-[#334155] transition-all duration-200"
                                 >
-                                    {editingId === el.id ? "Done" : "Edit"}
+                                    {editingId === el.id ? "Done" : <IconPencil />}
                                 </button>
                                 <button
                                     type="button"
+                                    title="Delete element"
                                     onClick={() => handleDelete(el.id)}
-                                    className="justify-self-stretch text-center text-[10px] font-bold text-red-400 border-2 border-red-100 rounded-sm px-1 py-1 cursor-pointer hover:bg-red-50 transition-all duration-200"
+                                    className="justify-self-stretch flex items-center justify-center text-red-400 border-2 border-red-100 rounded-sm px-1 py-1 cursor-pointer hover:bg-red-100 hover:text-red-600 transition-all duration-200"
                                 >
-                                    ✕
+                                    <IconTrash />
                                 </button>
                             </div>
                         ))}

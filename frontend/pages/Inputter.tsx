@@ -366,6 +366,11 @@ export default function Inputter() {
     const [needsRecalc, setNeedsRecalc]                 = useState(false);
     const [toast, setToast]                             = useState<{ message: string; type: "save" | "delete" } | null>(null);
     const [toastVisible, setToastVisible]               = useState(false);
+    const [currentUser, setCurrentUser]                 = useState<string | null>(null);
+
+    useEffect(() => {
+        setCurrentUser(localStorage.getItem("username"));
+    }, []);
 
     // Slides the toast in from the top, then fades it out after 2.5 s
     useEffect(() => {
@@ -624,6 +629,11 @@ export default function Inputter() {
     async function deleteProject(projectId: string, projectLabel: string) {
         const owner = ownerForProject(projectId);
         if (!owner) return;
+        const currentUser = typeof window !== "undefined" ? localStorage.getItem("username")?.trim() : null;
+        if (!currentUser || currentUser !== owner) {
+            setProjectListError("Only the project owner can delete this project");
+            return;
+        }
         setProjectListError(null);
         try {
             const res = await fetch(
@@ -800,6 +810,11 @@ export default function Inputter() {
     async function renameProject(projectId: string, newName: string) {
         const owner = ownerForProject(projectId);
         if (!owner) return;
+        const currentUser = typeof window !== "undefined" ? localStorage.getItem("username")?.trim() : null;
+        if (!currentUser || currentUser !== owner) {
+            setProjectListError("Only the project owner can rename this project");
+            return;
+        }
         try {
             const res = await fetch(
                 `${API_BASE}/projects/${encodeURIComponent(projectId)}/rename?owner=${encodeURIComponent(owner)}`,
@@ -816,6 +831,35 @@ export default function Inputter() {
             showToast(`Renamed to "${newName}"`, "save");
         } catch {
             setProjectListError("Could not rename project");
+        }
+    }
+
+    // POST /projects/:id/duplicate → clone a project + its saved quotes under the
+    // signed-in user, with a fresh (empty) history of its own.
+    async function duplicateProject(projectId: string, projectLabel: string) {
+        const sourceOwner = ownerForProject(projectId);
+        const newOwner = typeof window !== "undefined" ? localStorage.getItem("username")?.trim() : null;
+        if (!sourceOwner || !newOwner) return;
+        setProjectListError(null);
+        try {
+            const res = await fetch(
+                `${API_BASE}/projects/${encodeURIComponent(projectId)}/duplicate?owner=${encodeURIComponent(sourceOwner)}`,
+                {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ new_owner: newOwner, project_name: `${projectLabel} (Copy)` }),
+                },
+            );
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                setProjectListError(apiErrorMessage(data) ?? "Could not duplicate project");
+                return;
+            }
+            setProjectListRefreshKey((v) => v + 1);
+            showToast(`Duplicated as "${projectLabel} (Copy)"`, "save");
+            if (typeof data.project_id === "string") void loadProject(data.project_id);
+        } catch {
+            setProjectListError("Could not duplicate project");
         }
     }
 
@@ -1023,6 +1067,7 @@ export default function Inputter() {
 
             <ProjectSidebar
                 activeProjectId={activeProjectId}
+                currentUser={currentUser}
                 projects={filteredProjects}
                 hasProjects={projectList.length > 0}
                 isLoading={projectListLoading}
@@ -1033,6 +1078,7 @@ export default function Inputter() {
                 onLoadProject={(id) => void loadProject(id)}
                 onDeleteProject={(id, label) => void deleteProject(id, label)}
                 onRenameProject={(id, name) => void renameProject(id, name)}
+                onDuplicateProject={(id, label) => void duplicateProject(id, label)}
             />
 
             {/* Main estimator form */}

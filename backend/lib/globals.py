@@ -6,6 +6,7 @@ def project_short_id(project_id: str) -> str:
     digest = hashlib.sha256(project_id.encode()).hexdigest()
     return f"{int(digest, 16) % 10**8:08d}"
 
+# ceil((85*Standee * Print Forms) / 3600 )
 
 FORM_95_WIDTH = 58.5
 FORM_95_LENGTH = 79.625
