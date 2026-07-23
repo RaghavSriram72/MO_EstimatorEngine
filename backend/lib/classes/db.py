@@ -29,6 +29,18 @@ _QUOTE_UPDATE_ALLOWED_FIELDS = {
     "elements",
     "contribution_margin",
 }
+# Subset of _QUOTE_UPDATE_ALLOWED_FIELDS that counts as "a real change" for history purposes.
+# `scenario` only records which tab was last open and `breakdown` is a legacy blob that's
+# always empty on new writes — neither is a change from the user's point of view, so a save
+# that only touches these would otherwise still clutter the timeline as a no-op entry.
+_QUOTE_HISTORY_SIGNIFICANT_FIELDS = _QUOTE_UPDATE_ALLOWED_FIELDS - {"scenario", "breakdown"}
+
+
+def _significant_history_fields(snapshot: dict[str, Any], entity_type: str) -> dict[str, Any]:
+    """Subset of a history snapshot that counts as "a real change" for no-op detection."""
+    if entity_type != "quote":
+        return snapshot
+    return {k: v for k, v in snapshot.items() if k in _QUOTE_HISTORY_SIGNIFICANT_FIELDS}
 
 
 def _fit_supplier_curve(amounts: list[float], costs: list[float]) -> dict[str, float]:
@@ -153,7 +165,29 @@ class MidnightOilDB:
         write request — there is no separate session/identity layer in this app, and
         every write is already scoped to ``{"_id": ..., "owner": owner}``, so today
         ``changed_by`` always equals the document's own ``owner``.
+
+        Skips writing when nothing significant changed since the immediately-preceding
+        entry for the same entity (the project itself, or one specific quote) — these are
+        no-op saves (Save/Continue clicked with nothing to save, an autosave heartbeat that
+        landed on identical content, etc.) and would otherwise clutter the timeline with
+        entries showing no real difference. ``create``/``revert`` are always recorded:
+        ``create`` never has a predecessor to compare against, and ``revert`` is an explicit,
+        meaningful user action even on the rare occasion it restores an identical state.
         """
+        if change_type not in ("create", "revert"):
+            latest = self.history_collection.find_one(
+                {
+                    "project_id": ObjectId(project_id),
+                    "entity_type": entity_type,
+                    "quote_id": ObjectId(quote_id) if quote_id else None,
+                },
+                sort=[("created_at", -1), ("_id", -1)],
+            )
+            if latest is not None and _significant_history_fields(
+                latest.get("snapshot") or {}, entity_type
+            ) == _significant_history_fields(snapshot, entity_type):
+                return
+
         self.history_collection.insert_one(
             {
                 "project_id": ObjectId(project_id),
@@ -404,7 +438,13 @@ class MidnightOilDB:
         return result.deleted_count
 
     def list_project_history(self, project_id: str, owner: str) -> list[dict[str, Any]]:
-        """Combined project+quote history for a project, metadata only (no ``snapshot``), newest first."""
+        """Combined project+quote history for a project, metadata only (no ``snapshot``), newest first.
+
+        Drops entries with nothing significant changed from the immediately-preceding entry
+        for the same entity (the project itself, or one specific quote) — legacy no-op saves
+        that predate the write-time skip in ``_record_history`` would otherwise still clutter
+        the timeline. Each entity's first ("create") entry, and any ``revert``, always survives.
+        """
         try:
             pid = ObjectId(project_id)
         except (InvalidId, TypeError):
@@ -412,13 +452,34 @@ class MidnightOilDB:
         # Sort by _id as a tiebreak: ObjectIds are monotonically increasing even when two
         # entries share the same ``created_at`` timestamp, so this keeps "which one is
         # newest" deterministic (load-bearing for picking the single "current version").
-        cursor = self.history_collection.find(
-            {"project_id": pid, "owner": owner},
-            {"snapshot": 0},
-        ).sort([("created_at", -1), ("_id", -1)])
+        rows = list(
+            self.history_collection.find({"project_id": pid, "owner": owner}).sort([("created_at", -1), ("_id", -1)])
+        )
+
+        # Group by entity (the project itself, or one specific quote), preserving the
+        # newest-first order so each entry can be compared to the next OLDER one sharing
+        # its entity key.
+        groups: dict[tuple[str, str | None], list[dict[str, Any]]] = {}
+        for row in rows:
+            key = (row["entity_type"], str(row["quote_id"]) if row.get("quote_id") else None)
+            groups.setdefault(key, []).append(row)
+
+        excluded_ids = set()
+        for group in groups.values():
+            for newer, older in zip(group, group[1:]):
+                if newer["change_type"] in ("create", "revert"):
+                    continue
+                newer_fields = _significant_history_fields(newer.get("snapshot") or {}, newer["entity_type"])
+                older_fields = _significant_history_fields(older.get("snapshot") or {}, older["entity_type"])
+                if newer_fields == older_fields:
+                    excluded_ids.add(newer["_id"])
+
         out: list[dict[str, Any]] = []
-        for row in cursor:
+        for row in rows:
+            if row["_id"] in excluded_ids:
+                continue
             doc = dict(row)
+            doc.pop("snapshot", None)
             doc["_id"] = str(doc["_id"])
             doc["project_id"] = str(doc["project_id"])
             if doc.get("quote_id"):

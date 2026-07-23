@@ -761,29 +761,64 @@ export default function Inputter() {
             setActivePersistedQuoteState(persistedState);
             setNeedsRecalc(false);
 
-            // Auto-save the quote to the project if signed in — quote object + five scenario children
+            // Auto-save the quote to the project if signed in — quote object + five scenario
+            // children. If a quote already exists for this project, update it IN PLACE (a
+            // recalculate is a change to the same quote, not a brand-new one — creating a new
+            // document here would start a fresh history timeline and wrongly log it as "Created").
             if (projectOwner && pid) {
-                const saveRes = await fetch(`${API_BASE}/projects/${encodeURIComponent(pid)}/quotes`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        owner: projectOwner,
-                        quote_name: quoteName,
-                        scenario: 1,
-                        num_standees: num,
-                        contribution_margin: 0,
-                        standee_type: standeeType,
-                        elements: elementsForApi(elements),
-                        scenarios: persistedState.scenarios,
-                        universal: persistedState.universal,
-                        params: persistedState.params,
-                    }),
-                });
-                const saveData = await saveRes.json().catch(() => ({}));
-                if (saveRes.ok && typeof saveData.quote_id === "string") {
-                    setActivePersistedQuoteId(saveData.quote_id);
+                let existingQuoteId: string | null = null;
+                try {
+                    const listRes = await fetch(
+                        `${API_BASE}/projects/${encodeURIComponent(pid)}/quotes?owner=${encodeURIComponent(projectOwner)}`,
+                    );
+                    const listData = await listRes.json().catch(() => ({}));
+                    if (listRes.ok && Array.isArray(listData.quotes) && listData.quotes.length > 0) {
+                        const newest = listData.quotes[0] as { _id?: unknown };
+                        existingQuoteId = typeof newest._id === "string" ? newest._id : null;
+                    }
+                } catch {
+                    existingQuoteId = null;
+                }
+
+                const quoteFields = {
+                    quote_name: quoteName,
+                    scenario: 1,
+                    num_standees: num,
+                    contribution_margin: 0,
+                    standee_type: standeeType,
+                    elements: elementsForApi(elements),
+                    scenarios: persistedState.scenarios,
+                    universal: persistedState.universal,
+                    params: persistedState.params,
+                };
+
+                if (existingQuoteId) {
+                    const patchRes = await fetch(
+                        `${API_BASE}/quotes/${encodeURIComponent(existingQuoteId)}?owner=${encodeURIComponent(projectOwner)}`,
+                        {
+                            method: "PATCH",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify(quoteFields),
+                        },
+                    );
+                    const patchData = await patchRes.json().catch(() => ({}));
+                    if (patchRes.ok) {
+                        setActivePersistedQuoteId(existingQuoteId);
+                    } else {
+                        console.error("Could not update quote:", apiErrorMessage(patchData) ?? patchData);
+                    }
                 } else {
-                    console.error("Could not persist quote:", apiErrorMessage(saveData) ?? saveData);
+                    const saveRes = await fetch(`${API_BASE}/projects/${encodeURIComponent(pid)}/quotes`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ owner: projectOwner, ...quoteFields }),
+                    });
+                    const saveData = await saveRes.json().catch(() => ({}));
+                    if (saveRes.ok && typeof saveData.quote_id === "string") {
+                        setActivePersistedQuoteId(saveData.quote_id);
+                    } else {
+                        console.error("Could not persist quote:", apiErrorMessage(saveData) ?? saveData);
+                    }
                 }
                 // void refreshSavedQuoteList();
             }

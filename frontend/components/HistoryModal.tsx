@@ -44,18 +44,16 @@ const CHANGE_TYPE_STYLE: Record<ChangeType, string> = {
     revert: "bg-[#FFF3E0] text-[#E65100]",
 };
 
-function relativeTime(iso: string): string {
-    const then = new Date(iso).getTime();
-    if (Number.isNaN(then)) return iso;
-    const diffSec = Math.max(0, Math.round((Date.now() - then) / 1000));
-    if (diffSec < 60) return "just now";
-    const diffMin = Math.round(diffSec / 60);
-    if (diffMin < 60) return `${diffMin}m ago`;
-    const diffHr = Math.round(diffMin / 60);
-    if (diffHr < 24) return `${diffHr}h ago`;
-    const diffDay = Math.round(diffHr / 24);
-    if (diffDay < 30) return `${diffDay}d ago`;
-    return new Date(iso).toLocaleDateString();
+function formatTimestamp(iso: string): string {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+    });
 }
 
 function fieldLabel(key: string): string {
@@ -115,7 +113,13 @@ function formatDiffValue(v: unknown): string {
     return s.length > 50 ? `${s.slice(0, 47)}…` : s;
 }
 
-type ElementRow = { length?: unknown; width?: unknown; complexity?: unknown; description?: unknown };
+type ElementRow = {
+    length?: unknown;
+    width?: unknown;
+    complexity?: unknown;
+    description?: unknown;
+    linear_inches?: unknown;
+};
 
 function describeElement(el: unknown): string {
     if (!isPlainObject(el)) return "element";
@@ -126,39 +130,62 @@ function describeElement(el: unknown): string {
     return description ? `${base} — ${description}` : base;
 }
 
-/** Elements are (almost always) appended/removed at the end via the "+ Add" / delete row
- * controls, so a length-based comparison is enough to surface "what's new" without full
- * list-diffing — good enough for a summary, not meant to handle arbitrary reordering. */
-function summarizeElementsChange(before: unknown, after: unknown): { summary: string; tone: "added" | "removed" | "changed"; details: string[] } {
-    if (!Array.isArray(before) || !Array.isArray(after)) {
-        return { summary: "Changed", tone: "changed", details: [] };
+const ELEMENT_FIELD_LABELS: [keyof ElementRow, string][] = [
+    ["complexity", "Complexity"],
+    ["length", "Length"],
+    ["width", "Width"],
+    ["linear_inches", "Linear Inches"],
+    ["description", "Description"],
+];
+
+/** Field-level diff for one element present at the same position in both before/after —
+ * surfaces "Complexity: Simple → Moderate" instead of a vague "elements edited". */
+function diffElementFields(before: unknown, after: unknown): { field: string; before: string; after: string }[] {
+    if (!isPlainObject(before) || !isPlainObject(after)) return [];
+    const b = before as ElementRow;
+    const a = after as ElementRow;
+    const out: { field: string; before: string; after: string }[] = [];
+    for (const [key, label] of ELEMENT_FIELD_LABELS) {
+        if (!deepEqual(b[key], a[key])) {
+            out.push({ field: label, before: formatDiffValue(b[key]), after: formatDiffValue(a[key]) });
+        }
     }
-    if (after.length > before.length) {
-        const added = after.slice(before.length);
-        return {
-            summary: `+${added.length} element${added.length === 1 ? "" : "s"} added`,
-            tone: "added",
-            details: added.map(describeElement),
-        };
-    }
-    if (after.length < before.length) {
-        const removed = before.slice(after.length);
-        return {
-            summary: `-${removed.length} element${removed.length === 1 ? "" : "s"} removed`,
-            tone: "removed",
-            details: removed.map(describeElement),
-        };
-    }
-    return { summary: `${after.length} element${after.length === 1 ? "" : "s"} edited`, tone: "changed", details: [] };
+    return out;
 }
 
-type DiffTone = "added" | "removed" | "changed";
+/** Identifies which element a per-field edit belongs to — its description when it has one,
+ * otherwise its dimensions, so e.g. a complexity change reads as "Element 3 — 40×20" instead
+ * of a bare index that forces you to go count rows to figure out which element it was. */
+function elementIdentityLabel(el: unknown): string {
+    if (!isPlainObject(el)) return "";
+    const e = el as ElementRow;
+    const description = typeof e.description === "string" ? e.description.trim() : "";
+    if (description) return description;
+    return e.length !== undefined && e.width !== undefined ? `${e.length}×${e.width}` : "";
+}
 
-const DIFF_TONE_STYLE: Record<DiffTone, string> = {
-    added: "bg-[#E8F5E9] text-[#2E7D32]",
-    removed: "bg-[#FDECEA] text-[#C62828]",
-    changed: "bg-[#E3F2FD] text-[#1565C0]",
-};
+type ElementEdit = { index: number; identity: string; changes: { field: string; before: string; after: string }[] };
+
+/** Elements are (almost always) appended/removed at the end via the "+ Add" / delete row
+ * controls, so positional comparison is enough to tell added/removed apart from edited —
+ * good enough for a summary, not meant to handle arbitrary reordering. Elements still
+ * present at the same position get a full field-level diff (dimensions, complexity, etc). */
+function summarizeElementsChange(before: unknown, after: unknown): { added: string[]; removed: string[]; edited: ElementEdit[] } {
+    if (!Array.isArray(before) || !Array.isArray(after)) {
+        return { added: [], removed: [], edited: [] };
+    }
+    const minLen = Math.min(before.length, after.length);
+    const edited: ElementEdit[] = [];
+    for (let i = 0; i < minLen; i++) {
+        const changes = diffElementFields(before[i], after[i]);
+        if (changes.length > 0) {
+            edited.push({ index: i, identity: elementIdentityLabel(after[i]) || elementIdentityLabel(before[i]), changes });
+        }
+    }
+    const added = after.length > before.length ? after.slice(before.length).map(describeElement) : [];
+    const removed = before.length > after.length ? before.slice(after.length).map(describeElement) : [];
+    return { added, removed, edited };
+}
 
 type ElementsChange = ReturnType<typeof summarizeElementsChange>;
 /** Scenarios that landed on the exact same before/after value are merged into one entry. */
@@ -373,7 +400,7 @@ export default function HistoryModal({ open, onClose, projectId, owner, onRevert
 
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [detail, setDetail] = useState<HistoryEntryDetail | null>(null);
-    const [currentDetail, setCurrentDetail] = useState<HistoryEntryDetail | null>(null);
+    const [previousDetail, setPreviousDetail] = useState<HistoryEntryDetail | null>(null);
     const [detailLoading, setDetailLoading] = useState(false);
 
     const [confirmingRevertId, setConfirmingRevertId] = useState<string | null>(null);
@@ -395,14 +422,33 @@ export default function HistoryModal({ open, onClose, projectId, owner, onRevert
         return current;
     }, [entries]);
 
-    const isSelectedEntryCurrent = detail ? currentEntryIds.has(detail._id) : false;
+    // Google-Docs-style history: each entry is diffed against the entry immediately BEFORE
+    // it for the same entity (not against "current"), so it reads as "what changed in this
+    // step" — a stable, step-by-step record instead of a moving target. `entries` is already
+    // newest-first, so within one entity's group the next array item is the older version.
+    const previousEntryId = useMemo(() => {
+        const map = new Map<string, string | null>();
+        const groups = new Map<string, string[]>();
+        for (const entry of entries) {
+            const key = entityKey(entry);
+            const arr = groups.get(key) ?? [];
+            arr.push(entry._id);
+            groups.set(key, arr);
+        }
+        for (const arr of groups.values()) {
+            for (let i = 0; i < arr.length; i++) map.set(arr[i], arr[i + 1] ?? null);
+        }
+        return map;
+    }, [entries]);
+
+    const selectedPreviousId = detail ? (previousEntryId.get(detail._id) ?? null) : null;
 
     const diffRows = useMemo((): DisplayRow[] => {
-        if (!detail || !currentDetail || isSelectedEntryCurrent) return [];
+        if (!detail || !previousDetail || !selectedPreviousId) return [];
         return detail.entity_type === "quote"
-            ? computeQuoteChangeRows(detail.snapshot, currentDetail.snapshot)
-            : computeProjectChangeRows(detail.snapshot, currentDetail.snapshot);
-    }, [detail, currentDetail, isSelectedEntryCurrent]);
+            ? computeQuoteChangeRows(previousDetail.snapshot, detail.snapshot)
+            : computeProjectChangeRows(previousDetail.snapshot, detail.snapshot);
+    }, [detail, previousDetail, selectedPreviousId]);
 
     useEffect(() => {
         if (open) {
@@ -457,7 +503,7 @@ export default function HistoryModal({ open, onClose, projectId, owner, onRevert
         if (open && projectId) {
             setSelectedId(null);
             setDetail(null);
-            setCurrentDetail(null);
+            setPreviousDetail(null);
             setConfirmingRevertId(null);
             setRevertError(null);
             void fetchHistory();
@@ -477,27 +523,22 @@ export default function HistoryModal({ open, onClose, projectId, owner, onRevert
         if (selectedId === id) {
             setSelectedId(null);
             setDetail(null);
-            setCurrentDetail(null);
+            setPreviousDetail(null);
             return;
         }
         setSelectedId(id);
         setDetail(null);
-        setCurrentDetail(null);
+        setPreviousDetail(null);
         setDetailLoading(true);
         try {
-            const entry = entries.find((e) => e._id === id);
-            const key = entry ? entityKey(entry) : null;
-            const currentId = key
-                ? (entries.find((e) => currentEntryIds.has(e._id) && entityKey(e) === key)?._id ?? null)
-                : null;
-            const needsComparison = currentId !== null && currentId !== id;
+            const prevId = previousEntryId.get(id) ?? null;
 
-            const [selfDetail, curDetail] = await Promise.all([
+            const [selfDetail, prevDetail] = await Promise.all([
                 fetchHistoryDetail(id),
-                needsComparison ? fetchHistoryDetail(currentId!) : Promise.resolve(null),
+                prevId ? fetchHistoryDetail(prevId) : Promise.resolve(null),
             ]);
             setDetail(selfDetail);
-            setCurrentDetail(curDetail);
+            setPreviousDetail(prevDetail);
         } finally {
             setDetailLoading(false);
         }
@@ -528,7 +569,7 @@ export default function HistoryModal({ open, onClose, projectId, owner, onRevert
             } else {
                 setSelectedId(null);
                 setDetail(null);
-                setCurrentDetail(null);
+                setPreviousDetail(null);
                 void fetchHistory();
             }
         } catch {
@@ -569,7 +610,7 @@ export default function HistoryModal({ open, onClose, projectId, owner, onRevert
                             Quote history
                         </h2>
                         <p className="text-[11px] text-[#B1B3B6] font-semibold mt-1">
-                            Every save creates a new entry. Reverting keeps a full record — nothing is deleted.
+                            Every real change gets its own entry — no-op saves aren't recorded. Reverting keeps a full record — nothing is deleted.
                         </p>
                     </div>
                     <button
@@ -634,8 +675,8 @@ export default function HistoryModal({ open, onClose, projectId, owner, onRevert
                                     <span className="shrink-0 text-[10px] text-[#B1B3B6] font-semibold">
                                         {entry.changed_by}
                                     </span>
-                                    <span className="shrink-0 text-[10px] text-[#B1B3B6] font-semibold w-16 text-right">
-                                        {relativeTime(entry.created_at)}
+                                    <span className="shrink-0 text-[10px] text-[#B1B3B6] font-semibold whitespace-nowrap text-right">
+                                        {formatTimestamp(entry.created_at)}
                                     </span>
                                     <IconChevron
                                         className={`shrink-0 text-[#B1B3B6] group-hover:text-[#000005] transition-transform duration-300 ${
@@ -655,22 +696,22 @@ export default function HistoryModal({ open, onClose, projectId, owner, onRevert
                                                 <div className="text-[11px] text-[#B1B3B6] font-semibold">Loading details…</div>
                                             )}
                                             {isSelected && !detailLoading && detail && detail._id === entry._id && (
-                                                isCurrent ? (
+                                                !selectedPreviousId ? (
                                                     <div className="text-[11px] text-[#B1B3B6] font-semibold italic">
-                                                        This is the current version.
+                                                        Initial version — nothing before it to compare against.
                                                     </div>
-                                                ) : currentDetail === null ? (
+                                                ) : previousDetail === null ? (
                                                     <div className="text-[11px] text-red-500 font-semibold">
-                                                        Could not load a comparison against the current version.
+                                                        Could not load a comparison against the previous version.
                                                     </div>
                                                 ) : diffRows.length === 0 ? (
                                                     <div className="text-[11px] text-[#B1B3B6] font-semibold italic">
-                                                        No differences from the current version.
+                                                        No detailed changes recorded for this entry.
                                                     </div>
                                                 ) : (
                                                     <div className="flex flex-col gap-0.5">
                                                         <div className="text-[9px] font-black uppercase tracking-wider text-[#B1B3B6] mb-1">
-                                                            Changes vs. current version
+                                                            What changed in this version
                                                         </div>
                                                         <div className="flex flex-col">
                                                             {diffRows.map((row, i) => {
@@ -683,16 +724,55 @@ export default function HistoryModal({ open, onClose, projectId, owner, onRevert
                                                                             {row.label}
                                                                         </span>
                                                                         {row.kind === "elements" ? (
-                                                                            <span className="flex-1 flex flex-col items-end gap-1 min-w-0">
-                                                                                <span
-                                                                                    className={`shrink-0 text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full ${DIFF_TONE_STYLE[row.change.tone]}`}
-                                                                                >
-                                                                                    {row.change.summary}
+                                                                            <span className="flex-1 flex flex-col items-end gap-1.5 min-w-0">
+                                                                                <span className="flex flex-wrap justify-end gap-1">
+                                                                                    {row.change.added.length > 0 && (
+                                                                                        <span className="shrink-0 text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-[#E8F5E9] text-[#2E7D32]">
+                                                                                            +{row.change.added.length} added
+                                                                                        </span>
+                                                                                    )}
+                                                                                    {row.change.removed.length > 0 && (
+                                                                                        <span className="shrink-0 text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-[#FDECEA] text-[#C62828]">
+                                                                                            -{row.change.removed.length} removed
+                                                                                        </span>
+                                                                                    )}
+                                                                                    {row.change.edited.length > 0 && (
+                                                                                        <span className="shrink-0 text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-[#E3F2FD] text-[#1565C0]">
+                                                                                            {row.change.edited.length} edited
+                                                                                        </span>
+                                                                                    )}
                                                                                 </span>
-                                                                                {row.change.details.length > 0 && (
-                                                                                    <span className="text-[#000005] font-semibold text-right leading-tight">
-                                                                                        {row.change.details.map((d, di) => (
-                                                                                            <div key={di}>{d}</div>
+                                                                                {(row.change.added.length > 0 || row.change.removed.length > 0) && (
+                                                                                    <span className="text-left leading-tight">
+                                                                                        {row.change.added.map((d, di) => (
+                                                                                            <div key={`a${di}`} className="text-[#2E7D32] font-semibold">+ {d}</div>
+                                                                                        ))}
+                                                                                        {row.change.removed.map((d, di) => (
+                                                                                            <div key={`r${di}`} className="text-[#C62828] font-semibold line-through">{d}</div>
+                                                                                        ))}
+                                                                                    </span>
+                                                                                )}
+                                                                                {row.change.edited.length > 0 && (
+                                                                                    <span className="flex flex-col items-end gap-2 w-full">
+                                                                                        {row.change.edited.map((edit) => (
+                                                                                            <span key={edit.index} className="flex flex-col items-start text-left">
+                                                                                                <span className="text-[9px] font-black uppercase tracking-wider text-[#B1B3B6]">
+                                                                                                    Element {edit.index + 1}
+                                                                                                    {edit.identity && <span className="normal-case font-bold text-[#000005]"> — {edit.identity}</span>}
+                                                                                                </span>
+                                                                                                <span className="flex flex-col gap-0.5 pl-3 mt-0.5">
+                                                                                                    {edit.changes.map((c, ci) => (
+                                                                                                        <span key={ci} className="flex items-center gap-1.5">
+                                                                                                            <span className="text-[9px] font-black uppercase tracking-wider text-[#B1B3B6] shrink-0">
+                                                                                                                {c.field}
+                                                                                                            </span>
+                                                                                                            <span className="text-red-500 line-through font-semibold">{c.before}</span>
+                                                                                                            <span className="text-[#B1B3B6]">→</span>
+                                                                                                            <span className="text-[#2E7D32] font-bold">{c.after}</span>
+                                                                                                        </span>
+                                                                                                    ))}
+                                                                                                </span>
+                                                                                            </span>
                                                                                         ))}
                                                                                     </span>
                                                                                 )}
