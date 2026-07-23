@@ -81,11 +81,11 @@ export const UNIVERSAL_LINE_DEFS: Record<string, LineDef> = {
 };
 
 export const SCENARIO_LINE_DEFS: Record<string, LineDef> = {
-    corrugate_cost:         { label: "Corrugate",            unit: "forms"    },
-    print_form_cost:        { label: "Print Form Material",  unit: "forms"    },
-    print_cost:             { label: "Rho Print",            unit: "hrs"      },
-    rollx_cost:             { label: "Roll-X",               unit: "hrs"      },
-    zund_cut_cost:          { label: "Zund Cutting",          unit: "hrs"      },
+    corrugate_cost:         { label: "Corrugate",            unit: "forms",    readonlyQty: true },
+    print_form_cost:        { label: "Print Form Material",  unit: "forms",    readonlyQty: true },
+    print_cost:             { label: "Rho Print",            unit: "hrs",      readonlyQty: true },
+    rollx_cost:             { label: "Roll-X",               unit: "hrs",      readonlyQty: true },
+    zund_cut_cost:          { label: "Zund Cutting",          unit: "hrs",     readonlyQty: true },
     die_cost:               { label: "Die Cost",             unit: "dies"     },
     pallet_material_cost:   { label: "Pallets",              unit: "pallets"  },
     pallet_labor_cost:      { label: "Pallet Labor",         unit: "pallets"  },
@@ -514,7 +514,7 @@ function CostRow({
                         <span className="text-[9px] text-[#B1B3B6] uppercase font-bold tracking-wider">{line.unit}</span>
                         {isReadonlyQty ? (
                             <span className="w-[68px] px-2 py-1 text-xs font-semibold text-[#000005] text-right">
-                                {line.qty}
+                                {parseFloat(line.qty.toFixed(2))}
                             </span>
                         ) : (
                             <input
