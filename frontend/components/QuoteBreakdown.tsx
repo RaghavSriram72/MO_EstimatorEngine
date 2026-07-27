@@ -58,17 +58,32 @@ function resolveInitialActiveScenario(quoteData: QuoteData, hint?: ScenarioId): 
     if (hint !== undefined && quoteData[`scenario_${hint}`] !== undefined) {
         return hint;
     }
-    const first = [1, 2, 3, 4, 5].find((id) => quoteData[`scenario_${id}`] !== undefined);
+    // Scenario 2 disabled — no longer offered as a selectable tab. Tabs now go 1, 3, 4, 5.
+    const first = [1, 3, 4, 5].find((id) => quoteData[`scenario_${id}`] !== undefined);
     return (first as ScenarioId) ?? 1;
 }
 
+// Scenario 2 ("Internal / Assembled") is disabled — no longer offered as a tab (see
+// `availableScenarios`/`resolveInitialActiveScenario` below). Its entries below stay in
+// place only because `ScenarioId`/`Record<ScenarioId, …>` still cover 1–5 for older saved
+// quotes that carry a scenario_2 blob — they're unreachable from the UI otherwise.
 const SCENARIO_META: Record<ScenarioId, { short: string; sub: string }> = {
     1: { short: "Internal",  sub: "Packed Out" },
     2: { short: "Internal",  sub: "Assembled" },
-    3: { short: "Hybrid",    sub: "Internal Finishing" },
-    4: { short: "Hybrid",    sub: "External Die Cut" },
+    3: { short: "Hybrid",    sub: "External Assembly" },
+    4: { short: "Hybrid",    sub: "External Mount/Die Cut / Assembly" },
     5: { short: "External",  sub: "Full Outsource" },
 };
+
+// With scenario 2 gone, the remaining scenarios are renumbered for display so they read as
+// a consecutive 1, 2, 3, 4 instead of 1, 3, 4, 5. The underlying ids (ScenarioId, quoteData
+// keys like "scenario_3", persisted `scenario` fields, etc.) are untouched — this ONLY
+// changes what number is shown to the user. Unmapped ids (e.g. a legacy "2" surfacing from
+// old history data) fall back to their raw id rather than colliding with the new "2" label.
+const SCENARIO_DISPLAY_NUMBER: Partial<Record<number, number>> = { 1: 1, 3: 2, 4: 3, 5: 4 };
+export function displayScenarioNumber(id: number): number {
+    return SCENARIO_DISPLAY_NUMBER[id] ?? id;
+}
 
 export type LineDef = { label: string; unit: string; readonlyQty?: boolean };
 
@@ -95,16 +110,18 @@ export const SCENARIO_LINE_DEFS: Record<string, LineDef> = {
     freight_cost:               { label: "Freight Cost",            unit: "flat"     },
     kitting_and_assembly_cost:  { label: "Kitting & Assembly",      unit: "standees" },
     packout:                    { label: "Kitting and Assembly",    unit: "standees" },
-    litho_buyout_cost:          { label: "Litho Buyout",            unit: "sheets",   readonlyQty: true },
+    litho_buyout_cost:          { label: "Litho Print Buyout",       unit: "sheets",   readonlyQty: true },
     mount_die_buyout_cost:      { label: "Mount & Die Cut Buyout",        unit: "standees", readonlyQty: true },
 };
 
+// Scenario 2 entry kept only for `Record<ScenarioId, …>` completeness / older saved quotes —
+// see the note above `SCENARIO_META`. It's never a selectable tab.
 export const SCENARIO_KEYS: Record<ScenarioId, string[]> = {
     1: ["corrugate_cost", "print_form_cost", "print_cost", "rollx_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "kitting_and_assembly_cost"],
     2: ["corrugate_cost", "print_form_cost", "print_cost", "rollx_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "kitting_and_assembly_cost"],
     3: ["corrugate_cost", "print_form_cost", "print_cost", "rollx_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "pallet_material_cost", "pallet_labor_cost", "freight_cost", "packout"],
-    4: ["mount_die_buyout_cost", "print_form_cost", "print_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "pallet_material_cost", "pallet_labor_cost", "freight_cost", "die_cost", "packout"],
-    5: ["mount_die_buyout_cost", "litho_buyout_cost", "label_cost", "instruction_sheet_cost", "freight_cost", "die_cost", "packout"],
+    4: ["print_form_cost", "print_cost", "mount_die_buyout_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "pallet_material_cost", "pallet_labor_cost", "freight_cost", "die_cost", "packout"],
+    5: ["litho_buyout_cost", "mount_die_buyout_cost", "label_cost", "instruction_sheet_cost", "pallet_material_cost", "pallet_labor_cost", "freight_cost", "die_cost", "packout"],
 };
 
 // Manual edits to a cost row propagate to every scenario that shares the same
@@ -121,8 +138,8 @@ const SCENARIO_SYNC_GROUPS: Partial<Record<string, ScenarioId[]>> = {
     label_cost:                [1, 2, 3, 4, 5],
     kitting_and_assembly_cost: [1, 2],
     instruction_sheet_cost:    [1, 2, 3, 4, 5],
-    pallet_material_cost:      [3, 4],
-    pallet_labor_cost:         [3, 4],
+    pallet_material_cost:      [3, 4, 5],
+    pallet_labor_cost:         [3, 4, 5],
     freight_cost:              [3, 4, 5],
     mount_die_buyout_cost:     [4, 5],
     die_cost:                  [4, 5],
@@ -1059,7 +1076,9 @@ export default function QuoteBreakdown({
     const marginDollars = sellPrice - grandTotal;
     const sellPerStandee = numStandees > 0 ? sellPrice / numStandees : null;
 
-    const availableScenarios: ScenarioId[] = [1, 2, 3, 4, 5].filter(
+    // Scenario 2 disabled — no longer displayed as a tab, even for older saved quotes that
+    // still carry a scenario_2 blob. Tabs now go 1, 3, 4, 5.
+    const availableScenarios: ScenarioId[] = [1, 3, 4, 5].filter(
         (id) => quoteData[`scenario_${id}`] !== undefined,
     ) as ScenarioId[];
 
@@ -1145,7 +1164,7 @@ export default function QuoteBreakdown({
                         Quote Breakdown
                     </div>
                     <p className="text-[1.75em] text-[#000005] font-semibold">
-                        Scenario {activeScenario} — {SCENARIO_META[activeScenario].short}: {SCENARIO_META[activeScenario].sub}
+                        Scenario {displayScenarioNumber(activeScenario)} — {SCENARIO_META[activeScenario].short}: {SCENARIO_META[activeScenario].sub}
                     </p>
                     {COST_DEBUG_ENABLED && (
                         <p className="text-[10px] font-bold text-[#F57F17] bg-[#FFF8E1] border border-[#FFE082] rounded-sm px-2 py-1">
@@ -1343,7 +1362,7 @@ export default function QuoteBreakdown({
                             onClick={() => setScenarioCostsExpanded((v) => !v)}
                         >
                             <span className="text-[10px] font-black text-[#000005] uppercase tracking-widest">
-                                <span className="text-[#FFC843]">// </span>Scenario {activeScenario} Costs
+                                <span className="text-[#FFC843]">// </span>Scenario {displayScenarioNumber(activeScenario)} Costs
                             </span>
                             <span className="flex items-center gap-3 shrink-0">
                                 <span className="text-sm font-black text-[#000005] tabular-nums">

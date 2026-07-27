@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE } from "@/lib/config";
-import { type ScenarioId } from "@/components/QuoteBreakdown";
+import { type ScenarioId, displayScenarioNumber } from "@/components/QuoteBreakdown";
 import { computeUniversalTotal, computeScenarioLinesTotal, computeLineValue, formatCurrency } from "@/lib/quoteCostTotals";
 
 type ChangeType = "create" | "update" | "rename" | "revert";
@@ -341,7 +341,7 @@ function computeQuoteChangeRows(before: Record<string, unknown>, after: Record<s
         if (Math.abs(beforeTotal - afterTotal) >= 0.005) {
             rows.push({
                 kind: "scalar",
-                label: `Scenario ${sid} Total`,
+                label: `Scenario ${displayScenarioNumber(sid)} Total`,
                 before: formatCurrency(beforeTotal),
                 after: formatCurrency(afterTotal),
             });
@@ -368,7 +368,7 @@ function computeQuoteChangeRows(before: Record<string, unknown>, after: Record<s
         const beforeSub = beforeChild?.subtotal_override;
         const afterSub = afterChild?.subtotal_override;
         if (!deepEqual(beforeSub, afterSub)) {
-            rows.push({ kind: "scalar", label: `Scenario ${sid} Subtotal Override`, before: beforeSub, after: afterSub });
+            rows.push({ kind: "scalar", label: `Scenario ${displayScenarioNumber(sid)} Subtotal Override`, before: beforeSub, after: afterSub });
         }
     }
     // Scenarios that landed on the identical before/after value collapse into one entry,
@@ -558,10 +558,12 @@ export default function HistoryModal({ open, onClose, projectId, owner, onRevert
                 return;
             }
             const revertedDoc = (data.doc ?? {}) as Record<string, unknown>;
+            const revertedScenario =
+                typeof revertedDoc.scenario === "number" ? String(displayScenarioNumber(revertedDoc.scenario)) : "";
             const label =
                 data.entity_type === "project"
                     ? String(revertedDoc.project_name ?? "Project")
-                    : `${String(revertedDoc.quote_name ?? "Quote")} — Scenario ${String(revertedDoc.scenario ?? "")}`;
+                    : `${String(revertedDoc.quote_name ?? "Quote")} — Scenario ${revertedScenario}`;
             setConfirmingRevertId(null);
             onReverted(data.entity_type as EntityType, label);
             if (data.entity_type === "project") {
@@ -659,7 +661,7 @@ export default function HistoryModal({ open, onClose, projectId, owner, onRevert
                                     >
                                         {entry.entity_type === "project"
                                             ? "Project"
-                                            : `Quote · Scenario ${entry.scenario ?? "?"}`}
+                                            : `Quote · Scenario ${entry.scenario != null ? displayScenarioNumber(entry.scenario) : "?"}`}
                                     </span>
                                     <span className={`shrink-0 text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full ${CHANGE_TYPE_STYLE[entry.change_type]}`}>
                                         {CHANGE_TYPE_LABEL[entry.change_type]}
@@ -782,7 +784,7 @@ export default function HistoryModal({ open, onClose, projectId, owner, onRevert
                                                                                 {row.entries.map((entry) => (
                                                                                     <span key={entry.scenarios.join(",")} className="flex items-center gap-1.5">
                                                                                         <span className="text-[9px] font-black uppercase tracking-wider text-[#B1B3B6] shrink-0">
-                                                                                            {entry.scenarios.map((s) => `S${s}`).join(", ")}
+                                                                                            {entry.scenarios.map((s) => `S${displayScenarioNumber(s)}`).join(", ")}
                                                                                         </span>
                                                                                         <span className="text-red-500 line-through font-semibold">{entry.before}</span>
                                                                                         <span className="text-[#B1B3B6]">→</span>

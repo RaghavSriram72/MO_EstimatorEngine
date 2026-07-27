@@ -35,11 +35,12 @@ class Scenario1Input(InHouseInput):
     pass
 
 
-@dataclass
-class Scenario2Input(InHouseInput):
-    """Inputs for scenario 2."""
-
-    pass
+# Scenario 2 disabled — no longer offered as a quote scenario.
+# @dataclass
+# class Scenario2Input(InHouseInput):
+#     """Inputs for scenario 2."""
+#
+#     pass
 
 
 @dataclass

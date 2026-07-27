@@ -24,7 +24,8 @@ PADDING = 0
 
 SCENARIO_MAP = {
     1: "Internal Print / Internal Finishing / Packed Out (Box)",
-    2: "Internal Print / Internal Finishing / Assembled",
+    # Scenario 2 disabled — no longer offered as a quote scenario.
+    # 2: "Internal Print / Internal Finishing / Assembled",
     3: "Internal Print / Internal Finishing/External Assembly",
     4: "Internal Print / External Mount & Die Cut/External Assembly",
     5: "External Print / Finishing / Packout",

@@ -14,10 +14,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from lib.classes import Project, Scenario1, Scenario2, Scenario3, Scenario4, Scenario5
+# Scenario 2 disabled — no longer offered as a quote scenario. Tabs now go 1, 3, 4, 5.
+from lib.classes import Project, Scenario1, Scenario3, Scenario4, Scenario5
 from lib.classes.cost_inputs import (
     Scenario1Input,
-    Scenario2Input,
     Scenario3Input,
     Scenario4Input,
     Scenario5Input,
@@ -135,7 +135,7 @@ def _scenario_cost_input(sid: int, payload: QuoteRequest):
 
     scenario_map = {
         1: Scenario1Input,
-        2: Scenario2Input,
+        # 2: Scenario2Input,  # Scenario 2 disabled — no longer offered as a quote scenario.
         3: Scenario3Input,
         4: Scenario4Input,
         5: Scenario5Input,
@@ -147,7 +147,7 @@ def _scenario_cost_input(sid: int, payload: QuoteRequest):
         num_overs=no,
     )
 
-    if sid in [1, 2, 3]:
+    if sid in [1, 3]:
         return scenario_map[sid](**common_base, print_hours=ph, rollx_hours=rh, zund_hours=zh)
 
     if sid == 4:
@@ -184,10 +184,11 @@ def _compute_quote_scenarios(db: MidnightOilDB, elements: list[Element], payload
     busmark_forms = list(busmark_bins.values())
     form_95_forms = list(form_95_bins.values())
 
-    scenarios_to_run = [payload.scenario] if payload.scenario is not None else [1, 2, 3, 4, 5]
+    # Scenario 2 disabled — no longer offered as a quote scenario. Tabs now go 1, 3, 4, 5.
+    scenarios_to_run = [payload.scenario] if payload.scenario is not None else [1, 3, 4, 5]
     out: dict[str, Any] = {}
     for sid in scenarios_to_run:
-        print_forms = busmark_forms if sid in (1, 2, 3) else form_95_forms
+        print_forms = busmark_forms if sid in (1, 3) else form_95_forms
         s: Project = _SCENARIO_CLASSES[sid](
             db=db,
             name="API quote",
@@ -235,7 +236,7 @@ class QuoteRequest(BaseModel):
 
 _SCENARIO_CLASSES = {
     1: Scenario1,
-    2: Scenario2,
+    # 2: Scenario2,  # Scenario 2 disabled — no longer offered as a quote scenario.
     3: Scenario3,
     4: Scenario4,
     5: Scenario5,

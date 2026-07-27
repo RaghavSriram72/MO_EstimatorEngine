@@ -1,4 +1,5 @@
-from lib.classes import Form, Project, Scenario1, Scenario2, Scenario3, Scenario4, Scenario5
+# Scenario 2 disabled — no longer offered as a quote scenario.
+from lib.classes import Form, Project, Scenario1, Scenario3, Scenario4, Scenario5
 
 
 def static_cost_calculator(
@@ -11,5 +12,5 @@ def static_cost_calculator(
     """Calculate and return the total static cost for a project, summing all individual cost components."""
     return [
         scenario(name, print_forms, num_standees, standee_type, **kwargs)
-        for scenario in [Scenario1, Scenario2, Scenario3, Scenario4, Scenario5]
+        for scenario in [Scenario1, Scenario3, Scenario4, Scenario5]
     ]

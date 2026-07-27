@@ -2,7 +2,7 @@ from typing import override
 
 from lib.classes.cost_inputs import (
     Scenario1Input,
-    Scenario2Input,
+    # Scenario2Input,  # Scenario 2 disabled — no longer offered as a quote scenario.
     Scenario3Input,
     Scenario4Input,
     Scenario5Input,
@@ -28,19 +28,20 @@ class Scenario1[T: Scenario1Input](InHouseProject[T]):
         return super().total_cost + self.instruction_sheet_cost + self.kitting_and_assembly_cost
 
 
-class Scenario2[T: Scenario2Input](InHouseProject[T]):
-    """Scenario 2: Internal Print, Internal Finishing, Assembled."""
-
-    @override
-    def calculate_cost(self, input: T) -> None:
-        super().calculate_cost(input)
-        self.instruction_sheet_cost = self._get_instruction_sheet_cost()
-        self.kitting_and_assembly_cost = self._get_kitting_and_assembly_cost()
-
-    @property
-    def total_cost(self) -> float:
-        """Calculate the total cost of the project, including both universal and scenario-specific costs."""
-        return super().total_cost + self.instruction_sheet_cost + self.kitting_and_assembly_cost
+# Scenario 2 disabled — no longer offered as a quote scenario. Tabs now go 1, 3, 4, 5.
+# class Scenario2[T: Scenario2Input](InHouseProject[T]):
+#     """Scenario 2: Internal Print, Internal Finishing, Assembled."""
+#
+#     @override
+#     def calculate_cost(self, input: T) -> None:
+#         super().calculate_cost(input)
+#         self.instruction_sheet_cost = self._get_instruction_sheet_cost()
+#         self.kitting_and_assembly_cost = self._get_kitting_and_assembly_cost()
+#
+#     @property
+#     def total_cost(self) -> float:
+#         """Calculate the total cost of the project, including both universal and scenario-specific costs."""
+#         return super().total_cost + self.instruction_sheet_cost + self.kitting_and_assembly_cost
 
 
 class Scenario3[T: Scenario3Input](InHouseProject[T]):
@@ -80,7 +81,8 @@ class Scenario4[T: Scenario4Input](OutsourceProject[T]):
         print_linear_inches = self._get_print_form_linear_inches()
         self.print_hours = input.print_hours or self._get_machine_time(UnitCostEntries.RHO_1312, print_linear_inches)
         self.print_cost = self._get_machine_cost(UnitCostEntries.RHO_1312, self.print_hours)
-        self.pallet_count = input.pallet_count or self.blank_forms_per_standee
+        # Pallets only carry printed forms, not blank/structure forms.
+        self.pallet_count = input.pallet_count or self.print_forms_per_standee
         self.pallet_material_cost = self.db.get_unit_cost(UnitCostEntries.PALLET) * self.pallet_count
         self.pallet_labor_cost = self.db.get_unit_cost(UnitCostEntries.PALLET_LABOR) * self.pallet_count
         self.pallet_cost = self.pallet_material_cost + self.pallet_labor_cost
@@ -115,6 +117,11 @@ class Scenario5[T: Scenario5Input](OutsourceProject[T]):
         super().calculate_cost(input)
         # sets material, supplier, and print_form_unit_cost (needs to change)
         self.litho_buyout_cost = self._get_supplier_litho_buyout_cost()
+        # Pallets only carry printed forms, not blank/structure forms.
+        self.pallet_count = input.pallet_count or self.print_forms_per_standee
+        self.pallet_material_cost = self.db.get_unit_cost(UnitCostEntries.PALLET) * self.pallet_count
+        self.pallet_labor_cost = self.db.get_unit_cost(UnitCostEntries.PALLET_LABOR) * self.pallet_count
+        self.pallet_cost = self.pallet_material_cost + self.pallet_labor_cost
         self.freight_cost = input.freight_cost or self.db.get_unit_cost(UnitCostEntries.FULL_OUT_SOURCE)
         self.die_cost = input.die_cost or self._get_die_cost()
         self.packout = (
@@ -125,4 +132,4 @@ class Scenario5[T: Scenario5Input](OutsourceProject[T]):
     @property
     def total_cost(self) -> float:
         """Calculate the total cost of the project, including both universal and scenario-specific costs."""
-        return super().total_cost + self.freight_cost + self.die_cost + self.packout
+        return super().total_cost + self.pallet_cost + self.freight_cost + self.die_cost + self.packout

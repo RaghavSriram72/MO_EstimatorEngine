@@ -6,8 +6,9 @@ from lib.classes import (
     MidnightOilDB,
     Scenario1,
     Scenario1Input,
-    Scenario2,
-    Scenario2Input,
+    # Scenario2 disabled — no longer offered as a quote scenario.
+    # Scenario2,
+    # Scenario2Input,
     Scenario3,
     Scenario3Input,
     Scenario4,
@@ -175,17 +176,17 @@ if __name__ == "__main__":
             num_standees=1,
             standee_type=Complexity.SIMPLE,
         )
-        for scenario in [Scenario1, Scenario2, Scenario3, Scenario4, Scenario5]
+        # Scenario 2 disabled — no longer offered as a quote scenario.
+        for scenario in [Scenario1, Scenario3, Scenario4, Scenario5]
     ]
     from lib.classes.cost_inputs import (
         Scenario1Input,
-        Scenario2Input,
         Scenario3Input,
         Scenario4Input,
         Scenario5Input,
     )
 
-    inputs = [Scenario1Input, Scenario2Input, Scenario3Input, Scenario4Input, Scenario5Input]
+    inputs = [Scenario1Input, Scenario3Input, Scenario4Input, Scenario5Input]
     for scenario, InputCls in zip(scenarios, inputs):
         scenario.calculate_cost(InputCls(color_comp_count=0))
     db.close()
