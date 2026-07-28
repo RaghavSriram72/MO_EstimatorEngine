@@ -2,7 +2,7 @@ import hashlib
 
 
 def project_short_id(project_id: str) -> str:
-    """Deterministic 8-digit hash ID derived from the project's Mongo id string."""
+    """Deterministic 8-digit hash ID derived from the project's database id string."""
     digest = hashlib.sha256(project_id.encode()).hexdigest()
     return f"{int(digest, 16) % 10**8:08d}"
 

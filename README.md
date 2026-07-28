@@ -82,11 +82,53 @@ The frontend will be available at `http://localhost:3000`.
 
 ---
 
+## Database Setup (SQL Server 2025)
+
+Create the database and tables (SSMS or `sqlcmd`):
+
+```bash
+sqlcmd -S <server> -i sql\create_database.sql
+```
+
+```bash
+sqlcmd -S <server> -d MidnightOilEstimator -i sql\create_tables.sql
+```
+
+Both scripts are idempotent — re-running them is safe and will add anything missing.
+
+Then load the existing data (users, projects, quotes, history, and the reference/cost
+tables) from the MongoDB exports in `MONGO_database\`. Pick one of the two variants:
+
+```bash
+sqlcmd -S <server> -d MidnightOilEstimator -i sql\migrate_mongo.sql
+```
+
+reads the `.json` files off disk — edit `@MongoDir` near the top of the script first, and
+note the SQL Server service account needs read access to that folder. If it can't reach the
+folder (or you lack `ADMINISTER BULK OPERATIONS`), use the self-contained variant instead:
+
+```bash
+sqlcmd -S <server> -d MidnightOilEstimator -i sql\migrate_mongo_data.sql
+```
+
+which embeds the same export as literals and needs no filesystem access. Both are idempotent
+and record what they loaded in `dbo.migration_mongo_map` — don't drop that table, or a
+re-run will duplicate every migrated record.
+
+---
+
 ## Environment Variables
 
 In the `backend` folder create a `.env` file and add the following lines:
 ```md
-MONGO_URI = (Provided URI in google doc)
+SQLSERVER_HOST=localhost
+SQLSERVER_DATABASE=MidnightOilEstimator
+# For SQL authentication (omit both to use Windows integrated auth):
+SQLSERVER_USER=<username>
+SQLSERVER_PASSWORD=<password>
+# Optional overrides:
+# SQLSERVER_DRIVER=ODBC Driver 18 for SQL Server
+# SQLSERVER_CONN_STR=<full ODBC connection string; overrides everything above>
 ```
 
 In the `frontend` folder create a `.env.local` file and add the following lines:

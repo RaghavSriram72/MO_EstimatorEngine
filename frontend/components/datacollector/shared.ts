@@ -27,7 +27,7 @@ export const unitTypeLabel  = (raw: string) => UNIT_COST_DISPLAY[raw] ?? raw;
 
 export const STANDEE_TYPES = ["Simple Standee", "Moderate Standee", "Complex Standee"];
 
-// ── Shared types (mirror backend MongoDB document shapes) ──────────────────
+// ── Shared types (mirror backend database record shapes) ───────────────────
 
 // GET/PATCH /unit-costs
 export type UnitCostRecord = {

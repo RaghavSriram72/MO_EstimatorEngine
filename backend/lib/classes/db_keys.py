@@ -6,14 +6,14 @@ class DBTables(StrEnum):
     PRINT_BLANK = "print_blank_ratio"
     PROJECTS = "projects"
     STANDEE = "standee_static_costs"
-    SUPPLIERS = "suppliers"
+    SUPPLIERS = "supplier_materials"
     UNIT_COSTS = "unit_costs"
     USERS = "users"
     QUOTES = "quotes"
 
 
 class UnitCostEntries(StrEnum):
-    """Known keys in the ``unit_costs`` collection."""
+    """Known keys in the ``unit_costs`` table."""
 
     BLANK_COMP = "blank_comp"
     COLOR_COMP = "color_comp"
@@ -54,7 +54,7 @@ class StandeeData(StrEnum):
 
 
 class StandeeKey(StrEnum):
-    """Known standee categories in the ``standee_static_costs`` collection."""
+    """Known standee categories in the ``standee_static_costs`` table."""
 
     SIMPLE = "Simple Standee"
     MODERATE = "Moderate Standee"

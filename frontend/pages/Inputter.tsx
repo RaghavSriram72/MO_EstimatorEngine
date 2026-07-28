@@ -26,7 +26,7 @@ type Element = {
     originalWidth?: number;
 };
 
-// Subtotal overrides and manual cost-row edits stored in MongoDB alongside the quote breakdown
+// Subtotal overrides and manual cost-row edits stored in the database alongside the quote breakdown
 export type CostLineOverride = { qty: number; unitCost: number };
 
 export type ScenarioCostLineOverrides = {
@@ -84,7 +84,7 @@ export type RequestPayload = {
 };
 
 
-// Shape of an element as stored in MongoDB (uses "length" not "height")
+// Shape of an element as stored in the database (uses "length" not "height")
 type ApiPersistedElement = {
     name?: string;
     length: number;
@@ -507,7 +507,7 @@ export default function Inputter() {
         setActivePersistedQuoteState(null);
     }
 
-    // POST /create-project  or  PATCH /projects/:id  → save current form to MongoDB
+    // POST /create-project  or  PATCH /projects/:id  → save current form to the database
     async function saveCurrentProject(): Promise<{ success: boolean; projectId?: string; shortId?: string; errorMessage?: string }> {
         const owner = localStorage.getItem("username");
         if (!owner?.trim()) return { success: false, errorMessage: "Not signed in" };
