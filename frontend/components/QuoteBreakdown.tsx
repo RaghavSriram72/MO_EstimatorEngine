@@ -818,7 +818,8 @@ export default function QuoteBreakdown({
     async function persistQuoteSnapshot(snapshot: QuoteSnapshot): Promise<boolean> {
         const qid = persistedQuoteId?.trim();
         const owner = quoteOwner?.trim();
-        if (!qid || !owner) return false;
+        const changedBy = (typeof window !== "undefined" ? localStorage.getItem("username") : null)?.trim();
+        if (!qid || !owner || !changedBy) return false;
 
         // Five scenario children: engine defaults + only the manually edited rows.
         const scenarios: Record<string, PersistedScenarioChild> = {};
@@ -857,7 +858,7 @@ export default function QuoteBreakdown({
                 defaults: toSpecParams(snapshot.paramDefaults),
             },
         };
-        const res = await fetch(`${API_BASE}/quotes/${encodeURIComponent(qid)}?owner=${encodeURIComponent(owner)}`, {
+        const res = await fetch(`${API_BASE}/quotes/${encodeURIComponent(qid)}?owner=${encodeURIComponent(owner)}&changed_by=${encodeURIComponent(changedBy)}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),

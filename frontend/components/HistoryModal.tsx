@@ -548,8 +548,9 @@ export default function HistoryModal({ open, onClose, projectId, owner, onRevert
         setReverting(true);
         setRevertError(null);
         try {
+            const changedBy = (typeof window !== "undefined" ? localStorage.getItem("username") : null)?.trim() || owner;
             const res = await fetch(
-                `${API_BASE}/projects/${encodeURIComponent(projectId)}/history/${encodeURIComponent(entry._id)}/revert?owner=${encodeURIComponent(owner)}`,
+                `${API_BASE}/projects/${encodeURIComponent(projectId)}/history/${encodeURIComponent(entry._id)}/revert?owner=${encodeURIComponent(owner)}&changed_by=${encodeURIComponent(changedBy)}`,
                 { method: "POST" },
             );
             const data = await res.json().catch(() => ({}));

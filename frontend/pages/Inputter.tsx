@@ -520,7 +520,7 @@ export default function Inputter() {
                 // which can differ from the signed-in user)
                 const docOwner = activeProjectOwner ?? owner;
                 const res = await fetch(
-                    `${API_BASE}/projects/${encodeURIComponent(activeProjectId)}?owner=${encodeURIComponent(docOwner)}`,
+                    `${API_BASE}/projects/${encodeURIComponent(activeProjectId)}?owner=${encodeURIComponent(docOwner)}&changed_by=${encodeURIComponent(owner)}`,
                     {
                         method: "PATCH",
                         headers: { "Content-Type": "application/json" },
@@ -794,7 +794,7 @@ export default function Inputter() {
 
                 if (existingQuoteId) {
                     const patchRes = await fetch(
-                        `${API_BASE}/quotes/${encodeURIComponent(existingQuoteId)}?owner=${encodeURIComponent(projectOwner)}`,
+                        `${API_BASE}/quotes/${encodeURIComponent(existingQuoteId)}?owner=${encodeURIComponent(projectOwner)}&changed_by=${encodeURIComponent(owner ?? projectOwner)}`,
                         {
                             method: "PATCH",
                             headers: { "Content-Type": "application/json" },
@@ -811,7 +811,7 @@ export default function Inputter() {
                     const saveRes = await fetch(`${API_BASE}/projects/${encodeURIComponent(pid)}/quotes`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ owner: projectOwner, ...quoteFields }),
+                        body: JSON.stringify({ owner: projectOwner, changed_by: owner ?? projectOwner, ...quoteFields }),
                     });
                     const saveData = await saveRes.json().catch(() => ({}));
                     if (saveRes.ok && typeof saveData.quote_id === "string") {
@@ -852,7 +852,7 @@ export default function Inputter() {
         }
         try {
             const res = await fetch(
-                `${API_BASE}/projects/${encodeURIComponent(projectId)}/rename?owner=${encodeURIComponent(owner)}`,
+                `${API_BASE}/projects/${encodeURIComponent(projectId)}/rename?owner=${encodeURIComponent(owner)}&changed_by=${encodeURIComponent(currentUser)}`,
                 {
                     method: "PATCH",
                     headers: { "Content-Type": "application/json" },
@@ -983,11 +983,12 @@ export default function Inputter() {
     // estimator form and persist it to the project so the sidebar stays accurate.
     async function handleActiveQuoteNumStandeesCommitted(numStandees: number) {
         setStandeeCount(numStandees);
-        const owner = activeProjectOwner ?? localStorage.getItem("username");
-        if (!owner?.trim() || !activeProjectId) return;
+        const currentUser = localStorage.getItem("username");
+        const owner = activeProjectOwner ?? currentUser;
+        if (!owner?.trim() || !currentUser?.trim() || !activeProjectId) return;
         try {
             const res = await fetch(
-                `${API_BASE}/projects/${encodeURIComponent(activeProjectId)}?owner=${encodeURIComponent(owner)}`,
+                `${API_BASE}/projects/${encodeURIComponent(activeProjectId)}?owner=${encodeURIComponent(owner)}&changed_by=${encodeURIComponent(currentUser)}`,
                 {
                     method: "PATCH",
                     headers: { "Content-Type": "application/json" },

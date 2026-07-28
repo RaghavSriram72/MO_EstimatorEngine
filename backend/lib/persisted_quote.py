@@ -76,6 +76,14 @@ class PersistedQuoteCreateBody(BaseModel):
 
     schema_version: int = Field(default=QUOTE_SCHEMA_VERSION, ge=1)
     owner: str = Field(..., min_length=1, max_length=256, description="Username that owns the quote")
+    changed_by: str | None = Field(
+        default=None,
+        max_length=256,
+        description=(
+            "Username of the person actually creating this quote — used for history "
+            "attribution; defaults to `owner` when omitted (not a stored document field)"
+        ),
+    )
     quote_name: str = Field(..., min_length=1, max_length=512)
     scenario: int = Field(..., ge=1, le=5)
     num_standees: int = Field(..., ge=1)
@@ -89,7 +97,8 @@ class PersistedQuoteCreateBody(BaseModel):
 
 
 def persisted_quote_create_from_path(project_id: str, body: PersistedQuoteCreateBody) -> PersistedQuoteCreate:
-    return PersistedQuoteCreate(project_id=project_id, **body.model_dump())
+    # `changed_by` is history-attribution metadata, not part of the stored quote document.
+    return PersistedQuoteCreate(project_id=project_id, **body.model_dump(exclude={"changed_by"}))
 
 
 def persisted_quote_create_to_mongo_document(data: PersistedQuoteCreate) -> dict[str, Any]:

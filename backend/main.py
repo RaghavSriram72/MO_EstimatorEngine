@@ -593,12 +593,14 @@ async def create_project_quote(project_id: str, payload: PersistedQuoteCreateBod
     db = _ensure_db()
     if not db.check_username_exists(payload.owner):
         return JSONResponse(status_code=404, content={"error": "Unknown owner"})
+    if payload.changed_by and not db.check_username_exists(payload.changed_by):
+        return JSONResponse(status_code=404, content={"error": "Unknown changed_by user"})
     if db.get_project_by_owner(project_id, payload.owner) is None:
         return JSONResponse(status_code=404, content={"error": "Project not found"})
     create = persisted_quote_create_from_path(project_id, payload)
     doc = persisted_quote_insert_document(create, created_at=datetime.now(UTC), updated_at=datetime.now(UTC))
     doc["project_id"] = ObjectId(doc["project_id"])
-    quote_id = db.insert_persisted_quote(doc)
+    quote_id = db.insert_persisted_quote(doc, changed_by=payload.changed_by or payload.owner)
     return JSONResponse(
         status_code=201,
         content={"quote_id": quote_id, "message": "Quote created successfully"},
@@ -643,13 +645,18 @@ async def update_quote(
     quote_id: str,
     payload: PersistedQuoteUpdateBody,
     owner: str = Query(..., description="Must match the document's owner field"),
+    changed_by: str = Query(
+        ..., description="Username of the person actually making this edit — used for history attribution"
+    ),
 ):
     """Update allowed fields on a quote document if it exists and belongs to ``owner``."""
     db = _ensure_db()
     if not db.check_username_exists(owner):
         return JSONResponse(status_code=404, content={"error": "Unknown owner"})
+    if not db.check_username_exists(changed_by):
+        return JSONResponse(status_code=404, content={"error": "Unknown changed_by user"})
     fields = persisted_quote_update_to_mongo_set(payload)
-    if not db.update_persisted_quote(quote_id, owner, fields, changed_by=owner, change_type="update"):
+    if not db.update_persisted_quote(quote_id, owner, fields, changed_by=changed_by, change_type="update"):
         return JSONResponse(status_code=404, content={"error": "Quote not found"})
     return {"message": "Quote updated successfully", "quote_id": quote_id}
 
@@ -663,13 +670,18 @@ async def rename_quote(
     quote_id: str,
     payload: RenameQuoteBody,
     owner: str = Query(..., description="Must match the document's owner field"),
+    changed_by: str = Query(
+        ..., description="Username of the person actually making this edit — used for history attribution"
+    ),
 ):
     """Rename a quote without touching any other fields."""
     db = _ensure_db()
     if not db.check_username_exists(owner):
         return JSONResponse(status_code=404, content={"error": "Unknown owner"})
+    if not db.check_username_exists(changed_by):
+        return JSONResponse(status_code=404, content={"error": "Unknown changed_by user"})
     if not db.update_persisted_quote(
-        quote_id, owner, {"quote_name": payload.quote_name.strip()}, changed_by=owner, change_type="rename"
+        quote_id, owner, {"quote_name": payload.quote_name.strip()}, changed_by=changed_by, change_type="rename"
     ):
         return JSONResponse(status_code=404, content={"error": "Quote not found"})
     return {"message": "Quote renamed", "quote_id": quote_id, "quote_name": payload.quote_name.strip()}
@@ -694,13 +706,22 @@ async def update_project(
     project_id: str,
     payload: PersistedProjectUpdateBody,
     owner: str = Query(..., description="Must match the document's owner field"),
+    changed_by: str = Query(
+        ...,
+        description=(
+            "Username of the person actually making this edit — used for history "
+            "attribution, distinct from `owner` since anyone can edit another user's project"
+        ),
+    ),
 ):
     """Update allowed fields on a project document if it exists and belongs to ``owner``. Does not update quotes."""
     db = _ensure_db()
     if not db.check_username_exists(owner):
         return JSONResponse(status_code=404, content={"error": "Unknown owner"})
+    if not db.check_username_exists(changed_by):
+        return JSONResponse(status_code=404, content={"error": "Unknown changed_by user"})
     fields = persisted_update_to_mongo_set(payload)
-    if not db.update_persisted_project(project_id, owner, fields, changed_by=owner, change_type="update"):
+    if not db.update_persisted_project(project_id, owner, fields, changed_by=changed_by, change_type="update"):
         return JSONResponse(status_code=404, content={"error": "Project not found"})
     return {"message": "Project updated successfully", "project_id": project_id}
 
@@ -714,13 +735,18 @@ async def rename_project(
     project_id: str,
     payload: RenameProjectBody,
     owner: str = Query(..., description="Must match the document's owner field"),
+    changed_by: str = Query(
+        ..., description="Username of the person actually making this edit — used for history attribution"
+    ),
 ):
     """Rename a project without touching any other fields."""
     db = _ensure_db()
     if not db.check_username_exists(owner):
         return JSONResponse(status_code=404, content={"error": "Unknown owner"})
+    if not db.check_username_exists(changed_by):
+        return JSONResponse(status_code=404, content={"error": "Unknown changed_by user"})
     if not db.update_persisted_project(
-        project_id, owner, {"project_name": payload.project_name.strip()}, changed_by=owner, change_type="rename"
+        project_id, owner, {"project_name": payload.project_name.strip()}, changed_by=changed_by, change_type="rename"
     ):
         return JSONResponse(status_code=404, content={"error": "Project not found"})
     return {"message": "Project renamed", "project_id": project_id, "project_name": payload.project_name.strip()}
@@ -845,12 +871,17 @@ async def revert_project_history(
     project_id: str,
     history_id: str,
     owner: str = Query(..., description="Must match the document's owner field"),
+    changed_by: str = Query(
+        ..., description="Username of the person actually performing this revert — used for history attribution"
+    ),
 ):
     """Restore a project or quote to a past snapshot; records a new 'revert' history entry."""
     db = _ensure_db()
     if not db.check_username_exists(owner):
         return JSONResponse(status_code=404, content={"error": "Unknown owner"})
-    result = db.revert_history_entry(project_id, history_id, owner, changed_by=owner)
+    if not db.check_username_exists(changed_by):
+        return JSONResponse(status_code=404, content={"error": "Unknown changed_by user"})
+    result = db.revert_history_entry(project_id, history_id, owner, changed_by=changed_by)
     if result is None:
         return JSONResponse(status_code=404, content={"error": "History entry not found"})
     return result

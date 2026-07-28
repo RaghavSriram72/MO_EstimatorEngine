@@ -204,8 +204,13 @@ class MidnightOilDB:
             }
         )
 
-    def insert_persisted_project(self, doc: dict[str, Any]) -> str:
-        """Insert a canonical v1 project document; returns the new document id as a string."""
+    def insert_persisted_project(self, doc: dict[str, Any], changed_by: str | None = None) -> str:
+        """Insert a canonical v1 project document; returns the new document id as a string.
+
+        ``changed_by`` defaults to the document's own ``owner`` (true for normal creation,
+        where you can only create your own projects) but can be overridden — e.g. duplicating
+        someone else's project creates a doc owned by the duplicator, which already matches.
+        """
         result = self.projects_collection.insert_one(doc)
         project_id = str(result.inserted_id)
         self.projects_collection.update_one(
@@ -217,7 +222,7 @@ class MidnightOilDB:
             owner=doc["owner"],
             entity_type="project",
             change_type="create",
-            changed_by=doc["owner"],
+            changed_by=changed_by or doc["owner"],
             label=doc.get("project_name", "Untitled project"),
             snapshot={k: doc[k] for k in _PROJECT_UPDATE_ALLOWED_FIELDS if k in doc},
         )
@@ -313,11 +318,13 @@ class MidnightOilDB:
         else:
             return False
 
-    def insert_persisted_quote(self, doc: dict[str, Any]) -> str:
+    def insert_persisted_quote(self, doc: dict[str, Any], changed_by: str | None = None) -> str:
         """Insert a quote document.
 
-        Caller must supply a BSON-safe ``doc`` (no ``Form`` objects).
-        Returns the new ``_id`` as a string.
+        Caller must supply a BSON-safe ``doc`` (no ``Form`` objects). Returns the new ``_id``
+        as a string. ``changed_by`` defaults to the document's own ``owner`` but can be
+        overridden — e.g. auto-saving the first quote on someone else's project should
+        attribute "Created" to the person who actually triggered it, not the project owner.
         """
         result = self.quotes_collection.insert_one(doc)
         quote_id = str(result.inserted_id)
@@ -326,7 +333,7 @@ class MidnightOilDB:
             owner=doc["owner"],
             entity_type="quote",
             change_type="create",
-            changed_by=doc["owner"],
+            changed_by=changed_by or doc["owner"],
             # No "— Scenario N" suffix here: the history row already shows a "Quote · Scenario N" badge.
             label=doc.get("quote_name") or "Untitled quote",
             snapshot={k: doc[k] for k in _QUOTE_UPDATE_ALLOWED_FIELDS if k in doc},
