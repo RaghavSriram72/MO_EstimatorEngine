@@ -132,18 +132,26 @@ class Project[T: BaseInput]:
         return self.db.get_standee_data(self.standee_key, "zund_print_form_minutes")
 
     def _get_zund_hours(self) -> float:
-        if self._all_elements_have_linear_inches():
-            zund_linear_inches = sum(form.get_linear_inches() for form in self.print_forms)
-            print_zund_hours = self._get_machine_time(UnitCostEntries.ZUND_CUTTER, zund_linear_inches)
-        else:
-            # Per-form complexity for bin-packed forms; extra manual forms use project standee complexity
-            packed_minutes = sum(
-                self.db.get_standee_data(STANDEE_MAP[form.complexity], "zund_print_form_minutes")
-                for form in self.print_forms
-            )
-            extra_forms = max(0, self.print_forms_per_standee - len(self.print_forms))
-            extra_minutes = extra_forms * self._get_zund_print_minutes_per_form()
-            print_zund_hours = (packed_minutes + extra_minutes) * self.num_standees / 60
+        # Per-form decision: a form only uses its own real linear inches when every element
+        # on it has them provided. A form mixing provided/un-provided elements (or with none
+        # at all) falls back to the static per-form minutes for its own (max) complexity.
+        linear_forms = [form for form in self.print_forms if self._form_uses_linear_inches(form)]
+        static_forms = [form for form in self.print_forms if not self._form_uses_linear_inches(form)]
+
+        zund_linear_inches = sum(form.get_linear_inches() for form in linear_forms)
+        linear_print_zund_hours = (
+            self._get_machine_time(UnitCostEntries.ZUND_CUTTER, zund_linear_inches) if linear_forms else 0.0
+        )
+
+        # Per-form complexity for bin-packed static forms; extra manual forms use project standee complexity.
+        packed_minutes = sum(
+            self.db.get_standee_data(STANDEE_MAP[form.complexity], "zund_print_form_minutes") for form in static_forms
+        )
+        extra_forms = max(0, self.print_forms_per_standee - len(self.print_forms))
+        extra_minutes = extra_forms * self._get_zund_print_minutes_per_form()
+        static_print_zund_hours = (packed_minutes + extra_minutes) * self.num_standees / 60
+
+        print_zund_hours = linear_print_zund_hours + static_print_zund_hours
 
         structure_zund_hours = (
             self.db.get_standee_data(self.standee_key, "zund_blank_form_minutes")
@@ -176,6 +184,17 @@ class Project[T: BaseInput]:
         """True only if every element across every print form has explicit linear inches."""
         elements = [element for form in self.print_forms for element in form.elements]
         return bool(elements) and all(element.linear_inches_provided for element in elements)
+
+    def _form_uses_linear_inches(self, form: Form) -> bool:
+        """Per-form decision for Zund cutting.
+
+        A form uses its own real linear-inches data only if every element placed on it has
+        linear inches provided. A form that mixes provided and un-provided elements (or has
+        none at all) falls back to the static per-form cost, keyed off the form's own
+        complexity — already the max complexity among its elements, set during bin packing
+        in ``print_form_calculator``.
+        """
+        return bool(form.elements) and all(element.linear_inches_provided for element in form.elements)
 
     def _get_die_cost(self) -> float:
         die_unit_cost = self.db.get_unit_cost(UnitCostEntries.DIE_COST)
@@ -243,10 +262,17 @@ class Project[T: BaseInput]:
 
     def _get_supplier_mount_die_buyout_cost(
         self, supplier: str, material: str, forms: float, material_type: str = ""
-    ) -> float:
+    ) -> tuple[float, float]:
+        """Returns ``(unit_cost, total_cost)``.
+
+        This helper is reused for several unrelated buyout lines (mount/die print forms,
+        mount/die blank forms, shipping box), each with
+        its own supplier-curve unit price, so the caller must capture and label the unit cost
+        itself rather than relying on a shared instance attribute (that was the bug: whichever
+        call ran last silently clobbered a single ``mount_die_buyout_unit_cost`` field).
+        """
         unit_cost = self._get_supplier_cost(supplier, material, self.num_standees, material_type)
-        self.mount_die_buyout_unit_cost = unit_cost
-        return unit_cost * self.num_standees * forms
+        return unit_cost, unit_cost * self.num_standees * forms
 
     def _get_base_corrugate_forms(self) -> float:
         return self.blank_forms_per_standee * self.num_standees
@@ -299,18 +325,27 @@ class InHouseProject[T: InHouseInput](Project[T]):
 
     @override
     def _get_zund_hours(self) -> float:
-        if self._all_elements_have_linear_inches():
-            zund_linear_inches = BUSMARK_PRINT_FORM_LENGTH * self.print_form_total
-            print_zund_hours = self._get_machine_time(UnitCostEntries.ZUND_CUTTER, zund_linear_inches)
-        else:
-            # Per-form complexity for bin-packed forms; extra manual forms use project standee complexity
-            packed_minutes = sum(
-                self.db.get_standee_data(STANDEE_MAP[form.complexity], "zund_print_form_minutes")
-                for form in self.print_forms
-            )
-            extra_forms = max(0, self.print_forms_per_standee - len(self.print_forms))
-            extra_minutes = extra_forms * self._get_zund_print_minutes_per_form()
-            print_zund_hours = (packed_minutes + extra_minutes) * self.num_standees / 60
+        # Per-form decision: a form only uses its own real linear inches when every element
+        # on it has them provided. A form mixing provided/un-provided elements (or with none
+        # at all) falls back to the static per-form minutes for its own (max) complexity.
+        linear_forms = [form for form in self.print_forms if self._form_uses_linear_inches(form)]
+        static_forms = [form for form in self.print_forms if not self._form_uses_linear_inches(form)]
+
+        zund_linear_inches = sum(form.get_linear_inches() for form in linear_forms)
+        linear_print_zund_hours = (
+            self._get_machine_time(UnitCostEntries.ZUND_CUTTER, zund_linear_inches) if linear_forms else 0.0
+        )
+
+        # Per-form complexity for bin-packed static forms; extra manual forms use project standee complexity.
+        packed_minutes = sum(
+            self.db.get_standee_data(STANDEE_MAP[form.complexity], "zund_print_form_minutes") for form in static_forms
+        )
+        extra_forms = max(0, self.print_forms_per_standee - len(self.print_forms))
+        extra_minutes = extra_forms * self._get_zund_print_minutes_per_form()
+        static_print_zund_hours = (packed_minutes + extra_minutes) * self.num_standees / 60
+
+        print_zund_hours = linear_print_zund_hours + static_print_zund_hours
+
         structure_zund_hours = (
             self.db.get_standee_data(self.standee_key, "zund_blank_form_minutes")
             * self.structure_forms_per_standee
@@ -384,15 +419,23 @@ class OutsourceProject[T: OutsourceInput](Project[T]):
         self.corrugate_supplier = input.corrugate_supplier
         self.corrugate_material = input.corrugate_material
         is_pq = input.corrugate_supplier == Suppliers.PQ
-        self.mount_die_buyout_cost = self._get_supplier_mount_die_buyout_cost(
+        _, print_buyout = self._get_supplier_mount_die_buyout_cost(
             input.corrugate_supplier, input.corrugate_material, self.print_forms_per_standee,
             "print" if is_pq else "",
-        ) + self._get_supplier_mount_die_buyout_cost(
+        )
+        _, blank_buyout = self._get_supplier_mount_die_buyout_cost(
             input.corrugate_supplier, input.corrugate_material, self.structure_forms_per_standee,
             "blank" if is_pq else "",
         )
+        self.mount_die_buyout_cost = print_buyout + blank_buyout
+        # Blended per-standee unit cost so qty (num_standees) × unit_cost reconstructs the
+        # total in the UI — the print/blank legs use different supplier-curve unit prices,
+        # so neither one alone is representative of the combined line.
+        self.mount_die_buyout_unit_cost = (
+            self.mount_die_buyout_cost / self.num_standees if self.num_standees else 0.0
+        )
         self.die_cost = self._get_die_cost()
-        self.shipping_box_cost = self._get_supplier_mount_die_buyout_cost(
+        self.shipping_box_unit_cost, self.shipping_box_cost = self._get_supplier_mount_die_buyout_cost(
             input.corrugate_supplier, SupplierMaterials.BLANK, 1, "blank" if is_pq else ""
         )
         _, self.label_cost = self._get_shipping_box_and_label_cost()
