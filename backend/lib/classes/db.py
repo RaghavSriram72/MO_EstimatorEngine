@@ -8,11 +8,12 @@ import numpy as np
 from bson import ObjectId
 from bson.errors import InvalidId
 from dotenv import load_dotenv
+from pymongo import ReturnDocument
 from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
 from scipy.optimize import curve_fit
 
-from lib.globals import UNIT_MAP, project_short_id
+from lib.globals import PROJECT_SHORT_ID_START, UNIT_MAP
 
 # Fields a caller may set via update_persisted_project / update_persisted_quote — also
 # the field set snapshotted into a history entry's "snapshot" and restored on revert.
@@ -104,9 +105,50 @@ class MidnightOilDB:
         self.projects_collection = self.db["projects"]
         self.quotes_collection = self.db["quotes"]
         self.history_collection = self.db["history"]
+        self.counters_collection = self.db["counters"]
         self.history_collection.create_index([("project_id", 1), ("created_at", -1)])
+        self._ensure_short_id_counter()
         self._load_cache()
         return self
+
+    def _ensure_short_id_counter(self) -> None:
+        """Seed the estimate-ID counter; remint hash-style short_ids to 10100, 10101, …"""
+        needs_remint = not self.counters_collection.find_one({"_id": "project_short_id"})
+        if not needs_remint:
+            for row in self.projects_collection.find({}, {"short_id": 1}):
+                sid = row.get("short_id")
+                if sid is None:
+                    continue
+                text = str(sid)
+                if not text.isdigit() or int(text) < PROJECT_SHORT_ID_START or int(text) >= 1_000_000:
+                    needs_remint = True
+                    break
+        if not needs_remint:
+            return
+
+        projects = list(self.projects_collection.find({}, {"_id": 1}).sort("_id", 1))
+        n = PROJECT_SHORT_ID_START
+        for project in projects:
+            self.projects_collection.update_one(
+                {"_id": project["_id"]},
+                {"$set": {"short_id": str(n)}},
+            )
+            n += 1
+        self.counters_collection.update_one(
+            {"_id": "project_short_id"},
+            {"$set": {"seq": n - 1 if projects else PROJECT_SHORT_ID_START - 1}},
+            upsert=True,
+        )
+
+    def _allocate_project_short_id(self) -> str:
+        """Return the next sequential estimate ID (10100, 10101, …)."""
+        self._ensure_short_id_counter()
+        result = self.counters_collection.find_one_and_update(
+            {"_id": "project_short_id"},
+            {"$inc": {"seq": 1}},
+            return_document=ReturnDocument.AFTER,
+        )
+        return str(int(result["seq"]))
 
     def _load_cache(self) -> None:
         self._cache["unit_costs"] = list(self.db["unit_costs"].find())
@@ -204,19 +246,17 @@ class MidnightOilDB:
             }
         )
 
-    def insert_persisted_project(self, doc: dict[str, Any], changed_by: str | None = None) -> str:
-        """Insert a canonical v1 project document; returns the new document id as a string.
+    def insert_persisted_project(self, doc: dict[str, Any], changed_by: str | None = None) -> tuple[str, str]:
+        """Insert a canonical v1 project document; returns ``(project_id, short_id)``.
 
         ``changed_by`` defaults to the document's own ``owner`` (true for normal creation,
         where you can only create your own projects) but can be overridden — e.g. duplicating
         someone else's project creates a doc owned by the duplicator, which already matches.
         """
+        short_id = self._allocate_project_short_id()
+        doc = {**doc, "short_id": short_id}
         result = self.projects_collection.insert_one(doc)
         project_id = str(result.inserted_id)
-        self.projects_collection.update_one(
-            {"_id": result.inserted_id},
-            {"$set": {"short_id": project_short_id(project_id)}},
-        )
         self._record_history(
             project_id=project_id,
             owner=doc["owner"],
@@ -226,12 +266,12 @@ class MidnightOilDB:
             label=doc.get("project_name", "Untitled project"),
             snapshot={k: doc[k] for k in _PROJECT_UPDATE_ALLOWED_FIELDS if k in doc},
         )
-        return project_id
+        return project_id, short_id
 
     def _ensure_project_short_id(self, doc: dict[str, Any]) -> dict[str, Any]:
         """Backfill ``short_id`` on legacy project docs (``doc['_id']`` must already be a str)."""
         if not doc.get("short_id"):
-            doc["short_id"] = project_short_id(doc["_id"])
+            doc["short_id"] = self._allocate_project_short_id()
             self.projects_collection.update_one(
                 {"_id": ObjectId(doc["_id"])},
                 {"$set": {"short_id": doc["short_id"]}},

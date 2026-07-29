@@ -40,7 +40,6 @@ from lib.persisted_project import (
     elements_to_persisted,
     persisted_create_to_mongo_document,
     persisted_update_to_mongo_set,
-    project_short_id,
 )
 from lib.persisted_quote import (
     PersistedQuoteCreateBody,
@@ -294,7 +293,7 @@ async def generate_quote(payload: QuoteRequest):
                 if updated:
                     out["project_id"] = persisted_project_id
             else:
-                inserted_id = db.insert_persisted_project(full_doc)
+                inserted_id, _short_id = db.insert_persisted_project(full_doc)
                 out["project_id"] = inserted_id
 
     return out
@@ -534,12 +533,12 @@ async def create_project(payload: PersistedProjectCreate):
     if not db.check_username_exists(payload.owner):
         return JSONResponse(status_code=404, content={"error": "Unknown owner"})
     doc = persisted_create_to_mongo_document(payload)
-    project_id = db.insert_persisted_project(doc)
+    project_id, short_id = db.insert_persisted_project(doc)
     return JSONResponse(
         status_code=201,
         content={
             "project_id": project_id,
-            "short_id": project_short_id(project_id),
+            "short_id": short_id,
             "message": "Project created successfully",
         },
     )
@@ -788,7 +787,7 @@ async def duplicate_project(
         "standee_type": source["standee_type"],
         "elements": source["elements"],
     }
-    new_project_id = db.insert_persisted_project(new_project_doc)
+    new_project_id, short_id = db.insert_persisted_project(new_project_doc)
 
     quote_ids: list[str] = []
     for quote in db.list_quotes_for_project(project_id, owner):
@@ -815,7 +814,7 @@ async def duplicate_project(
         status_code=201,
         content={
             "project_id": new_project_id,
-            "short_id": project_short_id(new_project_id),
+            "short_id": short_id,
             "quote_ids": quote_ids,
             "message": "Project duplicated successfully",
         },

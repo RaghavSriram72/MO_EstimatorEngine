@@ -1,10 +1,5 @@
-import hashlib
-
-
-def project_short_id(project_id: str) -> str:
-    """Deterministic 8-digit hash ID derived from the project's Mongo id string."""
-    digest = hashlib.sha256(project_id.encode()).hexdigest()
-    return f"{int(digest, 16) % 10**8:08d}"
+# Estimate IDs shown in the UI (#10100, #10101, …) — allocated sequentially in MidnightOilDB.
+PROJECT_SHORT_ID_START = 10100
 
 # ceil((85*Standee * Print Forms) / 3600 )
 

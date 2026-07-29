@@ -50,6 +50,7 @@ def _seed_db(db: MidnightOilDB) -> None:
     d.suppliers.delete_many({})
     d.overs.delete_many({})
     d.packout.delete_many({})
+    d.counters.delete_many({})
 
     # users
     d.users.insert_one({"username": "existing", "password_hash": "pw"})
@@ -263,7 +264,7 @@ class TestDbUserAndProjectMethods(unittest.TestCase):
         """Verify project CRUD helpers and owner scoping."""
         db: Any = self.db
 
-        project_id = db.insert_persisted_project(
+        project_id, short_id = db.insert_persisted_project(
             {
                 "owner": "alice",
                 "project_name": "New project",
@@ -272,9 +273,13 @@ class TestDbUserAndProjectMethods(unittest.TestCase):
                 "elements": ["a", "b"],
             }
         )
+        self.assertEqual(short_id, "10101")  # seeded "Poster" remints to 10100 first
 
         projects = db.list_projects_by_owner("alice")
         self.assertEqual([project["project_name"] for project in projects], ["New project", "Poster"])
+        self.assertEqual(db.get_project_by_owner(project_id, "alice")["short_id"], "10101")
+        poster = next(p for p in projects if p["project_name"] == "Poster")
+        self.assertEqual(poster["short_id"], "10100")
 
         fetched = db.get_project_by_owner(project_id, "alice")
         self.assertEqual(fetched["project_name"], "New project")
