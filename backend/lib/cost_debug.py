@@ -245,6 +245,7 @@ def _explain_zund_cut_cost(project: Any, _scenario_id: int) -> tuple[str | None,
     entry = _machine_entry(project.db, UnitCostEntries.ZUND_CUTTER)
     hourly = entry["cost"] * UNIT_MAP[entry["unit"]]
     hours = _get(project, "zund_hours", 0)
+    effective_throughput = entry["throughput"] / UNIT_MAP[entry["throughput_unit"]]
     blank_form_min = project.db.get_standee_data(project.standee_key, "zund_blank_form_minutes")
     blank_form_count = project.structure_forms_per_standee * project.num_standees
     structure_minutes = blank_form_min * blank_form_count
@@ -260,9 +261,11 @@ def _explain_zund_cut_cost(project: Any, _scenario_id: int) -> tuple[str | None,
     note_parts: list[str] = []
     if linear_forms:
         print_linear = sum(form.get_linear_inches() for form in linear_forms)
+        linear_hours = print_linear / effective_throughput if effective_throughput else 0.0
         note_parts.append(
             f"linear-inches forms ({len(linear_forms)}/{len(project.print_forms)}): "
-            f"throughput method, linear_in={_num(print_linear)}"
+            f"linear_in={_num(print_linear)} ÷ throughput ({_num(effective_throughput)}/hr) = "
+            f"{_num(linear_hours)} hr ({_num(linear_hours * 60)} min)"
         )
 
     # Group bin-packed static forms by complexity; extra manual forms (beyond what got
