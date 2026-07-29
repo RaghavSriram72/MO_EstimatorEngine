@@ -296,7 +296,15 @@ async def generate_quote(payload: QuoteRequest):
                 inserted_id, _short_id = db.insert_persisted_project(full_doc)
                 out["project_id"] = inserted_id
 
+    out["cost_tables_version"] = db.get_cost_tables_version()
     return out
+
+
+@app.get("/cost-tables-version")
+async def get_cost_tables_version():
+    """Return the current data-collector cost-tables fingerprint used for stale-estimate detection."""
+    db = _ensure_db()
+    return {"version": db.get_cost_tables_version()}
 
 
 @app.get("/standee-data")

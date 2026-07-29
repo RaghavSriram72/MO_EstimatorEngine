@@ -1,4 +1,5 @@
 import hashlib
+import json
 import os
 import secrets
 from datetime import UTC, datetime
@@ -29,6 +30,8 @@ _QUOTE_UPDATE_ALLOWED_FIELDS = {
     "standee_type",
     "elements",
     "contribution_margin",
+    # Stamp of cost-table version when engine defaults were last refreshed (data-collector sync).
+    "cost_tables_version",
 }
 # Subset of _QUOTE_UPDATE_ALLOWED_FIELDS that counts as "a real change" for history purposes.
 # `scenario` only records which tab was last open and `breakdown` is a legacy blob that's
@@ -108,8 +111,21 @@ class MidnightOilDB:
         self.counters_collection = self.db["counters"]
         self.history_collection.create_index([("project_id", 1), ("created_at", -1)])
         self._ensure_short_id_counter()
+        self._backfill_quote_cost_table_versions()
         self._load_cache()
         return self
+
+    def _backfill_quote_cost_table_versions(self) -> None:
+        """Stamp quotes that predate fingerprinting (or still use legacy int counters)."""
+        fingerprint = self.get_cost_tables_version()
+        for row in self.quotes_collection.find({}, {"_id": 1, "cost_tables_version": 1}):
+            stamp = row.get("cost_tables_version")
+            if isinstance(stamp, str) and len(stamp) == 24:
+                continue
+            self.quotes_collection.update_one(
+                {"_id": row["_id"]},
+                {"$set": {"cost_tables_version": fingerprint}},
+            )
 
     def _ensure_short_id_counter(self) -> None:
         """Seed the estimate-ID counter; remint hash-style short_ids to 10100, 10101, …"""
@@ -149,6 +165,50 @@ class MidnightOilDB:
             return_document=ReturnDocument.AFTER,
         )
         return str(int(result["seq"]))
+
+    def get_cost_tables_version(self) -> str:
+        """Return a stable fingerprint of all data-collector tables that affect estimates.
+
+        Reverting a cost edit (e.g. 750 → 700 → 750) restores the same fingerprint, so
+        quotes stamped at the original value are no longer marked stale.
+        ``last_updated`` timestamps are excluded so metadata-only changes do not matter.
+        """
+
+        def _norm(value: Any) -> Any:
+            if isinstance(value, float) and value.is_integer():
+                return int(value)
+            if isinstance(value, dict):
+                return {k: _norm(v) for k, v in value.items()}
+            if isinstance(value, list):
+                return [_norm(v) for v in value]
+            if hasattr(value, "isoformat"):
+                return value.isoformat()
+            if isinstance(value, ObjectId):
+                return str(value)
+            return value
+
+        def _canon(rows: list[dict[str, Any]], drop: set[str]) -> list[dict[str, Any]]:
+            out: list[dict[str, Any]] = []
+            for row in rows:
+                cleaned = {
+                    k: _norm(v)
+                    for k, v in row.items()
+                    if k not in drop and not k.startswith("_")
+                }
+                out.append(cleaned)
+            return sorted(out, key=lambda r: json.dumps(r, sort_keys=True, default=str))
+
+        drop_meta = {"_id", "last_updated"}
+        payload = {
+            "unit_costs": _canon(list(self.unit_costs_collection.find()), drop_meta),
+            "standee_static_costs": _canon(list(self.standee_collection.find()), drop_meta),
+            "overs": _canon(list(self.overs_collection.find()), drop_meta),
+            "packout": _canon(list(self.packout_collection.find()), drop_meta),
+            "suppliers": _canon(list(self.suppliers_collection.find()), drop_meta),
+            "print_blank_ratio": _canon(list(self.print_blank_collection.find()), drop_meta),
+        }
+        raw = json.dumps(payload, sort_keys=True, default=str, separators=(",", ":"))
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:24]
 
     def _load_cache(self) -> None:
         self._cache["unit_costs"] = list(self.db["unit_costs"].find())
@@ -888,6 +948,7 @@ class MidnightOilDB:
         result = self.overs_collection.delete_one({"_id": oid})
         if result.deleted_count == 0:
             raise ValueError(f"Overs record not found for id '{record_id}'")
+        self._load_cache()
 
     def get_packout(self, standees: int, forms: int, complexity: str) -> float:
         """Return the packout cost for a given quantity of standees, forms, and complexity."""
@@ -966,6 +1027,7 @@ class MidnightOilDB:
 
         if result.deleted_count == 0:
             raise ValueError(f"Packout record not found for id '{record_id}'")
+        self._load_cache()
 
 
 def _hash_password(password: str) -> str:
