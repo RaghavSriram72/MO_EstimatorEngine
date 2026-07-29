@@ -75,7 +75,7 @@ const SCENARIO_META: Record<ScenarioId, { short: string; sub: string }> = {
     1: { short: "Internal",  sub: "Packed Out" },
     2: { short: "Internal",  sub: "Assembled" },
     3: { short: "Hybrid",    sub: "External Assembly" },
-    4: { short: "Hybrid",    sub: "External Mount/Die Cut / Assembly" },
+    4: { short: "Hybrid",    sub: "External Mount/Die Cut/Assembly" },
     5: { short: "External",  sub: "Full Outsource" },
 };
 
@@ -125,7 +125,7 @@ export const SCENARIO_KEYS: Record<ScenarioId, string[]> = {
     2: ["corrugate_cost", "print_form_cost", "print_cost", "rollx_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "kitting_and_assembly_cost"],
     3: ["corrugate_cost", "print_form_cost", "print_cost", "rollx_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "pallet_material_cost", "pallet_labor_cost", "freight_cost", "packout"],
     4: ["print_form_cost", "print_cost", "mount_die_buyout_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "pallet_material_cost", "pallet_labor_cost", "freight_cost", "die_cost", "packout"],
-    5: ["litho_buyout_cost", "mount_die_buyout_cost", "label_cost", "instruction_sheet_cost", "pallet_material_cost", "pallet_labor_cost", "freight_cost", "die_cost", "packout"],
+    5: ["litho_buyout_cost", "mount_die_buyout_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "pallet_material_cost", "pallet_labor_cost", "freight_cost", "die_cost", "packout"],
 };
 
 // Manual edits to a cost row propagate to every scenario that shares the same
@@ -138,7 +138,7 @@ const SCENARIO_SYNC_GROUPS: Partial<Record<string, ScenarioId[]>> = {
     print_cost:                [1, 2, 3, 4],
     rollx_cost:                [1, 2, 3],
     zund_cut_cost:             [1, 2, 3],
-    shipping_box_cost:         [1, 2, 3, 4],
+    shipping_box_cost:         [1, 2, 3, 4, 5],
     label_cost:                [1, 2, 3, 4, 5],
     kitting_and_assembly_cost: [1, 2],
     instruction_sheet_cost:    [1, 2, 3, 4, 5],
