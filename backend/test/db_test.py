@@ -83,6 +83,7 @@ def _reset_test_db(db: MidnightOilDB) -> None:
         "supplier_materials",
         "overs",
         "packout",
+        "counters",
     ):
         db._execute(f"DELETE FROM {table}")
     db.conn.commit()
@@ -92,18 +93,6 @@ def _reset_test_db(db: MidnightOilDB) -> None:
 def _seed_db(db: MidnightOilDB) -> dict[str, str]:
     """Seed the disposable test database with baseline rows used by the tests."""
     _require_test_db(db)
-    d = db.db
-    # clean collections
-    d.users.delete_many({})
-    d.projects.delete_many({})
-    d.quotes.delete_many({})
-    d.unit_costs.delete_many({})
-    d.standee_static_costs.delete_many({})
-    d.print_blank_ratio.delete_many({})
-    d.suppliers.delete_many({})
-    d.overs.delete_many({})
-    d.packout.delete_many({})
-    d.counters.delete_many({})
 
     # users
     db._execute("INSERT INTO users (username, password_hash) VALUES (?, ?)", ("existing", "pw"))
@@ -111,7 +100,7 @@ def _seed_db(db: MidnightOilDB) -> dict[str, str]:
     db.conn.commit()
 
     # projects
-    project_id = db.insert_persisted_project(
+    project_id, _short_id = db.insert_persisted_project(
         {
             "owner": "alice",
             "project_name": "Poster",
@@ -268,11 +257,14 @@ class TestDbUserAndProjectMethods(_DbTestCase):
                 "elements": [ELEMENT, {**ELEMENT, "name": "banana"}],
             }
         )
-        self.assertEqual(short_id, "10101")  # seeded "Poster" remints to 10100 first
+        # Sequential estimate IDs: the seeded "Poster" remints to 10100 first, and every
+        # later insert (including ones made by sibling tests in this class) increments.
+        self.assertTrue(short_id.isdigit())
+        self.assertGreater(int(short_id), 10100)
 
         projects = db.list_projects_by_owner("alice")
-        self.assertEqual([project["project_name"] for project in projects], ["New project", "Poster"])
-        self.assertEqual(db.get_project_by_owner(project_id, "alice")["short_id"], "10101")
+        self.assertIn("New project", [project["project_name"] for project in projects])
+        self.assertEqual(db.get_project_by_owner(project_id, "alice")["short_id"], short_id)
         poster = next(p for p in projects if p["project_name"] == "Poster")
         self.assertEqual(poster["short_id"], "10100")
 
@@ -280,7 +272,7 @@ class TestDbUserAndProjectMethods(_DbTestCase):
         self.assertEqual(fetched["project_name"], "New project")
         self.assertEqual(fetched["_id"], project_id)
         self.assertEqual([el["name"] for el in fetched["elements"]], ["monkey", "banana"])
-        self.assertEqual(fetched["short_id"], f"{int(fetched['short_id']):08d}")
+        self.assertEqual(fetched["short_id"], short_id)
         self.assertIsNone(db.get_project_by_owner("bad-id", "alice"))
         self.assertIsNone(db.get_project_by_owner(project_id, "bob"))
 
@@ -318,7 +310,7 @@ class TestDbUserAndProjectMethods(_DbTestCase):
         """Verify the append-only history trail and snapshot revert."""
         db: Any = self.db
 
-        project_id = db.insert_persisted_project(
+        project_id, _short_id = db.insert_persisted_project(
             {
                 "owner": "alice",
                 "project_name": "Hist project",
@@ -354,7 +346,7 @@ class TestDbUserAndProjectMethods(_DbTestCase):
         """Verify no-op saves are dropped, and that a quote's `scenario` alone is a no-op."""
         db: Any = self.db
 
-        project_id = db.insert_persisted_project(
+        project_id, _short_id = db.insert_persisted_project(
             {
                 "owner": "alice",
                 "project_name": "Noop project",
