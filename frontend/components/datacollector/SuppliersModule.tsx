@@ -19,7 +19,7 @@ export default function SuppliersModule() {
     const [materials, setMaterials]                   = useState<SupplierMaterial[]>([]);
     const [selectedMaterial, setSelectedMaterial]     = useState("");
     const [selectedType, setSelectedType]             = useState("");
-    // savedDoc = what's currently in MongoDB; draftDoc = locally edited copy
+    // savedDoc = what is currently in the database; draftDoc = locally edited copy
     const [savedDoc, setSavedDoc]                     = useState<SupplierDocument | null>(null);
     const [draftDoc, setDraftDoc]                     = useState<SupplierDocument | null>(null);
     const [priceBreakToDelete, setPriceBreakToDelete] = useState<number | null>(null);

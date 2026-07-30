@@ -1,7 +1,7 @@
-""" JSON object for  MongoDB ``projects`` collection
-**Stored fields** (only these belong on the document):
+"""API/validation models for the SQL Server ``projects`` table.
+**Stored fields** (scalar columns on ``projects``; elements live in ``project_elements``):
  1. schema_version
- 2. owener
+ 2. owner
  3. project_name
  4. num_standees
  5. standee_type
@@ -66,7 +66,7 @@ class PersistedElement(BaseModel):
 
 
 class PersistedProjectCreate(BaseModel):
-    """Information that gets inserted into one row in the projects collection"""
+    """Information that gets inserted into one row in the projects table"""
 
     schema_version: int = Field(default=PROJECT_SCHEMA_VERSION, ge=1)
     owner: str = Field(..., min_length=1, max_length=256, description="Username of the account that owns this project")
@@ -76,12 +76,12 @@ class PersistedProjectCreate(BaseModel):
     elements: list[PersistedElement] = Field(..., min_length=1)
 
 
-def persisted_create_to_mongo_document(data: PersistedProjectCreate) -> dict[str, Any]:
+def persisted_create_to_document(data: PersistedProjectCreate) -> dict[str, Any]:
     return data.model_dump()
 
 
 class PersistedProjectUpdateBody(BaseModel):
-    # allows you to edit fields when updating an existing project document
+    # allows you to edit fields when updating an existing project record
 
     project_name: str = Field(..., min_length=1, max_length=512)
     num_standees: int = Field(..., ge=1)
@@ -89,7 +89,7 @@ class PersistedProjectUpdateBody(BaseModel):
     elements: list[PersistedElement] = Field(..., min_length=1)
 
 
-def persisted_update_to_mongo_set(data: PersistedProjectUpdateBody) -> dict[str, Any]:
+def persisted_update_to_set(data: PersistedProjectUpdateBody) -> dict[str, Any]:
     return data.model_dump()
 
 

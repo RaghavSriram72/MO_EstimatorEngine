@@ -1,43 +1,96 @@
 import os
+import re
 import unittest
 from datetime import UTC, datetime
-from types import SimpleNamespace
+from pathlib import Path
 from typing import Any
 from unittest.mock import patch
-
-from bson import ObjectId
 
 # Force every connection in this test module onto a disposable database whose
 # name ends in "_test". This MUST be set before any MidnightOilDB().connect()
 # call. python-dotenv's load_dotenv() does not override existing env vars, so
-# this value wins even if .env defines MONGO_DB_NAME.
-os.environ["MONGO_DB_NAME"] = "DB_test"
+# these values win even if .env defines SQL Server settings.
+os.environ["SQLSERVER_CONN_STR"] = ""
+os.environ["SQLSERVER_DATABASE"] = "MidnighOilEstimator_test"
+
+import pyodbc  # noqa: E402
 
 from lib.classes.db import MidnightOilDB, _fit_supplier_curve, _hash_password  # noqa: E402
+
+SCHEMA_PATH = Path(__file__).resolve().parents[2] / "sql" / "create_tables.sql"
+
+ELEMENT = {
+    "name": "monkey",
+    "length": 80.0,
+    "width": 74.0,
+    "linear_inches": None,
+    "complexity": "Complex",
+    "description": "Monkey cutout on front of standee",
+    "mask_b64": None,
+}
 
 
 def _require_test_db(db: MidnightOilDB) -> None:
     """Hard safety guard: never run destructive setup against a non-test database.
 
-    Raises if the connected database name does not end with ``_test``. This prevents
-    accidentally dropping/seeding the real application database (named ``DB``).
+    Raises if the configured database name does not end with ``_test``. This prevents
+    accidentally wiping the real application database.
     """
-    name = db.db.name
-    if not name.endswith("_test"):
+    if not db.db_name.endswith("_test"):
         raise RuntimeError(
-            f"Refusing to run db_test against database {name!r}: its name must end with '_test'. "
-            "Set MONGO_DB_NAME to a disposable test database before running these tests."
+            f"Refusing to run db_test against database {db.db_name!r}: its name must end with '_test'. "
+            "Set SQLSERVER_DATABASE to a disposable test database before running these tests."
         )
 
 
+def _run_script(conn: pyodbc.Connection, script_path: Path) -> None:
+    """Execute a T-SQL script batch-by-batch (batches separated by ``GO`` lines)."""
+    sql_text = script_path.read_text(encoding="utf-8")
+    cursor = conn.cursor()
+    for batch in re.split(r"^\s*GO\s*$", sql_text, flags=re.MULTILINE | re.IGNORECASE):
+        if batch.strip():
+            cursor.execute(batch)
+    conn.commit()
+
+
+def _ensure_test_database_and_schema() -> None:
+    """Create the ``*_test`` database (if missing) and apply the table schema."""
+    probe = MidnightOilDB()
+    _require_test_db(probe)
+    master_str = re.sub(r"DATABASE=[^;]+", "DATABASE=master", probe.conn_str, flags=re.IGNORECASE)
+    master = pyodbc.connect(master_str, autocommit=True)
+    try:
+        master.execute(f"IF DB_ID(N'{probe.db_name}') IS NULL CREATE DATABASE [{probe.db_name}]")
+    finally:
+        master.close()
+    conn = pyodbc.connect(probe.conn_str, autocommit=False)
+    try:
+        _run_script(conn, SCHEMA_PATH)
+    finally:
+        conn.close()
+
+
 def _reset_test_db(db: MidnightOilDB) -> None:
-    """Drop the connected test database, guarded by :func:`_require_test_db`."""
+    """Empty every table in the connected test database, guarded by :func:`_require_test_db`."""
     _require_test_db(db)
-    db.client.drop_database(db.db.name)
+    # projects cascades quotes/elements/history; supplier_materials cascades price breaks.
+    for table in (
+        "projects",
+        "users",
+        "unit_costs",
+        "standee_static_costs",
+        "print_blank_ratio",
+        "supplier_materials",
+        "overs",
+        "packout",
+    ):
+        db._execute(f"DELETE FROM {table}")
+    db.conn.commit()
+    db._load_cache()
 
 
-def _seed_db(db: MidnightOilDB) -> None:
-    """Seed the disposable test database with baseline documents used by the tests."""
+def _seed_db(db: MidnightOilDB) -> dict[str, str]:
+    """Seed the disposable test database with baseline rows used by the tests."""
     _require_test_db(db)
     d = db.db
     # clean collections
@@ -53,131 +106,86 @@ def _seed_db(db: MidnightOilDB) -> None:
     d.counters.delete_many({})
 
     # users
-    d.users.insert_one({"username": "existing", "password_hash": "pw"})
+    db._execute("INSERT INTO users (username, password_hash) VALUES (?, ?)", ("existing", "pw"))
+    db._execute("INSERT INTO users (username, password_hash) VALUES (?, ?)", ("alice", "pw"))
+    db.conn.commit()
 
     # projects
-    d.projects.insert_one({"owner": "alice", "project_name": "Poster"})
-
-    # quotes (existing "First quote" for the fixed project id used in tests)
-    d.quotes.insert_one(
+    project_id = db.insert_persisted_project(
         {
             "owner": "alice",
-            "project_id": ObjectId("000000000000000000000012"),
-            "quote_name": "First quote",
-            "breakdown": {"subtotal": 100},
+            "project_name": "Poster",
             "num_standees": 2,
-            "scenario": "Scenario1",
             "standee_type": "Complex",
-            "elements": ["e1"],
+            "elements": [ELEMENT],
+        }
+    )
+
+    # quotes ("First quote" attached to the seeded project)
+    quote_id = db.insert_persisted_quote(
+        {
+            "owner": "alice",
+            "project_id": project_id,
+            "quote_name": "First quote",
+            "scenario": 1,
+            "num_standees": 2,
+            "contribution_margin": 12.5,
+            "standee_type": "Complex",
+            "elements": [ELEMENT],
+            "scenarios": {"1": {"defaults": {"total": 100}}},
+            "universal": {"line_edits": {}},
+            "params": {"current": {"num_standees": 2}},
+            "breakdown": {"subtotal": 100},
             "created_at": datetime(2025, 1, 1, tzinfo=UTC),
             "updated_at": datetime(2025, 1, 1, tzinfo=UTC),
         }
     )
 
     # unit costs
-    d.unit_costs.insert_many(
-        [
-            {
-                "name": "ink",
-                "type": "ink",
-                "display_name": "Ink",
-                "cost": 2.5,
-                "unit": "sqft",
-                "last_updated": datetime.now(UTC),
-            },
-            {
-                "name": "paper",
-                "type": "substrate",
-                "display_name": "Paper",
-                "cost": 1.25,
-                "unit": "sqft",
-                "last_updated": datetime.now(UTC),
-            },
-        ]
-    )
+    db.insert_unit_cost_entry("ink", "ink", "Ink", 2.5, unit="sqft")
+    db.insert_unit_cost_entry("paper", "substrate", "Paper", 1.25, unit="sqft")
 
     # standee static costs
-    d.standee_static_costs.insert_one(
-        {
-            "standee_type": "Simple",
-            "shipping_box_cost": 42,
-            "blank_forms": 2,
-            "hardware_cost": 0,
-            "engineering_design_cost_per_project": 0,
-            "zund_blank_form_minutes": 0,
-            "cutting_die_blank_form_min": 0,
-            "cutting_die_print_form_min": 0,
-            "kitting_and_assembly": 0,
-        }
+    db._execute(
+        "INSERT INTO standee_static_costs (standee_type, hardware_cost, zund_blank_form_minutes) "
+        "VALUES (?, ?, ?)",
+        ("Simple Standee", 42, 2),
     )
+    db.conn.commit()
 
     # print blank ratios
-    d.print_blank_ratio.insert_many(
-        [
-            {"print_forms": 2, "blank_forms": 1},
-            {"print_forms": 5, "blank_forms": 3},
-        ]
-    )
+    db._execute("INSERT INTO print_blank_ratio (print_forms, blank_forms) VALUES (2, 1)")
+    db._execute("INSERT INTO print_blank_ratio (print_forms, blank_forms) VALUES (5, 3)")
+    db.conn.commit()
 
     # suppliers
-    d.suppliers.insert_one(
-        {
-            "_id": ObjectId("000000000000000000000010"),
-            "supplier": "Acme",
-            "material": "vinyl",
-            "material_display_name": "Vinyl",
-            "unit": "sqft",
-            "price_breaks": [{"amount": 5, "cost": 10.0}, {"amount": 10, "cost": 7.5}],
-            "curve_params": {"a": 2.0, "b": -1.0, "c": 1.0, "r_squared": 1.0},
-            "last_updated": datetime.now(UTC),
-        }
+    db.upsert_supplier_material(
+        "Acme", "vinyl", "Vinyl", "sqft", [{"amount": 5, "cost": 10.0}, {"amount": 10, "cost": 7.5}]
     )
 
     # overs tiers
-    d.overs.insert_many(
-        [
-            {"_id": ObjectId("000000000000000000000006"), "lower_bound": 0, "upper_bound": 49, "overs": 4},
-            {"lower_bound": 50, "upper_bound": 199, "overs": 8},
-        ]
-    )
+    overs_id = db.upsert_overs(None, 0, 49, 4)
+    db.upsert_overs(None, 50, 199, 8)
 
     # packout tiers
-    d.packout.insert_many(
-        [
-            {
-                "_id": ObjectId("000000000000000000000008"),
-                "standees_lower_bound": 0,
-                "standees_upper_bound": 9,
-                "forms_lower_bound": 0,
-                "forms_upper_bound": 3,
-                "complexity": "simple",
-                "packout": 12,
-                "last_updated": datetime.now(UTC),
-            },
-            {
-                "standees_lower_bound": 10,
-                "standees_upper_bound": None,
-                "forms_lower_bound": 4,
-                "forms_upper_bound": None,
-                "complexity": "COMPLEX",
-                "packout": 18,
-                "last_updated": datetime.now(UTC),
-            },
-        ]
-    )
+    packout_id = db.upsert_packout(None, 0, 9, 0, 3, "simple", 12)
+    db.upsert_packout(None, 10, None, 4, None, "COMPLEX", 18)
+
+    db._load_cache()
+    return {"project_id": project_id, "quote_id": quote_id, "overs_id": overs_id, "packout_id": packout_id}
 
 
-class TestDbHelpers(unittest.TestCase):
-    """Tests for the pure helpers and connection wiring in db.py."""
+class _DbTestCase(unittest.TestCase):
+    """Shared setup: fresh schema, wiped tables, baseline seed rows."""
+
+    ids: dict[str, str]
 
     @classmethod
     def setUpClass(cls):
+        _ensure_test_database_and_schema()
         cls.db = MidnightOilDB().connect()
-        # ensure clean slate and seed expected test data
         _reset_test_db(cls.db)
-        _seed_db(cls.db)
-        cls.db._load_cache()
-        cls.db._cache["packout"] = list(cls.db.db["packout"].find())
+        cls.ids = _seed_db(cls.db)
 
     @classmethod
     def tearDownClass(cls):
@@ -186,6 +194,10 @@ class TestDbHelpers(unittest.TestCase):
 
     def setUp(self):
         self.db = self.__class__.db
+
+
+class TestDbHelpers(_DbTestCase):
+    """Tests for the pure helpers and connection wiring in db.py."""
 
     def test_fit_supplier_curve_handles_empty_and_single_point_inputs(self):
         """Verify the curve fitter handles the trivial input cases."""
@@ -217,33 +229,16 @@ class TestDbHelpers(unittest.TestCase):
             "pbkdf2_sha256$120000$" + ("01" * 16) + "$" + ("02" * 32),
         )
 
-    def test_connect_initializes_collections_and_context_manager_closes_client(self):
-        """Verify connect returns a usable MidnightOilDB instance."""
-        self.assertIsNotNone(self.db.client)
-        self.assertIsNotNone(self.db.db)
-        # Collections should be present as attributes
-        self.assertTrue(hasattr(self.db, "unit_costs_collection"))
-        self.assertTrue(hasattr(self.db, "suppliers_collection"))
+    def test_connect_targets_test_database_and_loads_cache(self):
+        """Verify connect returns a usable MidnightOilDB instance on the test database."""
+        self.assertIsNotNone(self.db.conn)
+        self.assertTrue(self.db.db_name.endswith("_test"))
+        self.assertIn("unit_costs", self.db._cache)
+        self.assertIn("suppliers", self.db._cache)
 
 
-class TestDbUserAndProjectMethods(unittest.TestCase):
+class TestDbUserAndProjectMethods(_DbTestCase):
     """Tests for persisted project and user helpers."""
-
-    @classmethod
-    def setUpClass(cls):
-        cls.db = MidnightOilDB().connect()
-        _reset_test_db(cls.db)
-        _seed_db(cls.db)
-        cls.db._load_cache()
-        cls.db._cache["packout"] = list(cls.db.db["packout"].find())
-
-    @classmethod
-    def tearDownClass(cls):
-        _reset_test_db(cls.db)
-        cls.db.close()
-
-    def setUp(self):
-        self.db = self.__class__.db
 
     def test_user_helpers_create_and_lookup_users(self):
         """Verify the username lookup and insert flow."""
@@ -270,7 +265,7 @@ class TestDbUserAndProjectMethods(unittest.TestCase):
                 "project_name": "New project",
                 "num_standees": 2,
                 "standee_type": "Complex",
-                "elements": ["a", "b"],
+                "elements": [ELEMENT, {**ELEMENT, "name": "banana"}],
             }
         )
         self.assertEqual(short_id, "10101")  # seeded "Poster" remints to 10100 first
@@ -284,6 +279,8 @@ class TestDbUserAndProjectMethods(unittest.TestCase):
         fetched = db.get_project_by_owner(project_id, "alice")
         self.assertEqual(fetched["project_name"], "New project")
         self.assertEqual(fetched["_id"], project_id)
+        self.assertEqual([el["name"] for el in fetched["elements"]], ["monkey", "banana"])
+        self.assertEqual(fetched["short_id"], f"{int(fetched['short_id']):08d}")
         self.assertIsNone(db.get_project_by_owner("bad-id", "alice"))
         self.assertIsNone(db.get_project_by_owner(project_id, "bob"))
 
@@ -293,66 +290,151 @@ class TestDbUserAndProjectMethods(unittest.TestCase):
             db.update_persisted_project(
                 project_id,
                 "alice",
-                {"project_name": "Updated project", "ignored": True},
+                {"project_name": "Updated project", "elements": [ELEMENT], "ignored": True},
             )
         )
-        self.assertEqual(db.get_project_by_owner(project_id, "alice")["project_name"], "Updated project")
+        updated = db.get_project_by_owner(project_id, "alice")
+        self.assertEqual(updated["project_name"], "Updated project")
+        self.assertEqual(len(updated["elements"]), 1)
 
-        with patch.object(db, "delete_quotes_for_project", return_value=1) as delete_quotes:
-            self.assertTrue(db.delete_persisted_project(project_id, "alice"))
-            delete_quotes.assert_called_once_with(project_id, "alice")
-
+        # Deleting the project cascades to its quotes.
+        quote_id = db.insert_persisted_quote(
+            {
+                "owner": "alice",
+                "project_id": project_id,
+                "quote_name": "Doomed quote",
+                "scenario": 1,
+                "num_standees": 1,
+                "standee_type": "Simple",
+                "elements": [ELEMENT],
+            }
+        )
+        self.assertTrue(db.delete_persisted_project(project_id, "alice"))
         self.assertIsNone(db.get_project_by_owner(project_id, "alice"))
+        self.assertIsNone(db.get_quote_by_owner(quote_id, "alice"))
         self.assertFalse(db.delete_persisted_project("bad-id", "alice"))
 
-
-class TestDbQuoteMethods(unittest.TestCase):
-    """Tests for persisted quote helpers."""
-
-    @classmethod
-    def setUpClass(cls):
-        cls.db = MidnightOilDB().connect()
-        _reset_test_db(cls.db)
-        _seed_db(cls.db)
-        cls.db._load_cache()
-        cls.db._cache["packout"] = list(cls.db.db["packout"].find())
-
-    @classmethod
-    def tearDownClass(cls):
-        _reset_test_db(cls.db)
-        cls.db.close()
-
-    def setUp(self):
-        self.db = self.__class__.db
-
-    def test_quote_helpers_cover_insert_list_get_update_and_delete(self):
-        """Verify quote CRUD helpers, serialization, and ownership checks."""
+    def test_history_records_lists_and_reverts_project_changes(self):
+        """Verify the append-only history trail and snapshot revert."""
         db: Any = self.db
+
+        project_id = db.insert_persisted_project(
+            {
+                "owner": "alice",
+                "project_name": "Hist project",
+                "num_standees": 2,
+                "standee_type": "Simple",
+                "elements": [ELEMENT],
+            }
+        )
+        db.update_persisted_project(
+            project_id, "alice", {"project_name": "Renamed"}, changed_by="alice", change_type="rename"
+        )
+
+        history = db.list_project_history(project_id, "alice")
+        self.assertEqual([entry["change_type"] for entry in history], ["rename", "create"])
+        self.assertNotIn("snapshot", history[0])
+
+        create_entry = db.get_history_entry(project_id, history[1]["_id"], "alice")
+        self.assertEqual(create_entry["snapshot"]["project_name"], "Hist project")
+
+        result = db.revert_history_entry(project_id, history[1]["_id"], "alice", changed_by="alice")
+        self.assertEqual(result["entity_type"], "project")
+        self.assertEqual(result["doc"]["project_name"], "Hist project")
+        self.assertEqual(db.get_project_by_owner(project_id, "alice")["project_name"], "Hist project")
+
+        history = db.list_project_history(project_id, "alice")
+        self.assertEqual(history[0]["change_type"], "revert")
+        self.assertEqual(history[0]["reverted_from_history_id"], create_entry["_id"])
+
+        self.assertIsNone(db.get_history_entry(project_id, "bad-id", "alice"))
+        self.assertIsNone(db.revert_history_entry(project_id, "bad-id", "alice", changed_by="alice"))
+
+    def test_history_skips_saves_that_change_nothing_significant(self):
+        """Verify no-op saves are dropped, and that a quote's `scenario` alone is a no-op."""
+        db: Any = self.db
+
+        project_id = db.insert_persisted_project(
+            {
+                "owner": "alice",
+                "project_name": "Noop project",
+                "num_standees": 2,
+                "standee_type": "Simple",
+                "elements": [ELEMENT],
+            }
+        )
+        # Saving identical project content is not a new version.
+        db.update_persisted_project(
+            project_id,
+            "alice",
+            {"project_name": "Noop project", "num_standees": 2, "standee_type": "Simple", "elements": [ELEMENT]},
+        )
+        self.assertEqual([e["change_type"] for e in db.list_project_history(project_id, "alice")], ["create"])
 
         quote_id = db.insert_persisted_quote(
             {
                 "owner": "alice",
-                "project_id": ObjectId("000000000000000000000012"),
+                "project_id": project_id,
+                "quote_name": "Noop quote",
+                "scenario": 1,
+                "num_standees": 2,
+                "standee_type": "Simple",
+                "elements": [ELEMENT],
+            }
+        )
+        # `scenario` only records which tab was open, so switching tabs is not a new version.
+        db.update_persisted_quote(quote_id, "alice", {"quote_name": "Noop quote", "scenario": 4})
+        quote_entries = [
+            e for e in db.list_project_history(project_id, "alice") if e["entity_type"] == "quote"
+        ]
+        self.assertEqual([e["change_type"] for e in quote_entries], ["create"])
+
+        # A real edit still lands, and the project's own timeline is untouched by quote writes.
+        db.update_persisted_quote(quote_id, "alice", {"quote_name": "Renamed quote"}, change_type="rename")
+        history = db.list_project_history(project_id, "alice")
+        self.assertEqual([e["change_type"] for e in history if e["entity_type"] == "quote"], ["rename", "create"])
+        self.assertEqual([e["change_type"] for e in history if e["entity_type"] == "project"], ["create"])
+
+
+class TestDbQuoteMethods(_DbTestCase):
+    """Tests for persisted quote helpers."""
+
+    def test_quote_helpers_cover_insert_list_get_update_and_delete(self):
+        """Verify quote CRUD helpers, serialization, and ownership checks."""
+        db: Any = self.db
+        project_id = self.ids["project_id"]
+
+        quote_id = db.insert_persisted_quote(
+            {
+                "owner": "alice",
+                "project_id": project_id,
                 "quote_name": "Second quote",
-                "breakdown": {"subtotal": 200},
+                "scenario": 2,
                 "num_standees": 3,
-                "scenario": "Scenario2",
+                "contribution_margin": 20.0,
                 "standee_type": "Complex",
-                "elements": ["e2"],
+                "elements": [ELEMENT],
+                "scenarios": {"2": {"line_edits": {"die_cost": {"qty": 1, "unit_cost": 4}}}},
+                "universal": {"subtotal_override": ""},
+                "params": {"current": {"num_standees": 3}},
+                "breakdown": {"subtotal": 200},
                 "created_at": datetime(2026, 1, 9, 12, 0, tzinfo=UTC),
                 "updated_at": datetime(2026, 1, 9, 13, 0, tzinfo=UTC),
             }
         )
 
-        quotes = db.list_quotes_for_project("000000000000000000000012", "alice")
+        quotes = db.list_quotes_for_project(project_id, "alice")
         self.assertEqual([quote["quote_name"] for quote in quotes], ["Second quote", "First quote"])
-        self.assertEqual(quotes[0]["project_id"], "000000000000000000000012")
+        self.assertEqual(quotes[0]["project_id"], project_id)
         self.assertEqual(quotes[0]["created_at"], "2026-01-09T12:00:00+00:00")
 
         fetched = db.get_quote_by_owner(quote_id, "alice")
         self.assertEqual(fetched["_id"], quote_id)
-        self.assertEqual(fetched["project_id"], "000000000000000000000012")
+        self.assertEqual(fetched["project_id"], project_id)
         self.assertEqual(fetched["updated_at"], "2026-01-09T13:00:00+00:00")
+        self.assertEqual(fetched["scenarios"]["2"]["line_edits"]["die_cost"], {"qty": 1, "unit_cost": 4})
+        self.assertEqual(fetched["breakdown"], {"subtotal": 200})
+        self.assertEqual([el["name"] for el in fetched["elements"]], ["monkey"])
         self.assertIsNone(db.get_quote_by_owner("bad-id", "alice"))
         self.assertIsNone(db.get_quote_by_owner(quote_id, "bob"))
 
@@ -362,40 +444,24 @@ class TestDbQuoteMethods(unittest.TestCase):
             db.update_persisted_quote(
                 quote_id,
                 "alice",
-                {"quote_name": "Updated quote", "scenario": "Scenario3", "ignored": True},
+                {"quote_name": "Updated quote", "scenario": 3, "ignored": True},
             )
         )
         updated = db.get_quote_by_owner(quote_id, "alice")
         self.assertEqual(updated["quote_name"], "Updated quote")
-        self.assertEqual(updated["scenario"], "Scenario3")
+        self.assertEqual(updated["scenario"], 3)
         self.assertIn("updated_at", updated)
 
         self.assertTrue(db.delete_persisted_quote(quote_id, "alice"))
         self.assertFalse(db.delete_persisted_quote(quote_id, "alice"))
         self.assertFalse(db.delete_persisted_quote("bad-id", "alice"))
 
-        self.assertEqual(db.delete_quotes_for_project("000000000000000000000012", "alice"), 1)
+        self.assertEqual(db.delete_quotes_for_project(project_id, "alice"), 1)
         self.assertEqual(db.delete_quotes_for_project("bad-id", "alice"), 0)
 
 
-class TestDbCostAndLookupMethods(unittest.TestCase):
+class TestDbCostAndLookupMethods(_DbTestCase):
     """Tests for cost lookups, supplier pricing, overs, and packout helpers."""
-
-    @classmethod
-    def setUpClass(cls):
-        cls.db = MidnightOilDB().connect()
-        _reset_test_db(cls.db)
-        _seed_db(cls.db)
-        cls.db._load_cache()
-        cls.db._cache["packout"] = list(cls.db.db["packout"].find())
-
-    @classmethod
-    def tearDownClass(cls):
-        _reset_test_db(cls.db)
-        cls.db.close()
-
-    def setUp(self):
-        self.db = self.__class__.db
 
     def test_unit_cost_helpers_cover_lookup_listing_update_and_insert(self):
         """Verify unit cost lookups, updates, and inserts."""
@@ -418,24 +484,30 @@ class TestDbCostAndLookupMethods(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             db.get_unit_cost_entry("missing")
+        with self.assertRaises(ValueError):
+            db.update_unit_cost_entry("paper", {"not_a_column": 1})
 
     def test_standee_and_blank_ratio_helpers_cover_lookup_update_and_fallback(self):
         """Verify standee lookups and print-blank ratio fallback behavior."""
         db: Any = self.db
 
-        self.assertEqual(db.get_standee_record("Simple")["shipping_box_cost"], 42)
-        self.assertEqual(db.get_standee_data("Simple", "blank_forms"), 2)
+        self.assertEqual(db.get_standee_record("Simple Standee")["hardware_cost"], 42)
+        self.assertEqual(db.get_standee_data("Simple Standee", "zund_blank_form_minutes"), 2)
         self.assertEqual(db.get_structure_forms_per_standee(2), 1)
         self.assertEqual(db.get_structure_forms_per_standee(5), 3)
+        # 4 has no exact row; the closest print_forms value (5) wins.
+        self.assertEqual(db.get_structure_forms_per_standee(4), 3)
 
-        db.update_standee_record("Simple", {"shipping_box_cost": 50})
-        self.assertEqual(db.get_standee_record("Simple")["shipping_box_cost"], 50)
+        db.update_standee_record("Simple Standee", {"hardware_cost": 50})
+        self.assertEqual(db.get_standee_record("Simple Standee")["hardware_cost"], 50)
 
         db.set_blank_forms_per_standee(2, 4)
         self.assertEqual(db.get_structure_forms_per_standee(2), 4)
 
         with self.assertRaises(ValueError):
-            db.get_standee_data("Simple", "missing")
+            db.get_standee_data("Simple Standee", "missing")
+        with self.assertRaises(ValueError):
+            db.update_standee_record("Simple Standee", {"missing": 1})
 
     def test_supplier_helpers_cover_distinct_listing_records_curve_params_and_upsert(self):
         """Verify supplier listing, serialization, and upsert behavior."""
@@ -445,12 +517,12 @@ class TestDbCostAndLookupMethods(unittest.TestCase):
         self.assertEqual(db.get_distinct_materials("Acme"), [{"material": "vinyl", "display_name": "Vinyl"}])
 
         supplier_record = db.get_supplier_material_records("Acme", "vinyl")
-        self.assertEqual(supplier_record["_id"], "000000000000000000000010")
+        self.assertTrue(supplier_record["_id"].isdigit())
         self.assertEqual(
             supplier_record["price_breaks"],
             [{"amount": 5, "cost": 10.0}, {"amount": 10, "cost": 7.5}],
         )
-        self.assertEqual(db.get_curve_params("Acme", "vinyl")["r_squared"], 1.0)
+        self.assertAlmostEqual(db.get_curve_params("Acme", "vinyl")["r_squared"], 1.0, places=4)
         self.assertIsNone(db.get_curve_params("Missing", "vinyl"))
 
         db.upsert_supplier_material(
@@ -473,10 +545,10 @@ class TestDbCostAndLookupMethods(unittest.TestCase):
 
         self.assertEqual(db.get_overs(25), 4)
         self.assertEqual(db.get_overs(100), 8)
-        self.assertEqual(db.get_all_overs()[0]["_id"], "000000000000000000000006")
+        self.assertEqual(db.get_all_overs()[0]["_id"], self.ids["overs_id"])
 
         new_overs_id = db.upsert_overs(None, 200, None, 12)
-        self.assertTrue(ObjectId.is_valid(new_overs_id))
+        self.assertTrue(new_overs_id.isdigit())
         self.assertEqual(db.get_overs(250), 12)
 
         db.upsert_overs(new_overs_id, 210, None, 14)
@@ -484,10 +556,10 @@ class TestDbCostAndLookupMethods(unittest.TestCase):
 
         self.assertEqual(db.get_packout(5, 2, "simple"), 12.0)
         self.assertEqual(db.get_packout(12, 4, "COMPLEX"), 18.0)
-        self.assertEqual(db.get_all_packout()[0]["_id"], "000000000000000000000008")
+        self.assertEqual(db.get_all_packout()[0]["_id"], self.ids["packout_id"])
 
         new_packout_id = db.upsert_packout(None, 20, None, 6, None, "Moderate", 22)
-        self.assertTrue(ObjectId.is_valid(new_packout_id))
+        self.assertTrue(new_packout_id.isdigit())
         self.assertEqual(db.get_packout(20, 6, "moderate"), 22.0)
 
         db.upsert_packout(new_packout_id, 30, None, 7, None, "Moderate", 24)

@@ -309,7 +309,7 @@ function scenarioSubtotalOverridesFromUi(ui: QuoteBreakdownUi | undefined): Reco
 
 // ── Persisted quote (v2) helpers — quote object with five scenario children ─
 
-/** Keeps only finite numbers — strips _debug_explanations etc. before storing in Mongo. */
+/** Keeps only finite numbers — strips _debug_explanations etc. before storing in the database. */
 function numericOnly(blob: Record<string, unknown>): Record<string, number> {
     const out: Record<string, number> = {};
     for (const [k, v] of Object.entries(blob)) {

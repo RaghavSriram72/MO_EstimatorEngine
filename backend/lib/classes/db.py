@@ -1,13 +1,14 @@
 import hashlib
 import json
 import os
+import re
 import secrets
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import numpy as np
-from bson import ObjectId
-from bson.errors import InvalidId
+import pyodbc
 from dotenv import load_dotenv
 from pymongo import ReturnDocument
 from pymongo.mongo_client import MongoClient
@@ -39,12 +40,48 @@ _QUOTE_UPDATE_ALLOWED_FIELDS = {
 # that only touches these would otherwise still clutter the timeline as a no-op entry.
 _QUOTE_HISTORY_SIGNIFICANT_FIELDS = _QUOTE_UPDATE_ALLOWED_FIELDS - {"scenario", "breakdown"}
 
+# Scalar (single-column) subsets of the allowed fields; "elements" lives in its own
+# child table and the quote JSON blobs are serialized before hitting their columns.
+_PROJECT_SCALAR_FIELDS = ("project_name", "num_standees", "standee_type")
+_QUOTE_SCALAR_FIELDS = ("quote_name", "num_standees", "scenario", "standee_type", "contribution_margin")
+_QUOTE_JSON_FIELDS = ("scenarios", "universal", "params", "breakdown")
+
+_ELEMENT_COLUMNS = ("name", "length", "width", "linear_inches", "complexity", "description", "mask_b64")
+
+# Whitelist for the dynamic UPDATE in update_unit_cost_entry / kwargs in insert.
+_UNIT_COST_COLUMNS = ("cost", "unit", "display_name", "type", "throughput", "throughput_unit", "setup_time")
+_UNIT_COST_OPTIONAL_COLUMNS = ("setup_time", "throughput", "throughput_unit")
+
+# Whitelist for the dynamic UPDATE in update_standee_record.
+_STANDEE_COLUMNS = (
+    "engineering_design_cost_per_project",
+    "instruction_sheet_engineering_cost_per_project",
+    "hardware_cost",
+    "zund_print_form_minutes",
+    "zund_blank_form_minutes",
+    "instruction_sheet_total_cost",
+    "cutting_die_inches_multiplier",
+    "kitting_and_assembly",
+    "cutting_die_blank_form_min",
+    "cutting_die_print_form_min",
+)
+
 
 def _significant_history_fields(snapshot: dict[str, Any], entity_type: str) -> dict[str, Any]:
     """Subset of a history snapshot that counts as "a real change" for no-op detection."""
     if entity_type != "quote":
         return snapshot
     return {k: v for k, v in snapshot.items() if k in _QUOTE_HISTORY_SIGNIFICANT_FIELDS}
+
+
+def _history_fingerprint(snapshot: dict[str, Any], entity_type: str) -> str:
+    """Canonical JSON of a snapshot's significant fields, for no-op comparison.
+
+    Comparing the JSON text rather than the dicts keeps a freshly built snapshot
+    comparable to one that has already round-tripped through the ``history.snapshot``
+    JSON column (where key order is arbitrary and non-JSON values were stringified).
+    """
+    return json.dumps(_significant_history_fields(snapshot, entity_type), sort_keys=True, default=str)
 
 
 def _fit_supplier_curve(amounts: list[float], costs: list[float]) -> dict[str, float]:
@@ -84,15 +121,54 @@ def _fit_supplier_curve(amounts: list[float], costs: list[float]) -> dict[str, f
     return {"a": round(a, 6), "b": round(b, 6), "c": round(c, 6), "r_squared": round(float(r_squared), 6)}
 
 
+def _parse_id(value: Any) -> int | None:
+    """Parse an id passed in by the API (a string) into a row id, or None if invalid."""
+    try:
+        parsed = int(str(value))
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def _to_db_datetime(value: datetime) -> datetime:
+    """Normalize to a naive UTC datetime for a DATETIME2 column."""
+    if value.tzinfo is not None:
+        value = value.astimezone(UTC).replace(tzinfo=None)
+    return value
+
+
+def _from_db_datetime(value: Any) -> Any:
+    """Re-attach UTC to a naive DATETIME2 value read from the database."""
+    if isinstance(value, datetime) and value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value
+
+
 class MidnightOilDB:
-    """MongoDB helper for flute-price collection operations."""
+    """SQL Server data layer for the estimator (pyodbc)."""
 
     def __init__(self):
         load_dotenv()
-        self.uri = os.getenv("MONGO_URI")
+        conn_str = os.getenv("SQLSERVER_CONN_STR")
+        if not conn_str:
+            driver = os.getenv("SQLSERVER_DRIVER", "ODBC Driver 18 for SQL Server")
+            host = os.getenv("SQLSERVER_HOST", "localhost")
+            database = os.getenv("SQLSERVER_DATABASE", "MidnighOilEstimator")
+            user = os.getenv("SQLSERVER_USER")
+            password = os.getenv("SQLSERVER_PASSWORD", "")
+            parts = [f"DRIVER={{{driver}}}", f"SERVER={host}", f"DATABASE={database}"]
+            if user:
+                parts += [f"UID={user}", f"PWD={password}"]
+            else:
+                parts.append("Trusted_Connection=yes")
+            parts.append("TrustServerCertificate=yes")
+            conn_str = ";".join(parts)
+        self.conn_str = conn_str
+        match = re.search(r"DATABASE=([^;]+)", conn_str, re.IGNORECASE)
+        self.db_name = match.group(1) if match else ""
 
     def connect(self):
-        """Establish a connection to the MongoDB database."""
+        """Establish a connection to the SQL Server database."""
         self._cache: dict[str, list] = {}
         self.client = MongoClient(self.uri, server_api=ServerApi("1"), tz_aware=True)
         self.db_name = os.getenv("MONGO_DB_NAME", "DB")
@@ -219,8 +295,8 @@ class MidnightOilDB:
         self._cache["packout"] = list(self.db["packout"].find())
 
     def close(self):
-        """Close the MongoDB connection."""
-        self.client.close()
+        """Close the SQL Server connection."""
+        self.conn.close()
 
     def __enter__(self):
         return self.connect()
@@ -228,26 +304,192 @@ class MidnightOilDB:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
 
+    # ------------------------------------------------------------------
+    # Low-level helpers
+    # ------------------------------------------------------------------
+
+    def _fetchall(self, sql: str, params: tuple = ()) -> list[dict[str, Any]]:
+        cursor = self.conn.cursor()
+        try:
+            cursor.execute(sql, params)
+            columns = [col[0] for col in cursor.description]
+            return [dict(zip(columns, row)) for row in cursor.fetchall()]
+        finally:
+            cursor.close()
+
+    def _fetchone(self, sql: str, params: tuple = ()) -> dict[str, Any] | None:
+        rows = self._fetchall(sql, params)
+        return rows[0] if rows else None
+
+    def _execute(self, sql: str, params: tuple = ()) -> int:
+        """Execute a statement inside the current transaction; returns affected row count."""
+        cursor = self.conn.cursor()
+        try:
+            cursor.execute(sql, params)
+            return cursor.rowcount
+        finally:
+            cursor.close()
+
+    def _insert_returning_id(self, sql: str, params: tuple = ()) -> int:
+        """Execute an ``INSERT ... OUTPUT INSERTED.<id>`` statement and return the new id."""
+        cursor = self.conn.cursor()
+        try:
+            cursor.execute(sql, params)
+            return int(cursor.fetchone()[0])
+        finally:
+            cursor.close()
+
+    def apply_schema(self, script_path: str | os.PathLike) -> None:
+        """Run an idempotent T-SQL script (batches separated by ``GO`` lines)."""
+        sql_text = Path(script_path).read_text(encoding="utf-8")
+        for batch in re.split(r"^\s*GO\s*$", sql_text, flags=re.MULTILINE | re.IGNORECASE):
+            if batch.strip():
+                self._execute(batch)
+        self.conn.commit()
+
+    def _load_cache(self) -> None:
+        self._cache["unit_costs"] = self._load_unit_costs_cache()
+        self._cache["standee_static_costs"] = self._load_standee_cache()
+        self._cache["print_blank_ratio"] = self._fetchall("SELECT print_forms, blank_forms FROM print_blank_ratio")
+        self._cache["overs"] = self._load_overs_cache()
+        self._cache["suppliers"] = self._load_suppliers_cache()
+        self._cache["packout"] = self._load_packout_cache()
+
+    def _load_unit_costs_cache(self) -> list[dict[str, Any]]:
+        rows = self._fetchall(
+            "SELECT unit_cost_id, name, [type], display_name, cost, unit, "
+            "setup_time, throughput, throughput_unit, last_updated FROM unit_costs"
+        )
+        records = []
+        for row in rows:
+            record = {
+                "_id": row["unit_cost_id"],
+                "name": row["name"],
+                "type": row["type"],
+                "display_name": row["display_name"],
+                "cost": row["cost"],
+                "unit": row["unit"],
+                "last_updated": _from_db_datetime(row["last_updated"]),
+            }
+            # Machine-only fields: keep them off non-machine records entirely.
+            for key in _UNIT_COST_OPTIONAL_COLUMNS:
+                if row[key] is not None:
+                    record[key] = row[key]
+            records.append(record)
+        return records
+
+    def _load_standee_cache(self) -> list[dict[str, Any]]:
+        rows = self._fetchall("SELECT * FROM standee_static_costs")
+        records = []
+        for row in rows:
+            record = dict(row)
+            record["_id"] = record.pop("standee_static_cost_id")
+            records.append(record)
+        return records
+
+    def _load_overs_cache(self) -> list[dict[str, Any]]:
+        rows = self._fetchall("SELECT overs_id, lower_bound, upper_bound, overs, last_updated FROM overs")
+        for row in rows:
+            row["_id"] = row.pop("overs_id")
+            row["last_updated"] = _from_db_datetime(row["last_updated"])
+        return rows
+
+    def _load_packout_cache(self) -> list[dict[str, Any]]:
+        rows = self._fetchall(
+            "SELECT packout_id, standees_lower_bound, standees_upper_bound, forms_lower_bound, "
+            "forms_upper_bound, complexity, packout, last_updated FROM packout"
+        )
+        for row in rows:
+            row["_id"] = row.pop("packout_id")
+            row["last_updated"] = _from_db_datetime(row["last_updated"])
+        return rows
+
+    def _load_suppliers_cache(self) -> list[dict[str, Any]]:
+        materials = self._fetchall(
+            "SELECT supplier_material_id, supplier, material, material_display_name, material_type, "
+            "unit, curve_a, curve_b, curve_c, curve_r_squared, last_updated FROM supplier_materials"
+        )
+        breaks = self._fetchall(
+            "SELECT supplier_material_id, amount, cost FROM supplier_price_breaks ORDER BY amount"
+        )
+        breaks_by_material: dict[int, list[dict[str, float]]] = {}
+        for row in breaks:
+            breaks_by_material.setdefault(row["supplier_material_id"], []).append(
+                {"amount": row["amount"], "cost": row["cost"]}
+            )
+
+        docs = []
+        for mat in materials:
+            material_id = mat["supplier_material_id"]
+            curve_params = None
+            if mat["curve_a"] is not None:
+                curve_params = {
+                    "a": mat["curve_a"],
+                    "b": mat["curve_b"],
+                    "c": mat["curve_c"],
+                    "r_squared": mat["curve_r_squared"],
+                }
+            docs.append(
+                {
+                    "_id": material_id,
+                    "supplier": mat["supplier"],
+                    "material": mat["material"],
+                    "material_display_name": mat["material_display_name"],
+                    "type": mat["material_type"],
+                    "unit": mat["unit"],
+                    "price_breaks": breaks_by_material.get(material_id, []),
+                    "curve_params": curve_params,
+                    "last_updated": _from_db_datetime(mat["last_updated"]),
+                }
+            )
+        return docs
+
+    # ------------------------------------------------------------------
+    # Users
+    # ------------------------------------------------------------------
+
     def check_username_exists(self, username: str) -> bool:
-        """Check if a username already exists in the users collection."""
-        return self.users_collection.find_one({"username": username}) is not None
+        """Check if a username already exists in the users table."""
+        return self._fetchone("SELECT 1 AS present FROM users WHERE username = ?", (username,)) is not None
 
     def create_user(self, username: str, password: str) -> bool:
         """Create a new user if the username doesn't already exist."""
         if self.check_username_exists(username):
             return False
 
-        self.users_collection.insert_one(
-            {
-                "username": username,
-                "password_hash": _hash_password(password),
-            }
+        self._execute(
+            "INSERT INTO users (username, password_hash) VALUES (?, ?)",
+            (username, _hash_password(password)),
         )
+        self.conn.commit()
         return True
 
     def get_user(self, username: str):
-        """Retrieve a user document by username."""
-        return self.users_collection.find_one({"username": username})
+        """Retrieve a user row by username."""
+        return self._fetchone(
+            "SELECT user_id, username, password_hash FROM users WHERE username = ?", (username,)
+        )
+
+    # ------------------------------------------------------------------
+    # History
+    # ------------------------------------------------------------------
+
+    def _latest_history_snapshot(
+        self, project_id: int, entity_type: str, quote_id: int | None
+    ) -> dict[str, Any] | None:
+        """Snapshot of the newest history entry for one entity, or None if it has none."""
+        # quote_id needs IS NULL rather than "= ?" for project entries, which have no quote.
+        quote_clause = "quote_id = ?" if quote_id is not None else "quote_id IS NULL"
+        params: tuple = (project_id, entity_type) + ((quote_id,) if quote_id is not None else ())
+        row = self._fetchone(
+            "SELECT TOP 1 CAST(snapshot AS NVARCHAR(MAX)) AS snapshot FROM history "
+            f"WHERE project_id = ? AND entity_type = ? AND {quote_clause} "
+            "ORDER BY created_at DESC, history_id DESC",
+            params,
+        )
+        if row is None:
+            return None
+        return json.loads(row["snapshot"]) if row["snapshot"] else {}
 
     def _record_history(
         self,
@@ -263,10 +505,11 @@ class MidnightOilDB:
         scenario: int | None = None,
         reverted_from_history_id: str | None = None,
     ) -> None:
-        """Append one history entry. ``changed_by`` is the ``owner`` query param on the
-        write request — there is no separate session/identity layer in this app, and
-        every write is already scoped to ``{"_id": ..., "owner": owner}``, so today
-        ``changed_by`` always equals the document's own ``owner``.
+        """Append one history entry (no commit — runs inside the caller's transaction).
+
+        ``changed_by`` is the ``changed_by`` query param on the write request — writes are
+        scoped to ``(id, owner)`` for authorization, but anyone can edit another user's
+        project, so the person who made the edit is tracked separately from the owner.
 
         Skips writing when nothing significant changed since the immediately-preceding
         entry for the same entity (the project itself, or one specific quote) — these are
@@ -276,42 +519,41 @@ class MidnightOilDB:
         ``create`` never has a predecessor to compare against, and ``revert`` is an explicit,
         meaningful user action even on the rare occasion it restores an identical state.
         """
+        row_project_id = int(project_id)
+        row_quote_id = int(quote_id) if quote_id else None
+
         if change_type not in ("create", "revert"):
-            latest = self.history_collection.find_one(
-                {
-                    "project_id": ObjectId(project_id),
-                    "entity_type": entity_type,
-                    "quote_id": ObjectId(quote_id) if quote_id else None,
-                },
-                sort=[("created_at", -1), ("_id", -1)],
-            )
-            if latest is not None and _significant_history_fields(
-                latest.get("snapshot") or {}, entity_type
-            ) == _significant_history_fields(snapshot, entity_type):
+            latest = self._latest_history_snapshot(row_project_id, entity_type, row_quote_id)
+            if latest is not None and _history_fingerprint(latest, entity_type) == _history_fingerprint(
+                snapshot, entity_type
+            ):
                 return
 
-        self.history_collection.insert_one(
-            {
-                "project_id": ObjectId(project_id),
-                "owner": owner,
-                "entity_type": entity_type,
-                "quote_id": ObjectId(quote_id) if quote_id else None,
-                "scenario": scenario,
-                "change_type": change_type,
-                "changed_by": changed_by,
-                "label": label,
-                "snapshot": snapshot,
-                "reverted_from_history_id": ObjectId(reverted_from_history_id) if reverted_from_history_id else None,
-                "created_at": datetime.now(UTC),
-            }
+        self._execute(
+            "INSERT INTO history (project_id, owner, entity_type, quote_id, scenario, change_type, "
+            "changed_by, label, snapshot, reverted_from_history_id, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                row_project_id,
+                owner,
+                entity_type,
+                row_quote_id,
+                scenario,
+                change_type,
+                changed_by,
+                label,
+                json.dumps(snapshot, default=str),
+                int(reverted_from_history_id) if reverted_from_history_id else None,
+                _to_db_datetime(datetime.now(UTC)),
+            ),
         )
 
     def insert_persisted_project(self, doc: dict[str, Any], changed_by: str | None = None) -> tuple[str, str]:
         """Insert a canonical v1 project document; returns ``(project_id, short_id)``.
 
-        ``changed_by`` defaults to the document's own ``owner`` (true for normal creation,
+        ``changed_by`` defaults to the row's own ``owner`` (true for normal creation,
         where you can only create your own projects) but can be overridden — e.g. duplicating
-        someone else's project creates a doc owned by the duplicator, which already matches.
+        someone else's project creates a row owned by the duplicator, which already matches.
         """
         short_id = self._allocate_project_short_id()
         doc = {**doc, "short_id": short_id}
@@ -329,48 +571,57 @@ class MidnightOilDB:
         return project_id, short_id
 
     def _ensure_project_short_id(self, doc: dict[str, Any]) -> dict[str, Any]:
-        """Backfill ``short_id`` on legacy project docs (``doc['_id']`` must already be a str)."""
+        """Backfill ``short_id`` on legacy project rows (``doc['_id']`` must already be a str)."""
         if not doc.get("short_id"):
             doc["short_id"] = self._allocate_project_short_id()
             self.projects_collection.update_one(
                 {"_id": ObjectId(doc["_id"])},
                 {"$set": {"short_id": doc["short_id"]}},
             )
+            self.conn.commit()
         return doc
 
     def list_projects_by_owner(self, owner: str) -> list[dict[str, Any]]:
-        """Return all project documents for an owner, newest ``_id`` first."""
-        cursor = self.projects_collection.find({"owner": owner}).sort("_id", -1)
-        out: list[dict[str, Any]] = []
-        for row in cursor:
-            doc = dict(row)
-            doc["_id"] = str(doc["_id"])
-            out.append(self._ensure_project_short_id(doc))
-        return out
+        """Return all project rows for an owner, newest ``_id`` first."""
+        rows = self._fetchall(
+            "SELECT project_id, owner, schema_version, project_name, num_standees, standee_type, short_id "
+            "FROM projects WHERE owner = ? ORDER BY project_id DESC",
+            (owner,),
+        )
+        return [self._ensure_project_short_id(doc) for doc in self._project_rows_to_docs(rows)]
 
     def list_all_projects(self) -> list[dict[str, Any]]:
-        """Return every project document across all owners, newest ``_id`` first."""
-        cursor = self.projects_collection.find({}).sort("_id", -1)
-        out: list[dict[str, Any]] = []
-        for row in cursor:
-            doc = dict(row)
-            doc["_id"] = str(doc["_id"])
-            out.append(self._ensure_project_short_id(doc))
-        return out
+        """Return every project row across all owners, newest ``_id`` first."""
+        rows = self._fetchall(
+            "SELECT project_id, owner, schema_version, project_name, num_standees, standee_type, short_id "
+            "FROM projects ORDER BY project_id DESC"
+        )
+        return [self._ensure_project_short_id(doc) for doc in self._project_rows_to_docs(rows)]
 
     def get_project_by_owner(self, project_id: str, owner: str) -> dict[str, Any] | None:
-        """Return one project document if it exists and belongs to ``owner``."""
-        try:
-            oid = ObjectId(project_id)
-        except (InvalidId, TypeError):
+        """Return one project row if it exists and belongs to ``owner``."""
+        row_id = _parse_id(project_id)
+        if row_id is None:
             return None
-        row = self.projects_collection.find_one({"_id": oid, "owner": owner})
+        row = self._fetchone(
+            "SELECT project_id, owner, schema_version, project_name, num_standees, standee_type, short_id "
+            "FROM projects WHERE project_id = ? AND owner = ?",
+            (row_id, owner),
+        )
         if row is None:
             return None
-        doc = dict(row)
-        doc["_id"] = str(doc["_id"])
-        doc = self._ensure_project_short_id(doc)
-        return doc
+        return self._ensure_project_short_id(self._project_rows_to_docs([row])[0])
+
+    def _apply_project_fields(self, row_id: int, fields: dict[str, Any]) -> None:
+        """Write allowed project fields (scalars + elements) without recording history."""
+        scalars = {k: fields[k] for k in _PROJECT_SCALAR_FIELDS if k in fields}
+        if scalars:
+            set_clause = ", ".join(f"{col} = ?" for col in scalars)
+            self._execute(
+                f"UPDATE projects SET {set_clause} WHERE project_id = ?", (*scalars.values(), row_id)
+            )
+        if "elements" in fields:
+            self._replace_elements("project_elements", "project_id", row_id, fields["elements"])
 
     def update_persisted_project(
         self,
@@ -380,54 +631,115 @@ class MidnightOilDB:
         changed_by: str | None = None,
         change_type: str = "update",
     ) -> bool:
-        """Update an existing project MongoDB entry."""
-        try:
-            oid = ObjectId(project_id)
-        except (InvalidId, TypeError):
+        """Update an existing project row."""
+        row_id = _parse_id(project_id)
+        if row_id is None:
             return False
         update_doc = {k: v for k, v in fields.items() if k in _PROJECT_UPDATE_ALLOWED_FIELDS}
         if not update_doc:
             return False
-        result = self.projects_collection.update_one({"_id": oid, "owner": owner}, {"$set": update_doc})
-        self._load_cache()
-        if result.matched_count > 0:
-            full_doc = self.get_project_by_owner(project_id, owner)
-            if full_doc is not None:
-                self._record_history(
-                    project_id=project_id,
-                    owner=owner,
-                    entity_type="project",
-                    change_type=change_type,
-                    changed_by=changed_by or owner,
-                    label=full_doc.get("project_name", "Untitled project"),
-                    snapshot={k: full_doc[k] for k in _PROJECT_UPDATE_ALLOWED_FIELDS if k in full_doc},
-                )
-        return result.matched_count > 0
+        exists = self._fetchone(
+            "SELECT 1 AS present FROM projects WHERE project_id = ? AND owner = ?", (row_id, owner)
+        )
+        if exists is None:
+            return False
+        self._apply_project_fields(row_id, update_doc)
+        full_doc = self.get_project_by_owner(project_id, owner)
+        if full_doc is not None:
+            self._record_history(
+                project_id=project_id,
+                owner=owner,
+                entity_type="project",
+                change_type=change_type,
+                changed_by=changed_by or owner,
+                label=full_doc.get("project_name", "Untitled project"),
+                snapshot={k: full_doc[k] for k in _PROJECT_UPDATE_ALLOWED_FIELDS if k in full_doc},
+            )
+        self.conn.commit()
+        return True
 
     def delete_persisted_project(self, project_id: str, owner: str) -> bool:
-        """Delete project entry if it exists and belongs to the owner asking to delete it."""
-        try:
-            oid = ObjectId(project_id)
-        except (InvalidId, TypeError):
+        """Delete a project if it exists and belongs to the owner asking to delete it.
+
+        Elements, quotes, and history rows are removed by ``ON DELETE CASCADE``.
+        """
+        row_id = _parse_id(project_id)
+        if row_id is None:
             return False
-        result = self.projects_collection.delete_one({"_id": oid, "owner": owner})
-        if result.deleted_count > 0:
-            self.delete_quotes_for_project(project_id, owner)
-            self._load_cache()
-            return True
-        else:
-            return False
+        deleted = self._execute("DELETE FROM projects WHERE project_id = ? AND owner = ?", (row_id, owner))
+        self.conn.commit()
+        return deleted > 0
+
+    # ------------------------------------------------------------------
+    # Quotes
+    # ------------------------------------------------------------------
+
+    _QUOTE_SELECT = (
+        "SELECT quote_id, project_id, owner, schema_version, quote_name, scenario, num_standees, "
+        "contribution_margin, standee_type, CAST(scenarios AS NVARCHAR(MAX)) AS scenarios, "
+        "CAST(universal AS NVARCHAR(MAX)) AS universal, CAST(params AS NVARCHAR(MAX)) AS params, "
+        "CAST(breakdown AS NVARCHAR(MAX)) AS breakdown, created_at, updated_at FROM quotes"
+    )
+
+    def _quote_rows_to_docs(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        elements = self._elements_by_parent("quote_elements", "quote_id", [r["quote_id"] for r in rows])
+        docs = []
+        for row in rows:
+            quote_id = row["quote_id"]
+            doc = {
+                "_id": str(quote_id),
+                "schema_version": row["schema_version"],
+                "owner": row["owner"],
+                "project_id": str(row["project_id"]),
+                "quote_name": row["quote_name"],
+                "scenario": row["scenario"],
+                "num_standees": row["num_standees"],
+                "contribution_margin": row["contribution_margin"],
+                "standee_type": row["standee_type"],
+                "elements": elements.get(quote_id, []),
+            }
+            for key in _QUOTE_JSON_FIELDS:
+                doc[key] = json.loads(row[key]) if row[key] else {}
+            for key in ("created_at", "updated_at"):
+                value = _from_db_datetime(row[key])
+                doc[key] = value.isoformat() if isinstance(value, datetime) else value
+            docs.append(doc)
+        return docs
 
     def insert_persisted_quote(self, doc: dict[str, Any], changed_by: str | None = None) -> str:
-        """Insert a quote document.
+        """Insert a quote row.
 
-        Caller must supply a BSON-safe ``doc`` (no ``Form`` objects). Returns the new ``_id``
-        as a string. ``changed_by`` defaults to the document's own ``owner`` but can be
-        overridden — e.g. auto-saving the first quote on someone else's project should
-        attribute "Created" to the person who actually triggered it, not the project owner.
+        Caller supplies a plain dict (no ``Form`` objects); ``project_id`` is the parent
+        project id as a string. Returns the new row id as a string. ``changed_by`` defaults
+        to the row's own ``owner`` but can be overridden — e.g. auto-saving the first quote
+        on someone else's project should attribute "Created" to the person who actually
+        triggered it, not the project owner.
         """
-        result = self.quotes_collection.insert_one(doc)
-        quote_id = str(result.inserted_id)
+        created_at = _to_db_datetime(doc.get("created_at") or datetime.now(UTC))
+        updated_at = _to_db_datetime(doc.get("updated_at") or datetime.now(UTC))
+        new_id = self._insert_returning_id(
+            "INSERT INTO quotes (project_id, owner, schema_version, quote_name, scenario, num_standees, "
+            "contribution_margin, standee_type, scenarios, universal, params, breakdown, created_at, updated_at) "
+            "OUTPUT INSERTED.quote_id VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                int(doc["project_id"]),
+                doc["owner"],
+                doc.get("schema_version", 2),
+                doc.get("quote_name") or "Untitled quote",
+                doc["scenario"],
+                doc["num_standees"],
+                doc.get("contribution_margin", 0),
+                doc["standee_type"],
+                json.dumps(doc.get("scenarios") or {}),
+                json.dumps(doc.get("universal") or {}),
+                json.dumps(doc.get("params") or {}),
+                json.dumps(doc.get("breakdown") or {}),
+                created_at,
+                updated_at,
+            ),
+        )
+        quote_id = str(new_id)
+        self._replace_elements("quote_elements", "quote_id", new_id, doc.get("elements", []))
         self._record_history(
             project_id=str(doc["project_id"]),
             owner=doc["owner"],
@@ -440,56 +752,52 @@ class MidnightOilDB:
             quote_id=quote_id,
             scenario=doc.get("scenario"),
         )
+        self.conn.commit()
         return quote_id
 
     def get_quote_by_owner(self, quote_id: str, owner: str) -> dict[str, Any] | None:
-        """Return one quote document if it exists and belongs to ``owner``."""
-        try:
-            qid = ObjectId(quote_id)
-        except (InvalidId, TypeError):
+        """Return one quote row if it exists and belongs to ``owner``."""
+        row_id = _parse_id(quote_id)
+        if row_id is None:
             return None
-        row = self.quotes_collection.find_one({"_id": qid, "owner": owner})
+        row = self._fetchone(f"{self._QUOTE_SELECT} WHERE quote_id = ? AND owner = ?", (row_id, owner))
         if row is None:
             return None
-        doc = dict(row)
-        doc["_id"] = str(doc["_id"])
-        doc["project_id"] = str(doc["project_id"])
-        for key in ("created_at", "updated_at"):
-            if key in doc and hasattr(doc[key], "isoformat"):
-                doc[key] = doc[key].isoformat()
-        return doc
+        return self._quote_rows_to_docs([row])[0]
 
     def list_quotes_for_project(self, project_id: str, owner: str) -> list[dict[str, Any]]:
-        """Return all quote documents for ``project_id`` that belong to ``owner``, newest ``_id`` first."""
-        try:
-            pid = ObjectId(project_id)
-        except (InvalidId, TypeError):
+        """Return all quote rows for ``project_id`` that belong to ``owner``, newest ``_id`` first."""
+        row_id = _parse_id(project_id)
+        if row_id is None:
             return []
-        cursor = self.quotes_collection.find({"project_id": pid, "owner": owner}).sort("_id", -1)
-        out: list[dict[str, Any]] = []
-        for row in cursor:
-            doc = dict(row)
-            doc["_id"] = str(doc["_id"])
-            doc["project_id"] = str(doc["project_id"])
-            for key in ("created_at", "updated_at"):
-                if key in doc and hasattr(doc[key], "isoformat"):
-                    doc[key] = doc[key].isoformat()
-            out.append(doc)
-        return out
+        rows = self._fetchall(
+            f"{self._QUOTE_SELECT} WHERE project_id = ? AND owner = ? ORDER BY quote_id DESC",
+            (row_id, owner),
+        )
+        return self._quote_rows_to_docs(rows)
 
     def list_all_quotes(self) -> list[dict[str, Any]]:
-        """Return every quote document across all owners, newest ``_id`` first."""
-        cursor = self.quotes_collection.find({}).sort("_id", -1)
-        out: list[dict[str, Any]] = []
-        for row in cursor:
-            doc = dict(row)
-            doc["_id"] = str(doc["_id"])
-            doc["project_id"] = str(doc["project_id"])
-            for key in ("created_at", "updated_at"):
-                if key in doc and hasattr(doc[key], "isoformat"):
-                    doc[key] = doc[key].isoformat()
-            out.append(doc)
-        return out
+        """Return every quote row across all owners, newest ``_id`` first."""
+        rows = self._fetchall(f"{self._QUOTE_SELECT} ORDER BY quote_id DESC")
+        return self._quote_rows_to_docs(rows)
+
+    def _apply_quote_fields(self, row_id: int, fields: dict[str, Any], updated_at: datetime) -> None:
+        """Write allowed quote fields (scalars + JSON blobs + elements) without recording history."""
+        assignments: list[str] = []
+        values: list[Any] = []
+        for col in _QUOTE_SCALAR_FIELDS:
+            if col in fields:
+                assignments.append(f"{col} = ?")
+                values.append(fields[col])
+        for col in _QUOTE_JSON_FIELDS:
+            if col in fields:
+                assignments.append(f"{col} = ?")
+                values.append(json.dumps(fields[col] or {}))
+        assignments.append("updated_at = ?")
+        values.append(_to_db_datetime(updated_at))
+        self._execute(f"UPDATE quotes SET {', '.join(assignments)} WHERE quote_id = ?", (*values, row_id))
+        if "elements" in fields:
+            self._replace_elements("quote_elements", "quote_id", row_id, fields["elements"])
 
     def update_persisted_quote(
         self,
@@ -500,49 +808,78 @@ class MidnightOilDB:
         change_type: str = "update",
     ) -> bool:
         """Update allowed fields on a quote owned by ``owner``."""
-        try:
-            qid = ObjectId(quote_id)
-        except (InvalidId, TypeError):
+        row_id = _parse_id(quote_id)
+        if row_id is None:
             return False
         update_doc_final = {k: v for k, v in fields.items() if k in _QUOTE_UPDATE_ALLOWED_FIELDS}
         if not update_doc_final:
             return False
-        update_doc_final["updated_at"] = datetime.now(UTC)
-        result = self.quotes_collection.update_one({"_id": qid, "owner": owner}, {"$set": update_doc_final})
-        if result.matched_count > 0:
-            full_doc = self.get_quote_by_owner(quote_id, owner)
-            if full_doc is not None:
-                self._record_history(
-                    project_id=full_doc["project_id"],
-                    owner=owner,
-                    entity_type="quote",
-                    change_type=change_type,
-                    changed_by=changed_by or owner,
-                    # No "— Scenario N" suffix here: the history row already shows a "Quote · Scenario N" badge.
-                    label=full_doc.get("quote_name") or "Untitled quote",
-                    snapshot={k: full_doc[k] for k in _QUOTE_UPDATE_ALLOWED_FIELDS if k in full_doc},
-                    quote_id=quote_id,
-                    scenario=full_doc.get("scenario"),
-                )
-        return result.matched_count > 0
+        exists = self._fetchone(
+            "SELECT 1 AS present FROM quotes WHERE quote_id = ? AND owner = ?", (row_id, owner)
+        )
+        if exists is None:
+            return False
+        self._apply_quote_fields(row_id, update_doc_final, datetime.now(UTC))
+        full_doc = self.get_quote_by_owner(quote_id, owner)
+        if full_doc is not None:
+            self._record_history(
+                project_id=full_doc["project_id"],
+                owner=owner,
+                entity_type="quote",
+                change_type=change_type,
+                changed_by=changed_by or owner,
+                # No "— Scenario N" suffix here: the history row already shows a "Quote · Scenario N" badge.
+                label=full_doc.get("quote_name") or "Untitled quote",
+                snapshot={k: full_doc[k] for k in _QUOTE_UPDATE_ALLOWED_FIELDS if k in full_doc},
+                quote_id=quote_id,
+                scenario=full_doc.get("scenario"),
+            )
+        self.conn.commit()
+        return True
 
     def delete_persisted_quote(self, quote_id: str, owner: str) -> bool:
         """Delete one quote if it exists and belongs to ``owner``."""
-        try:
-            qid = ObjectId(quote_id)
-        except (InvalidId, TypeError):
+        row_id = _parse_id(quote_id)
+        if row_id is None:
             return False
-        result = self.quotes_collection.delete_one({"_id": qid, "owner": owner})
-        return result.deleted_count > 0
+        deleted = self._execute("DELETE FROM quotes WHERE quote_id = ? AND owner = ?", (row_id, owner))
+        self.conn.commit()
+        return deleted > 0
 
     def delete_quotes_for_project(self, project_id: str, owner: str) -> int:
         """Remove all quotes linked to ``project_id`` for ``owner``. Returns deleted count."""
-        try:
-            oid = ObjectId(project_id)
-        except (InvalidId, TypeError):
+        row_id = _parse_id(project_id)
+        if row_id is None:
             return 0
-        result = self.quotes_collection.delete_many({"project_id": oid, "owner": owner})
-        return result.deleted_count
+        deleted = self._execute("DELETE FROM quotes WHERE project_id = ? AND owner = ?", (row_id, owner))
+        self.conn.commit()
+        return deleted
+
+    # ------------------------------------------------------------------
+    # History queries
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _history_row_to_doc(row: dict[str, Any]) -> dict[str, Any]:
+        doc = {
+            "_id": str(row["history_id"]),
+            "project_id": str(row["project_id"]),
+            "owner": row["owner"],
+            "entity_type": row["entity_type"],
+            "quote_id": str(row["quote_id"]) if row["quote_id"] else None,
+            "scenario": row["scenario"],
+            "change_type": row["change_type"],
+            "changed_by": row["changed_by"],
+            "label": row["label"],
+            "reverted_from_history_id": (
+                str(row["reverted_from_history_id"]) if row["reverted_from_history_id"] else None
+            ),
+        }
+        created_at = _from_db_datetime(row["created_at"])
+        doc["created_at"] = created_at.isoformat() if isinstance(created_at, datetime) else created_at
+        if "snapshot" in row:
+            doc["snapshot"] = json.loads(row["snapshot"]) if row["snapshot"] else {}
+        return doc
 
     def list_project_history(self, project_id: str, owner: str) -> list[dict[str, Any]]:
         """Combined project+quote history for a project, metadata only (no ``snapshot``), newest first.
@@ -552,15 +889,18 @@ class MidnightOilDB:
         that predate the write-time skip in ``_record_history`` would otherwise still clutter
         the timeline. Each entity's first ("create") entry, and any ``revert``, always survives.
         """
-        try:
-            pid = ObjectId(project_id)
-        except (InvalidId, TypeError):
+        row_id = _parse_id(project_id)
+        if row_id is None:
             return []
-        # Sort by _id as a tiebreak: ObjectIds are monotonically increasing even when two
-        # entries share the same ``created_at`` timestamp, so this keeps "which one is
+        # history_id is a tiebreak: identity values are monotonically increasing even when
+        # two entries share the same ``created_at`` timestamp, so this keeps "which one is
         # newest" deterministic (load-bearing for picking the single "current version").
-        rows = list(
-            self.history_collection.find({"project_id": pid, "owner": owner}).sort([("created_at", -1), ("_id", -1)])
+        rows = self._fetchall(
+            "SELECT history_id, project_id, owner, entity_type, quote_id, scenario, change_type, "
+            "changed_by, label, CAST(snapshot AS NVARCHAR(MAX)) AS snapshot, reverted_from_history_id, "
+            "created_at FROM history WHERE project_id = ? AND owner = ? "
+            "ORDER BY created_at DESC, history_id DESC",
+            (row_id, owner),
         )
 
         # Group by entity (the project itself, or one specific quote), preserving the
@@ -568,7 +908,7 @@ class MidnightOilDB:
         # its entity key.
         groups: dict[tuple[str, str | None], list[dict[str, Any]]] = {}
         for row in rows:
-            key = (row["entity_type"], str(row["quote_id"]) if row.get("quote_id") else None)
+            key = (row["entity_type"], str(row["quote_id"]) if row["quote_id"] else None)
             groups.setdefault(key, []).append(row)
 
         excluded_ids = set()
@@ -576,48 +916,37 @@ class MidnightOilDB:
             for newer, older in zip(group, group[1:]):
                 if newer["change_type"] in ("create", "revert"):
                     continue
-                newer_fields = _significant_history_fields(newer.get("snapshot") or {}, newer["entity_type"])
-                older_fields = _significant_history_fields(older.get("snapshot") or {}, older["entity_type"])
-                if newer_fields == older_fields:
-                    excluded_ids.add(newer["_id"])
+                newer_snapshot = json.loads(newer["snapshot"]) if newer["snapshot"] else {}
+                older_snapshot = json.loads(older["snapshot"]) if older["snapshot"] else {}
+                if _history_fingerprint(newer_snapshot, newer["entity_type"]) == _history_fingerprint(
+                    older_snapshot, older["entity_type"]
+                ):
+                    excluded_ids.add(newer["history_id"])
 
         out: list[dict[str, Any]] = []
         for row in rows:
-            if row["_id"] in excluded_ids:
+            if row["history_id"] in excluded_ids:
                 continue
-            doc = dict(row)
+            doc = self._history_row_to_doc(row)
             doc.pop("snapshot", None)
-            doc["_id"] = str(doc["_id"])
-            doc["project_id"] = str(doc["project_id"])
-            if doc.get("quote_id"):
-                doc["quote_id"] = str(doc["quote_id"])
-            if doc.get("reverted_from_history_id"):
-                doc["reverted_from_history_id"] = str(doc["reverted_from_history_id"])
-            if hasattr(doc.get("created_at"), "isoformat"):
-                doc["created_at"] = doc["created_at"].isoformat()
             out.append(doc)
         return out
 
     def get_history_entry(self, project_id: str, history_id: str, owner: str) -> dict[str, Any] | None:
         """Return one history entry including its full ``snapshot``, for the preview pane."""
-        try:
-            pid = ObjectId(project_id)
-            hid = ObjectId(history_id)
-        except (InvalidId, TypeError):
+        pid = _parse_id(project_id)
+        hid = _parse_id(history_id)
+        if pid is None or hid is None:
             return None
-        row = self.history_collection.find_one({"_id": hid, "project_id": pid, "owner": owner})
+        row = self._fetchone(
+            "SELECT history_id, project_id, owner, entity_type, quote_id, scenario, change_type, "
+            "changed_by, label, CAST(snapshot AS NVARCHAR(MAX)) AS snapshot, reverted_from_history_id, "
+            "created_at FROM history WHERE history_id = ? AND project_id = ? AND owner = ?",
+            (hid, pid, owner),
+        )
         if row is None:
             return None
-        doc = dict(row)
-        doc["_id"] = str(doc["_id"])
-        doc["project_id"] = str(doc["project_id"])
-        if doc.get("quote_id"):
-            doc["quote_id"] = str(doc["quote_id"])
-        if doc.get("reverted_from_history_id"):
-            doc["reverted_from_history_id"] = str(doc["reverted_from_history_id"])
-        if hasattr(doc.get("created_at"), "isoformat"):
-            doc["created_at"] = doc["created_at"].isoformat()
-        return doc
+        return self._history_row_to_doc(row)
 
     def revert_history_entry(
         self, project_id: str, history_id: str, owner: str, changed_by: str
@@ -627,21 +956,19 @@ class MidnightOilDB:
         Records a new ``"revert"`` history entry rather than mutating or removing
         the entry being reverted to — the audit trail is append-only.
         """
-        try:
-            pid = ObjectId(project_id)
-            hid = ObjectId(history_id)
-        except (InvalidId, TypeError):
-            return None
-        entry = self.history_collection.find_one({"_id": hid, "project_id": pid, "owner": owner})
+        entry = self.get_history_entry(project_id, history_id, owner)
         if entry is None:
             return None
+        pid = _parse_id(project_id)
 
         if entry["entity_type"] == "project":
-            restorable = dict(entry["snapshot"])
-            result = self.projects_collection.update_one({"_id": pid, "owner": owner}, {"$set": restorable})
-            if result.matched_count == 0:
+            restorable = {k: v for k, v in entry["snapshot"].items() if k in _PROJECT_UPDATE_ALLOWED_FIELDS}
+            exists = self._fetchone(
+                "SELECT 1 AS present FROM projects WHERE project_id = ? AND owner = ?", (pid, owner)
+            )
+            if exists is None:
                 return None
-            self._load_cache()
+            self._apply_project_fields(pid, restorable)
             full_doc = self.get_project_by_owner(project_id, owner)
             if full_doc is None:
                 return None
@@ -655,16 +982,18 @@ class MidnightOilDB:
                 snapshot={k: full_doc[k] for k in _PROJECT_UPDATE_ALLOWED_FIELDS if k in full_doc},
                 reverted_from_history_id=history_id,
             )
+            self.conn.commit()
             return {"entity_type": "project", "quote_id": None, "doc": full_doc}
 
-        quote_id = str(entry["quote_id"])
-        restorable = dict(entry["snapshot"])
-        restorable["updated_at"] = datetime.now(UTC)
-        result = self.quotes_collection.update_one(
-            {"_id": ObjectId(quote_id), "owner": owner}, {"$set": restorable}
+        quote_id = entry["quote_id"]
+        qid = _parse_id(quote_id)
+        restorable = {k: v for k, v in entry["snapshot"].items() if k in _QUOTE_UPDATE_ALLOWED_FIELDS}
+        exists = self._fetchone(
+            "SELECT 1 AS present FROM quotes WHERE quote_id = ? AND owner = ?", (qid, owner)
         )
-        if result.matched_count == 0:
+        if exists is None:
             return None
+        self._apply_quote_fields(qid, restorable, datetime.now(UTC))
         full_doc = self.get_quote_by_owner(quote_id, owner)
         if full_doc is None:
             return None
@@ -681,7 +1010,12 @@ class MidnightOilDB:
             scenario=full_doc.get("scenario"),
             reverted_from_history_id=history_id,
         )
+        self.conn.commit()
         return {"entity_type": "quote", "quote_id": quote_id, "doc": full_doc}
+
+    # ------------------------------------------------------------------
+    # Unit costs
+    # ------------------------------------------------------------------
 
     def get_unit_cost_entry(self, cost_name: str) -> dict:
         """Return the entire unit cost entry for a given cost name."""
@@ -698,7 +1032,8 @@ class MidnightOilDB:
     def get_all_unit_costs(self) -> list[dict]:
         """Return all unit cost records, serialized for JSON."""
         records = []
-        for r in sorted(self._cache["unit_costs"], key=lambda x: (x["type"], x["display_name"])):
+        for cached in sorted(self._cache["unit_costs"], key=lambda x: (x["type"], x["display_name"])):
+            r = dict(cached)
             r["_id"] = str(r["_id"])
             if "last_updated" in r and hasattr(r["last_updated"], "isoformat"):
                 r["last_updated"] = r["last_updated"].isoformat()
@@ -713,36 +1048,62 @@ class MidnightOilDB:
         """Update arbitrary fields on a unit cost record, stamping last_updated."""
         if not updates:
             return
-        updates["last_updated"] = datetime.now(UTC)
         try:
-            self.unit_costs_collection.update_one({"name": cost_name}, {"$set": updates})
+            assignments = []
+            values = []
+            for key, value in updates.items():
+                if key not in _UNIT_COST_COLUMNS:
+                    raise ValueError(f"Unknown unit cost field '{key}'")
+                assignments.append(f"[{key}] = ?")
+                values.append(value)
+            assignments.append("last_updated = ?")
+            values.append(_to_db_datetime(datetime.now(UTC)))
+            self._execute(
+                f"UPDATE unit_costs SET {', '.join(assignments)} WHERE name = ?", (*values, cost_name)
+            )
+            self.conn.commit()
             self._load_cache()
+        except ValueError:
+            raise
         except Exception as e:
             raise ValueError(f"Failed to update entry for '{cost_name}': {str(e)}")
 
     def insert_unit_cost_entry(self, cost_name: str, cost_type: str, display_name: str, cost: float, **kwargs) -> None:
         """Insert a new unit cost entry."""
         try:
-            self.unit_costs_collection.insert_one(
-                {
-                    "name": cost_name,
-                    "type": cost_type,
-                    "display_name": display_name,
-                    "cost": cost,
-                    "last_updated": datetime.now(UTC),
-                    **kwargs,
-                }
+            extras = {k: v for k, v in kwargs.items() if k in _UNIT_COST_OPTIONAL_COLUMNS or k == "unit"}
+            columns = ["name", "[type]", "display_name", "cost", "unit", "last_updated"]
+            values = [
+                cost_name,
+                cost_type,
+                display_name,
+                cost,
+                extras.pop("unit", "each"),
+                _to_db_datetime(datetime.now(UTC)),
+            ]
+            for key, value in extras.items():
+                columns.append(f"[{key}]")
+                values.append(value)
+            placeholders = ", ".join("?" * len(values))
+            self._execute(
+                f"INSERT INTO unit_costs ({', '.join(columns)}) VALUES ({placeholders})", tuple(values)
             )
+            self.conn.commit()
             self._load_cache()
         except Exception as e:
             raise ValueError(f"Failed to insert entry for '{cost_name}': {str(e)}")
 
+    # ------------------------------------------------------------------
+    # Standee static costs
+    # ------------------------------------------------------------------
+
     def get_standee_record(self, standee_category: str) -> dict:
-        """Return the full standee static cost document for a given category."""
+        """Return the full standee static cost record for a given category."""
         record = next(
             (entry for entry in self._cache["standee_static_costs"] if entry["standee_type"] == standee_category), None
         )
         if record:
+            record = dict(record)
             record["_id"] = str(record["_id"])
             return record
         raise ValueError(f"Standee record not found for '{standee_category}'")
@@ -762,10 +1123,27 @@ class MidnightOilDB:
         if not updates:
             return
         try:
-            self.standee_collection.update_one({"standee_type": standee_category}, {"$set": updates})
+            assignments = []
+            values = []
+            for key, value in updates.items():
+                if key not in _STANDEE_COLUMNS:
+                    raise ValueError(f"Unknown standee field '{key}'")
+                assignments.append(f"{key} = ?")
+                values.append(value)
+            self._execute(
+                f"UPDATE standee_static_costs SET {', '.join(assignments)} WHERE standee_type = ?",
+                (*values, standee_category),
+            )
+            self.conn.commit()
             self._load_cache()
+        except ValueError:
+            raise
         except Exception as e:
             raise ValueError(f"Failed to update standee record for '{standee_category}': {str(e)}")
+
+    # ------------------------------------------------------------------
+    # Print blank ratio
+    # ------------------------------------------------------------------
 
     def get_structure_forms_per_standee(self, print_forms: int) -> int:
         """Return the print blank ratio, falling back to the nearest available value."""
@@ -780,12 +1158,25 @@ class MidnightOilDB:
         raise ValueError(f"Print blank ratio not found for {print_forms} print forms")
 
     def set_blank_forms_per_standee(self, print_forms: int, blank_forms: int) -> None:
-        """Set the current print blank ratio."""
+        """Set the current print blank ratio (inserts the row when the ratio is new)."""
         try:
-            self.print_blank_collection.update_one({"print_forms": print_forms}, {"$set": {"blank_forms": blank_forms}})
+            updated = self._execute(
+                "UPDATE print_blank_ratio SET blank_forms = ? WHERE print_forms = ?",
+                (blank_forms, print_forms),
+            )
+            if updated == 0:
+                self._execute(
+                    "INSERT INTO print_blank_ratio (print_forms, blank_forms) VALUES (?, ?)",
+                    (print_forms, blank_forms),
+                )
+            self.conn.commit()
             self._load_cache()
         except Exception as e:
             raise ValueError(f"Failed to set print blank ratio: {str(e)}")
+
+    # ------------------------------------------------------------------
+    # Suppliers
+    # ------------------------------------------------------------------
 
     def get_distinct_suppliers(self) -> list[str]:
         """Return all distinct supplier names."""
@@ -803,7 +1194,7 @@ class MidnightOilDB:
         return sorted(seen.values(), key=lambda x: x["material"])
 
     def _get_supplier_doc(self, supplier: str, material: str, material_type: str = "") -> dict[str, Any] | None:
-        """Return one supplier/material document from cache, optionally filtered by type."""
+        """Return one supplier/material record from cache, optionally filtered by type."""
         matches = [
             r for r in self._cache["suppliers"] if r["supplier"] == supplier and r["material"] == material
         ]
@@ -814,14 +1205,14 @@ class MidnightOilDB:
                 if r.get("type", "") == material_type:
                     return r
             return None
-        # Untyped lookup: prefer legacy docs with no ``type`` field, else first match.
+        # Untyped lookup: prefer records with no ``type`` value, else first match.
         for r in matches:
             if not r.get("type", ""):
                 return r
         return matches[0]
 
     def get_supplier_material_records(self, supplier: str, material: str, material_type: str = "") -> dict[str, Any]:
-        """Return one supplier/material document with serialized price_breaks."""
+        """Return one supplier/material record with serialized price_breaks."""
         doc = self._get_supplier_doc(supplier, material, material_type)
         if doc is None:
             raise ValueError(
@@ -861,33 +1252,73 @@ class MidnightOilDB:
         price_breaks: list[dict[str, float]],
         material_type: str = "",
     ) -> None:
-        """Insert or replace a supplier/material document and precompute curve parameters."""
+        """Insert or replace a supplier/material record and precompute curve parameters."""
         ordered_breaks = sorted(price_breaks, key=lambda row: row["amount"])
 
         amounts = [row["amount"] for row in ordered_breaks]
         costs = [row["cost"] for row in ordered_breaks]
         curve_params = _fit_supplier_curve(amounts, costs)
 
-        self.suppliers_collection.replace_one(
-            {"supplier": supplier, "material": material, "type": material_type},
-            {
-                "supplier": supplier,
-                "material": material,
-                "material_display_name": material_display_name,
-                "type": material_type,
-                "unit": unit,
-                "price_breaks": ordered_breaks,
-                "curve_params": curve_params,
-                "last_updated": datetime.now(UTC),
-            },
-            upsert=True,
+        now = _to_db_datetime(datetime.now(UTC))
+        existing = self._fetchone(
+            "SELECT supplier_material_id FROM supplier_materials "
+            "WHERE supplier = ? AND material = ? AND material_type = ?",
+            (supplier, material, material_type),
         )
+        if existing:
+            material_id = existing["supplier_material_id"]
+            self._execute(
+                "UPDATE supplier_materials SET material_display_name = ?, unit = ?, curve_a = ?, "
+                "curve_b = ?, curve_c = ?, curve_r_squared = ?, last_updated = ? "
+                "WHERE supplier_material_id = ?",
+                (
+                    material_display_name,
+                    unit,
+                    curve_params["a"],
+                    curve_params["b"],
+                    curve_params["c"],
+                    curve_params["r_squared"],
+                    now,
+                    material_id,
+                ),
+            )
+            self._execute(
+                "DELETE FROM supplier_price_breaks WHERE supplier_material_id = ?", (material_id,)
+            )
+        else:
+            material_id = self._insert_returning_id(
+                "INSERT INTO supplier_materials (supplier, material, material_display_name, material_type, "
+                "unit, curve_a, curve_b, curve_c, curve_r_squared, last_updated) "
+                "OUTPUT INSERTED.supplier_material_id VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    supplier,
+                    material,
+                    material_display_name,
+                    material_type,
+                    unit,
+                    curve_params["a"],
+                    curve_params["b"],
+                    curve_params["c"],
+                    curve_params["r_squared"],
+                    now,
+                ),
+            )
+        for price_break in ordered_breaks:
+            self._execute(
+                "INSERT INTO supplier_price_breaks (supplier_material_id, amount, cost) VALUES (?, ?, ?)",
+                (material_id, price_break["amount"], price_break["cost"]),
+            )
+        self.conn.commit()
         self._load_cache()
 
     def get_curve_params(self, supplier: str, material: str, material_type: str = "") -> dict[str, float] | None:
         """Return precomputed curve params for a supplier/material pair."""
         doc = self._get_supplier_doc(supplier, material, material_type)
         return doc.get("curve_params") if doc else None
+
+    # ------------------------------------------------------------------
+    # Overs
+    # ------------------------------------------------------------------
 
     def get_overs(self, quantity: int) -> int:
         """Return the over cost for a given quantity."""
@@ -908,7 +1339,8 @@ class MidnightOilDB:
     def get_all_overs(self) -> list[dict]:
         """Return all overs tier records sorted by lower_bound."""
         records = []
-        for r in sorted(self._cache["overs"], key=lambda x: x["lower_bound"]):
+        for cached in sorted(self._cache["overs"], key=lambda x: x["lower_bound"]):
+            r = dict(cached)
             r["_id"] = str(r["_id"])
             if "last_updated" in r and hasattr(r["last_updated"], "isoformat"):
                 r["last_updated"] = r["last_updated"].isoformat()
@@ -916,62 +1348,59 @@ class MidnightOilDB:
         return records
 
     def upsert_overs(self, record_id: str | None, lower_bound: int, upper_bound: int | None, overs: int) -> str:
-        """Upsert an overs tier record. Generates a new _id when record_id is None."""
+        """Upsert an overs tier record. Inserts a new row when record_id is None."""
+        now = _to_db_datetime(datetime.now(UTC))
         if record_id is not None:
-            try:
-                oid = ObjectId(record_id)
-            except Exception:
+            row_id = _parse_id(record_id)
+            if row_id is None:
                 raise ValueError(f"Invalid overs record id '{record_id}'")
+            updated = self._execute(
+                "UPDATE overs SET lower_bound = ?, upper_bound = ?, overs = ?, last_updated = ? "
+                "WHERE overs_id = ?",
+                (lower_bound, upper_bound, overs, now, row_id),
+            )
+            if updated == 0:
+                raise ValueError(f"Overs record not found for id '{record_id}'")
         else:
-            oid = ObjectId()
-        self.overs_collection.update_one(
-            {"_id": oid},
-            {
-                "$set": {
-                    "lower_bound": lower_bound,
-                    "upper_bound": upper_bound,
-                    "overs": overs,
-                    "last_updated": datetime.now(UTC),
-                }
-            },
-            upsert=True,
-        )
+            row_id = self._insert_returning_id(
+                "INSERT INTO overs (lower_bound, upper_bound, overs, last_updated) "
+                "OUTPUT INSERTED.overs_id VALUES (?, ?, ?, ?)",
+                (lower_bound, upper_bound, overs, now),
+            )
+        self.conn.commit()
         self._load_cache()
-        return str(oid)
+        return str(row_id)
 
     def delete_overs(self, record_id: str) -> None:
-        """Delete an overs tier record by _id."""
-        try:
-            oid = ObjectId(record_id)
-        except Exception:
+        """Delete an overs tier record by id."""
+        row_id = _parse_id(record_id)
+        if row_id is None:
             raise ValueError(f"Invalid overs record id '{record_id}'")
-        result = self.overs_collection.delete_one({"_id": oid})
-        if result.deleted_count == 0:
+        deleted = self._execute("DELETE FROM overs WHERE overs_id = ?", (row_id,))
+        self.conn.commit()
+        if deleted == 0:
             raise ValueError(f"Overs record not found for id '{record_id}'")
         self._load_cache()
 
     def get_packout(self, standees: int, forms: int, complexity: str) -> float:
         """Return the packout cost for a given quantity of standees, forms, and complexity."""
-        result = self.packout_collection.find_one(
-            {
-                "$and": [
-                    {"standees_lower_bound": {"$lte": standees}},
-                    {"$or": [{"standees_upper_bound": None}, {"standees_upper_bound": {"$gte": standees}}]},
-                    {"forms_lower_bound": {"$lte": forms}},
-                    {"$or": [{"forms_upper_bound": None}, {"forms_upper_bound": {"$gte": forms}}]},
-                    {"complexity": {"$regex": f"^{complexity}$", "$options": "i"}},
-                ]
-            }
+        row = self._fetchone(
+            "SELECT TOP 1 packout FROM packout "
+            "WHERE standees_lower_bound <= ? AND (standees_upper_bound IS NULL OR standees_upper_bound >= ?) "
+            "AND forms_lower_bound <= ? AND (forms_upper_bound IS NULL OR forms_upper_bound >= ?) "
+            "AND UPPER(complexity) = UPPER(?)",
+            (standees, standees, forms, forms, complexity),
         )
-        if result and "packout" in result:
-            return float(result["packout"])
+        if row is not None:
+            return float(row["packout"])
         else:
             raise ValueError(f"Packout not found for standees {standees}, forms {forms}, and complexity {complexity}")
 
     def get_all_packout(self) -> list[dict]:
         """Return all packout costs sorted by lower_bound."""
         records = []
-        for r in sorted(self._cache["packout"], key=lambda x: (x["standees_lower_bound"], x["forms_lower_bound"])):
+        for cached in sorted(self._cache["packout"], key=lambda x: (x["standees_lower_bound"], x["forms_lower_bound"])):
+            r = dict(cached)
             r["_id"] = str(r["_id"])
             if "last_updated" in r and hasattr(r["last_updated"], "isoformat"):
                 r["last_updated"] = r["last_updated"].isoformat()
@@ -988,44 +1417,58 @@ class MidnightOilDB:
         complexity: str,
         packout: int,
     ) -> str:
-        """Upsert a packout tier record. Generates a new _id when record_id is None."""
+        """Upsert a packout tier record. Inserts a new row when record_id is None."""
+        now = _to_db_datetime(datetime.now(UTC))
         if record_id is not None:
-            try:
-                oid = ObjectId(record_id)
-            except Exception:
+            row_id = _parse_id(record_id)
+            if row_id is None:
                 raise ValueError(f"Invalid packout record id '{record_id}'")
+            updated = self._execute(
+                "UPDATE packout SET standees_lower_bound = ?, standees_upper_bound = ?, "
+                "forms_lower_bound = ?, forms_upper_bound = ?, complexity = ?, packout = ?, "
+                "last_updated = ? WHERE packout_id = ?",
+                (
+                    standees_lower_bound,
+                    standees_upper_bound,
+                    forms_lower_bound,
+                    forms_upper_bound,
+                    complexity,
+                    packout,
+                    now,
+                    row_id,
+                ),
+            )
+            if updated == 0:
+                raise ValueError(f"Packout record not found for id '{record_id}'")
         else:
-            oid = ObjectId()
-
-        self.packout_collection.update_one(
-            {"_id": oid},
-            {
-                "$set": {
-                    "standees_lower_bound": standees_lower_bound,
-                    "standees_upper_bound": standees_upper_bound,
-                    "forms_lower_bound": forms_lower_bound,
-                    "forms_upper_bound": forms_upper_bound,
-                    "complexity": complexity,
-                    "packout": packout,
-                    "last_updated": datetime.now(UTC),
-                }
-            },
-            upsert=True,
-        )
-
+            row_id = self._insert_returning_id(
+                "INSERT INTO packout (standees_lower_bound, standees_upper_bound, forms_lower_bound, "
+                "forms_upper_bound, complexity, packout, last_updated) "
+                "OUTPUT INSERTED.packout_id VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    standees_lower_bound,
+                    standees_upper_bound,
+                    forms_lower_bound,
+                    forms_upper_bound,
+                    complexity,
+                    packout,
+                    now,
+                ),
+            )
+        self.conn.commit()
         self._load_cache()
-        return str(oid)
+        return str(row_id)
 
     def delete_packout(self, record_id: str) -> None:
-        """Delete a packout tier record by _id."""
-        try:
-            oid = ObjectId(record_id)
-        except Exception:
+        """Delete a packout tier record by id."""
+        row_id = _parse_id(record_id)
+        if row_id is None:
             raise ValueError(f"Invalid packout record id '{record_id}'")
 
-        result = self.packout_collection.delete_one({"_id": oid})
+        deleted = self._execute("DELETE FROM packout WHERE packout_id = ?", (row_id,))
+        self.conn.commit()
 
-        if result.deleted_count == 0:
+        if deleted == 0:
             raise ValueError(f"Packout record not found for id '{record_id}'")
         self._load_cache()
 

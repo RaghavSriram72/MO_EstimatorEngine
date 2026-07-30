@@ -8,7 +8,6 @@ from typing import Any
 
 import cv2
 import numpy as np
-from bson import ObjectId
 from fastapi import FastAPI, File, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -46,7 +45,7 @@ from lib.persisted_quote import (
     PersistedQuoteUpdateBody,
     persisted_quote_create_from_path,
     persisted_quote_insert_document,
-    persisted_quote_update_to_mongo_set,
+    persisted_quote_update_to_set,
 )
 from lib.print_form_calculator import print_form_calculator
 from vision.functions import process_image as vision_process_image
@@ -229,7 +228,7 @@ class QuoteRequest(BaseModel):
     print_hours: float | None = None
     rollx_hours: float | None = None
     zund_hours: float | None = None
-    # When True, persist/update Mongo project from this request. Quote preview uses False.
+    # When True, persist/update the saved project from this request. Quote preview uses False.
     persist_project: bool = False
 
 
@@ -250,7 +249,7 @@ async def generate_quote(payload: QuoteRequest):
     If ``payload.scenario`` is provided, only calculate that scenario;
     otherwise calculate all. Returns a dict of scenario names to cost breakdowns.
     If ``payload.persist_project`` is True and a valid ``payload.owner`` is
-    provided, also creates or updates a project document in Mongo with the
+    provided, also creates or updates a project record in the database with the
     provided details (but does not persist the quote itself).
     """
     try:
@@ -278,7 +277,7 @@ async def generate_quote(payload: QuoteRequest):
                 standee_type=complexity_to_str(Complexity(payload.standee_type)),
                 elements=elements_to_persisted(elements),
             )
-            full_doc = persisted_create_to_mongo_document(persisted)
+            full_doc = persisted_create_to_document(persisted)
 
             persisted_project_id = (payload.project_id or "").strip()
             updatable_keys = ("project_name", "num_standees", "standee_type", "elements")
@@ -487,7 +486,7 @@ async def update_packout(record_id: str, payload: UpdatePackoutRequest):
 
 @app.post("/refresh-cache")
 async def refresh_cache():
-    """Reload all MongoDB collections into the in-memory cache."""
+    """Reload all reference tables into the in-memory cache."""
     db = _ensure_db()
     db._load_cache()
     return {"message": "Cache refreshed"}
@@ -606,7 +605,6 @@ async def create_project_quote(project_id: str, payload: PersistedQuoteCreateBod
         return JSONResponse(status_code=404, content={"error": "Project not found"})
     create = persisted_quote_create_from_path(project_id, payload)
     doc = persisted_quote_insert_document(create, created_at=datetime.now(UTC), updated_at=datetime.now(UTC))
-    doc["project_id"] = ObjectId(doc["project_id"])
     quote_id = db.insert_persisted_quote(doc, changed_by=payload.changed_by or payload.owner)
     return JSONResponse(
         status_code=201,
@@ -628,7 +626,8 @@ async def list_quotes(
     quotes: list[dict[str, Any]] = []
     for project in projects:
         quotes.extend(db.list_quotes_for_project(project["_id"], owner))
-    quotes.sort(key=lambda q: q.get("_id", ""), reverse=True)
+    # Row ids are numeric strings, so sort numerically (string sort would put "9" after "10").
+    quotes.sort(key=lambda q: int(q.get("_id", 0)), reverse=True)
     return {"quotes": quotes}
 
 
@@ -662,7 +661,7 @@ async def update_quote(
         return JSONResponse(status_code=404, content={"error": "Unknown owner"})
     if not db.check_username_exists(changed_by):
         return JSONResponse(status_code=404, content={"error": "Unknown changed_by user"})
-    fields = persisted_quote_update_to_mongo_set(payload)
+    fields = persisted_quote_update_to_set(payload)
     if not db.update_persisted_quote(quote_id, owner, fields, changed_by=changed_by, change_type="update"):
         return JSONResponse(status_code=404, content={"error": "Quote not found"})
     return {"message": "Quote updated successfully", "quote_id": quote_id}
@@ -727,7 +726,7 @@ async def update_project(
         return JSONResponse(status_code=404, content={"error": "Unknown owner"})
     if not db.check_username_exists(changed_by):
         return JSONResponse(status_code=404, content={"error": "Unknown changed_by user"})
-    fields = persisted_update_to_mongo_set(payload)
+    fields = persisted_update_to_set(payload)
     if not db.update_persisted_project(project_id, owner, fields, changed_by=changed_by, change_type="update"):
         return JSONResponse(status_code=404, content={"error": "Project not found"})
     return {"message": "Project updated successfully", "project_id": project_id}
@@ -802,7 +801,7 @@ async def duplicate_project(
         new_quote_doc = {
             "schema_version": quote.get("schema_version", 2),
             "owner": payload.new_owner,
-            "project_id": ObjectId(new_project_id),
+            "project_id": new_project_id,
             "quote_name": quote.get("quote_name") or "Untitled quote",
             "scenario": quote.get("scenario", 1),
             "num_standees": quote["num_standees"],

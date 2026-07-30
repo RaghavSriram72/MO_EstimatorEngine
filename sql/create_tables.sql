@@ -1,0 +1,295 @@
+-- ============================================================================
+-- Midnight Oil Estimator — SQL Server 2025 schema
+-- Step 2 of 2: create the tables. Idempotent — safe to re-run.
+--
+-- Run inside the target database:
+--   sqlcmd -S <server> -d MidnightOilEstimator -i sql\create_tables.sql
+--
+-- Design notes:
+--   * Relational tables everywhere the shape is fixed (users, projects,
+--     elements, quotes, reference/cost data, supplier price breaks).
+--   * Native JSON columns (SQL Server 2025) only where the payload is a
+--     deeply nested, schema-fluid blob owned by the frontend:
+--       - quotes.scenarios / universal / params / breakdown
+--       - history.snapshot (point-in-time audit copy of a project/quote)
+--   * All ids are IDENTITY integers, exposed to the API as strings.
+--   * Timestamps are DATETIME2(3) stored in UTC.
+-- ============================================================================
+
+-- ────────────────────────────── users ──────────────────────────────
+IF OBJECT_ID(N'dbo.users', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.users (
+        user_id       INT IDENTITY(1, 1) NOT NULL CONSTRAINT PK_users PRIMARY KEY,
+        username      NVARCHAR(256)      NOT NULL,
+        password_hash NVARCHAR(512)      NOT NULL,
+        created_at    DATETIME2(3)       NOT NULL CONSTRAINT DF_users_created_at DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT UQ_users_username UNIQUE (username)
+    );
+END;
+GO
+
+-- ───────────────────────────── projects ────────────────────────────
+IF OBJECT_ID(N'dbo.projects', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.projects (
+        project_id     BIGINT IDENTITY(1, 1) NOT NULL CONSTRAINT PK_projects PRIMARY KEY,
+        owner          NVARCHAR(256)         NOT NULL,
+        schema_version INT                   NOT NULL CONSTRAINT DF_projects_schema_version DEFAULT 1,
+        project_name   NVARCHAR(512)         NOT NULL,
+        num_standees   INT                   NOT NULL,
+        standee_type   NVARCHAR(16)          NOT NULL,
+        short_id       CHAR(8)               NULL,  -- 8-digit UI hash of project_id; backfilled on read if NULL
+        created_at     DATETIME2(3)          NOT NULL CONSTRAINT DF_projects_created_at DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT FK_projects_owner FOREIGN KEY (owner) REFERENCES dbo.users (username),
+        CONSTRAINT CK_projects_standee_type CHECK (standee_type IN (N'Simple', N'Moderate', N'Complex'))
+    );
+
+    CREATE INDEX IX_projects_owner ON dbo.projects (owner, project_id DESC);
+END;
+GO
+
+-- ────────────────────────── project_elements ───────────────────────
+IF OBJECT_ID(N'dbo.project_elements', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.project_elements (
+        project_element_id BIGINT IDENTITY(1, 1) NOT NULL CONSTRAINT PK_project_elements PRIMARY KEY,
+        project_id         BIGINT                NOT NULL,
+        position           INT                   NOT NULL,  -- preserves element order within the project
+        name               NVARCHAR(512)         NOT NULL CONSTRAINT DF_project_elements_name DEFAULT N'',
+        length             FLOAT                 NOT NULL,  -- inches
+        width              FLOAT                 NOT NULL,  -- inches
+        linear_inches      FLOAT                 NULL,
+        complexity         NVARCHAR(16)          NOT NULL,
+        description        NVARCHAR(MAX)         NOT NULL CONSTRAINT DF_project_elements_description DEFAULT N'',
+        mask_b64           NVARCHAR(MAX)         NULL,      -- base64 JPEG highlight from the vision pipeline
+        CONSTRAINT FK_project_elements_project FOREIGN KEY (project_id)
+            REFERENCES dbo.projects (project_id) ON DELETE CASCADE,
+        CONSTRAINT CK_project_elements_complexity CHECK (complexity IN (N'Simple', N'Moderate', N'Complex'))
+    );
+
+    CREATE INDEX IX_project_elements_project ON dbo.project_elements (project_id, position);
+END;
+GO
+
+-- ────────────────────────────── quotes ─────────────────────────────
+IF OBJECT_ID(N'dbo.quotes', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.quotes (
+        quote_id            BIGINT IDENTITY(1, 1) NOT NULL CONSTRAINT PK_quotes PRIMARY KEY,
+        project_id          BIGINT                NOT NULL,
+        owner               NVARCHAR(256)         NOT NULL,
+        schema_version      INT                   NOT NULL CONSTRAINT DF_quotes_schema_version DEFAULT 2,
+        quote_name          NVARCHAR(512)         NOT NULL,
+        -- Active scenario tab when saved. Scenario 2 is no longer offered in the UI, but the
+        -- range stays 1–5 so quotes saved on it before it was retired still load and migrate.
+        scenario            INT                   NOT NULL,
+        num_standees        INT                   NOT NULL,
+        contribution_margin FLOAT                 NOT NULL CONSTRAINT DF_quotes_contribution_margin DEFAULT 0,
+        standee_type        NVARCHAR(16)          NOT NULL,
+        -- Frontend-owned nested state; see backend/lib/persisted_quote.py for shapes.
+        scenarios           JSON                  NOT NULL CONSTRAINT DF_quotes_scenarios DEFAULT N'{}',
+        universal           JSON                  NOT NULL CONSTRAINT DF_quotes_universal DEFAULT N'{}',
+        params              JSON                  NOT NULL CONSTRAINT DF_quotes_params DEFAULT N'{}',
+        breakdown           JSON                  NOT NULL CONSTRAINT DF_quotes_breakdown DEFAULT N'{}',  -- legacy v1 blob
+        created_at          DATETIME2(3)          NOT NULL CONSTRAINT DF_quotes_created_at DEFAULT SYSUTCDATETIME(),
+        updated_at          DATETIME2(3)          NOT NULL CONSTRAINT DF_quotes_updated_at DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT FK_quotes_project FOREIGN KEY (project_id)
+            REFERENCES dbo.projects (project_id) ON DELETE CASCADE,
+        CONSTRAINT FK_quotes_owner FOREIGN KEY (owner) REFERENCES dbo.users (username),
+        CONSTRAINT CK_quotes_scenario CHECK (scenario BETWEEN 1 AND 5),
+        CONSTRAINT CK_quotes_standee_type CHECK (standee_type IN (N'Simple', N'Moderate', N'Complex'))
+    );
+
+    CREATE INDEX IX_quotes_project ON dbo.quotes (project_id, quote_id DESC);
+    CREATE INDEX IX_quotes_owner ON dbo.quotes (owner, quote_id DESC);
+END;
+GO
+
+-- ─────────────────────────── quote_elements ────────────────────────
+IF OBJECT_ID(N'dbo.quote_elements', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.quote_elements (
+        quote_element_id BIGINT IDENTITY(1, 1) NOT NULL CONSTRAINT PK_quote_elements PRIMARY KEY,
+        quote_id         BIGINT                NOT NULL,
+        position         INT                   NOT NULL,
+        name             NVARCHAR(512)         NOT NULL CONSTRAINT DF_quote_elements_name DEFAULT N'',
+        length           FLOAT                 NOT NULL,
+        width            FLOAT                 NOT NULL,
+        linear_inches    FLOAT                 NULL,
+        complexity       NVARCHAR(16)          NOT NULL,
+        description      NVARCHAR(MAX)         NOT NULL CONSTRAINT DF_quote_elements_description DEFAULT N'',
+        mask_b64         NVARCHAR(MAX)         NULL,
+        CONSTRAINT FK_quote_elements_quote FOREIGN KEY (quote_id)
+            REFERENCES dbo.quotes (quote_id) ON DELETE CASCADE,
+        CONSTRAINT CK_quote_elements_complexity CHECK (complexity IN (N'Simple', N'Moderate', N'Complex'))
+    );
+
+    CREATE INDEX IX_quote_elements_quote ON dbo.quote_elements (quote_id, position);
+END;
+GO
+
+-- ────────────────────────────── history ────────────────────────────
+-- Append-only audit trail of project/quote edits. ``snapshot`` is the full
+-- point-in-time copy of the editable fields (including elements) and is what
+-- gets restored on revert, so it stays a JSON document rather than rows.
+IF OBJECT_ID(N'dbo.history', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.history (
+        history_id               BIGINT IDENTITY(1, 1) NOT NULL CONSTRAINT PK_history PRIMARY KEY,
+        project_id               BIGINT                NOT NULL,
+        owner                    NVARCHAR(256)         NOT NULL,
+        entity_type              NVARCHAR(16)          NOT NULL,
+        -- Intentionally no FK: audit rows outlive quote deletion, and an FK here
+        -- would also create multiple cascade paths (history→projects, quotes→projects).
+        quote_id                 BIGINT                NULL,
+        scenario                 INT                   NULL,
+        change_type              NVARCHAR(32)          NOT NULL,  -- create / update / rename / revert
+        changed_by               NVARCHAR(256)         NOT NULL,
+        label                    NVARCHAR(512)         NOT NULL,
+        snapshot                 JSON                  NOT NULL,
+        reverted_from_history_id BIGINT                NULL,
+        created_at               DATETIME2(3)          NOT NULL CONSTRAINT DF_history_created_at DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT FK_history_project FOREIGN KEY (project_id)
+            REFERENCES dbo.projects (project_id) ON DELETE CASCADE,
+        CONSTRAINT CK_history_entity_type CHECK (entity_type IN (N'project', N'quote'))
+    );
+
+    CREATE INDEX IX_history_project_created ON dbo.history (project_id, created_at DESC, history_id DESC);
+    -- Covers the "newest entry for this one entity" lookup that _record_history does on
+    -- every non-create/revert write to skip no-op saves (see backend/lib/classes/db.py).
+    CREATE INDEX IX_history_entity_latest
+        ON dbo.history (project_id, entity_type, quote_id, created_at DESC, history_id DESC);
+END;
+GO
+
+-- Added after the initial schema: existing databases created before the no-op-save
+-- history skip landed only have IX_history_project_created.
+IF OBJECT_ID(N'dbo.history', N'U') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_history_entity_latest'
+                                               AND object_id = OBJECT_ID(N'dbo.history'))
+BEGIN
+    CREATE INDEX IX_history_entity_latest
+        ON dbo.history (project_id, entity_type, quote_id, created_at DESC, history_id DESC);
+END;
+GO
+
+-- ──────────────────────────── unit_costs ───────────────────────────
+IF OBJECT_ID(N'dbo.unit_costs', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.unit_costs (
+        unit_cost_id    INT IDENTITY(1, 1) NOT NULL CONSTRAINT PK_unit_costs PRIMARY KEY,
+        name            NVARCHAR(128)      NOT NULL,
+        [type]          NVARCHAR(64)       NOT NULL,
+        display_name    NVARCHAR(256)      NOT NULL,
+        cost            FLOAT              NOT NULL,
+        unit            NVARCHAR(32)       NOT NULL,  -- each / hour / thousand / linear_inch / linear_foot
+        -- Machine-only fields (NULL for non-machines):
+        setup_time      FLOAT              NULL,
+        throughput      FLOAT              NULL,
+        throughput_unit NVARCHAR(32)       NULL,
+        last_updated    DATETIME2(3)       NOT NULL CONSTRAINT DF_unit_costs_last_updated DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT UQ_unit_costs_name UNIQUE (name)
+    );
+END;
+GO
+
+-- ─────────────────────── standee_static_costs ──────────────────────
+IF OBJECT_ID(N'dbo.standee_static_costs', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.standee_static_costs (
+        standee_static_cost_id                         INT IDENTITY(1, 1) NOT NULL
+            CONSTRAINT PK_standee_static_costs PRIMARY KEY,
+        standee_type                                   NVARCHAR(64) NOT NULL,  -- e.g. 'Simple Standee'
+        engineering_design_cost_per_project            FLOAT NOT NULL CONSTRAINT DF_ssc_eng_design DEFAULT 0,
+        instruction_sheet_engineering_cost_per_project FLOAT NOT NULL CONSTRAINT DF_ssc_is_eng DEFAULT 0,
+        hardware_cost                                  FLOAT NOT NULL CONSTRAINT DF_ssc_hardware DEFAULT 0,
+        zund_print_form_minutes                        FLOAT NOT NULL CONSTRAINT DF_ssc_zund_print DEFAULT 0,
+        zund_blank_form_minutes                        FLOAT NOT NULL CONSTRAINT DF_ssc_zund_blank DEFAULT 0,
+        instruction_sheet_total_cost                   FLOAT NOT NULL CONSTRAINT DF_ssc_is_total DEFAULT 0,
+        cutting_die_inches_multiplier                  FLOAT NOT NULL CONSTRAINT DF_ssc_die_mult DEFAULT 1,
+        kitting_and_assembly                           FLOAT NOT NULL CONSTRAINT DF_ssc_kitting DEFAULT 0,
+        cutting_die_blank_form_min                     FLOAT NOT NULL CONSTRAINT DF_ssc_die_blank DEFAULT 0,
+        cutting_die_print_form_min                     FLOAT NOT NULL CONSTRAINT DF_ssc_die_print DEFAULT 0,
+        CONSTRAINT UQ_standee_static_costs_type UNIQUE (standee_type)
+    );
+END;
+GO
+
+-- ───────────────────────── print_blank_ratio ───────────────────────
+IF OBJECT_ID(N'dbo.print_blank_ratio', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.print_blank_ratio (
+        print_forms INT   NOT NULL CONSTRAINT PK_print_blank_ratio PRIMARY KEY,
+        blank_forms FLOAT NOT NULL
+    );
+END;
+GO
+
+-- ─────────────────────────────── overs ─────────────────────────────
+IF OBJECT_ID(N'dbo.overs', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.overs (
+        overs_id     INT IDENTITY(1, 1) NOT NULL CONSTRAINT PK_overs PRIMARY KEY,
+        lower_bound  INT                NOT NULL,
+        upper_bound  INT                NULL,  -- NULL = open-ended top tier
+        overs        INT                NOT NULL,
+        last_updated DATETIME2(3)       NOT NULL CONSTRAINT DF_overs_last_updated DEFAULT SYSUTCDATETIME()
+    );
+END;
+GO
+
+-- ────────────────────────────── packout ────────────────────────────
+IF OBJECT_ID(N'dbo.packout', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.packout (
+        packout_id           INT IDENTITY(1, 1) NOT NULL CONSTRAINT PK_packout PRIMARY KEY,
+        standees_lower_bound INT                NOT NULL,
+        standees_upper_bound INT                NULL,  -- NULL = open-ended
+        forms_lower_bound    INT                NOT NULL,
+        forms_upper_bound    INT                NULL,  -- NULL = open-ended
+        complexity           NVARCHAR(32)       NOT NULL,
+        packout              FLOAT              NOT NULL,
+        last_updated         DATETIME2(3)       NOT NULL CONSTRAINT DF_packout_last_updated DEFAULT SYSUTCDATETIME()
+    );
+
+    CREATE INDEX IX_packout_bounds ON dbo.packout (standees_lower_bound, forms_lower_bound);
+END;
+GO
+
+-- ──────────────────────── supplier_materials ───────────────────────
+IF OBJECT_ID(N'dbo.supplier_materials', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.supplier_materials (
+        supplier_material_id  INT IDENTITY(1, 1) NOT NULL CONSTRAINT PK_supplier_materials PRIMARY KEY,
+        supplier              NVARCHAR(128) NOT NULL,
+        material              NVARCHAR(128) NOT NULL,
+        material_display_name NVARCHAR(256) NOT NULL,
+        material_type         NVARCHAR(64)  NOT NULL CONSTRAINT DF_supplier_materials_type DEFAULT N'',  -- '' = untyped
+        unit                  NVARCHAR(32)  NOT NULL,
+        -- Precomputed power-law fit (cost ≈ a * amount^b + c) over the price breaks:
+        curve_a               FLOAT         NULL,
+        curve_b               FLOAT         NULL,
+        curve_c               FLOAT         NULL,
+        curve_r_squared       FLOAT         NULL,
+        last_updated          DATETIME2(3)  NOT NULL CONSTRAINT DF_supplier_materials_last_updated DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT UQ_supplier_materials UNIQUE (supplier, material, material_type)
+    );
+END;
+GO
+
+-- ─────────────────────── supplier_price_breaks ─────────────────────
+IF OBJECT_ID(N'dbo.supplier_price_breaks', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.supplier_price_breaks (
+        price_break_id       INT IDENTITY(1, 1) NOT NULL CONSTRAINT PK_supplier_price_breaks PRIMARY KEY,
+        supplier_material_id INT   NOT NULL,
+        amount               FLOAT NOT NULL,
+        cost                 FLOAT NOT NULL,
+        CONSTRAINT FK_supplier_price_breaks_material FOREIGN KEY (supplier_material_id)
+            REFERENCES dbo.supplier_materials (supplier_material_id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IX_supplier_price_breaks_material ON dbo.supplier_price_breaks (supplier_material_id, amount);
+END;
+GO

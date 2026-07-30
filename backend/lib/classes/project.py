@@ -43,7 +43,7 @@ class Project[T: BaseInput]:
         return {k: v for k, v in self.__dict__.items() if not k.startswith("_") and k != "db"}
 
     def to_serializable_dict(self) -> dict:
-        """Subset of ``to_dict`` safe for JSON/BSON: no ``print_forms``/``Form``, enums as ints."""
+        """Subset of ``to_dict`` safe for JSON: no ``print_forms``/``Form``, enums as ints."""
         out: dict = {}
         for k, v in self.__dict__.items():
             if k.startswith("_") or k in ("db", "print_forms"):
