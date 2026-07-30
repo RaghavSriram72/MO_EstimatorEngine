@@ -9,6 +9,8 @@ export type ProjectSummary = {
     project_name: string;
     num_standees: number;
     standee_type: "Simple" | "Moderate" | "Complex";
+    /** True when saved quote costs may be out of date vs data-collector tables. */
+    costsStale?: boolean;
 };
 
 const SIDEBAR_INPUT_CLASS =
@@ -145,22 +147,34 @@ export default function ProjectSidebar({
                     const isActive  = activeProjectId === p._id;
                     const isEditing = editingId === p._id;
                     const isOwner   = !!currentUser && p.owner === currentUser;
+                    const isStale   = !!p.costsStale;
                     return (
                         <div
                             key={p._id}
+                            title={isStale ? "Cost tables updated — open and recalculate this estimate" : undefined}
                             className={`flex items-stretch rounded-md border transition-all duration-200 overflow-hidden shrink-0 ${
                                 isActive
-                                    ? "border-[#FFC843] bg-[#FFFBEE] shadow-sm hover:cursor-pointer"
-                                    : "border-[#E8E8E8] bg-white hover:border-[#C8C8C8] hover:shadow-sm hover:cursor-pointer"
+                                    ? isStale
+                                        ? "border-red-400 bg-[#FFFBEE] shadow-sm hover:cursor-pointer"
+                                        : "border-[#FFC843] bg-[#FFFBEE] shadow-sm hover:cursor-pointer"
+                                    : isStale
+                                        ? "border-red-200 bg-white hover:border-red-300 hover:shadow-sm hover:cursor-pointer"
+                                        : "border-[#E8E8E8] bg-white hover:border-[#C8C8C8] hover:shadow-sm hover:cursor-pointer"
                             }`}
                         >
                             {/* Left accent bar */}
-                            <div className={`w-[3px] shrink-0 transition-all duration-200 ${isActive ? "bg-[#FFC843]" : "bg-transparent"}`} />
+                            <div
+                                className={`w-[3px] shrink-0 transition-all duration-200 ${
+                                    isStale ? "bg-red-500" : isActive ? "bg-[#FFC843]" : "bg-transparent"
+                                }`}
+                            />
 
                             <button
                                 type="button"
                                 onClick={() => !isEditing && onLoadProject(p._id)}
-                                className="cursor-pointer min-w-0 flex-1 text-left px-2.5 py-2.5 outline-none focus-visible:ring-2 focus-visible:ring-[#FFC843]"
+                                className={`cursor-pointer min-w-0 flex-1 text-left px-2.5 py-2.5 outline-none focus-visible:ring-2 ${
+                                    isStale ? "focus-visible:ring-red-300" : "focus-visible:ring-[#FFC843]"
+                                }`}
                             >
                                 {isEditing ? (
                                     <input
@@ -187,6 +201,11 @@ export default function ProjectSidebar({
                                     </div>
                                 )}
                                 <div className="flex items-center gap-1.5 mt-1.5 whitespace-nowrap overflow-hidden">
+                                    {isStale && (
+                                        <span className="shrink-0 text-[8.5px] font-black uppercase tracking-wide text-red-700 bg-red-100 rounded-sm px-1 py-0.5">
+                                            Costs outdated
+                                        </span>
+                                    )}
                                     {p.short_id && (
                                         <span className="shrink-0 text-[9px] font-black text-[#8a6d1f] bg-[#FFC843]/20 rounded-sm px-1 py-0.5 tabular-nums">
                                             #{p.short_id}

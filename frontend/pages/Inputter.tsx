@@ -295,6 +295,8 @@ type QuoteSearchSummary = {
     quote_name?: string;
     scenario?: number;
     num_standees?: number;
+    /** Cost-table fingerprint when engine defaults were last refreshed. */
+    cost_tables_version?: string;
 };
 
 /** Searchable text for a quote linked to a project. */
@@ -337,6 +339,7 @@ export default function Inputter() {
     const [activeProjectOwner, setActiveProjectOwner] = useState<string | null>(null);
     const [projectList, setProjectList]             = useState<ProjectSummary[]>([]);
     const [quoteList, setQuoteList]                 = useState<QuoteSearchSummary[]>([]);
+    const [costTablesVersion, setCostTablesVersion] = useState("");
     const [projectListLoading, setProjectListLoading] = useState(false);
     const [projectListError, setProjectListError]   = useState<string | null>(null);
     const [projectListRefreshKey, setProjectListRefreshKey] = useState(0); // bumped to re-fetch list
@@ -390,17 +393,19 @@ export default function Inputter() {
 
     // ── Data fetching ──────────────────────────────────────────────────────
 
-    // GET /projects + GET /quotes → sidebar search spans every saved project and quote
+    // GET /projects + GET /quotes + cost-tables version → sidebar search + stale cost highlighting
     const refreshProjectList = useCallback(async () => {
         setProjectListLoading(true);
         setProjectListError(null);
         try {
-            const [projectsRes, quotesRes] = await Promise.all([
+            const [projectsRes, quotesRes, versionRes] = await Promise.all([
                 fetch(`${API_BASE}/projects`),
                 fetch(`${API_BASE}/quotes`),
+                fetch(`${API_BASE}/cost-tables-version`),
             ]);
             const projectsData = await projectsRes.json().catch(() => ({}));
             const quotesData = await quotesRes.json().catch(() => ({}));
+            const versionData = await versionRes.json().catch(() => ({}));
             if (!projectsRes.ok) {
                 setProjectListError(typeof projectsData.error === "string" ? projectsData.error : "Could not load projects");
                 setProjectList([]);
@@ -409,6 +414,9 @@ export default function Inputter() {
             }
             setProjectList(Array.isArray(projectsData.projects) ? projectsData.projects : []);
             setQuoteList(quotesRes.ok && Array.isArray(quotesData.quotes) ? quotesData.quotes : []);
+            const version =
+                versionRes.ok && typeof versionData.version === "string" ? versionData.version : "";
+            setCostTablesVersion(version);
         } catch {
             setProjectListError("Could not load projects");
             setProjectList([]);
@@ -420,6 +428,17 @@ export default function Inputter() {
 
 
     useEffect(() => { void refreshProjectList(); }, [refreshProjectList, projectListRefreshKey]);
+
+    // Re-check cost-table version when returning from Data Collector (or another tab).
+    useEffect(() => {
+        function refreshIfVisible() {
+            if (document.visibilityState === "visible") {
+                setProjectListRefreshKey((v) => v + 1);
+            }
+        }
+        document.addEventListener("visibilitychange", refreshIfVisible);
+        return () => document.removeEventListener("visibilitychange", refreshIfVisible);
+    }, []);
 
     // // GET /projects/:id/quotes?owner=... → refresh the quotes list inside the workspace
     // const refreshSavedQuoteList = useCallback(async () => {
@@ -464,13 +483,33 @@ export default function Inputter() {
         return map;
     }, [quoteList]);
 
-    const filteredProjects = useMemo(() =>
-        projectList.filter((p) => {
+    function isQuoteCostsStale(latest: QuoteSearchSummary | undefined): boolean {
+        if (!latest || !costTablesVersion) return false;
+        const stamped =
+            typeof latest.cost_tables_version === "string" ? latest.cost_tables_version : null;
+        // Missing/legacy stamp ⇒ not marked stale here (server backfills on connect).
+        if (!stamped) return false;
+        return stamped !== costTablesVersion;
+    }
+
+    const filteredProjects = useMemo(() => {
+        const matched = projectList.filter((p) => {
             if (searchMatches(projectSearchQuery, projectSearchBlob(p))) return true;
             const quotes = quotesByProjectId.get(p._id) ?? [];
             return quotes.some((q) => searchMatches(projectSearchQuery, quoteSearchBlob(q)));
-        }),
-    [projectList, projectSearchQuery, quotesByProjectId]);
+        });
+        return matched.map((p) => {
+            const quotes = quotesByProjectId.get(p._id) ?? [];
+            // Newest quote first (GET /quotes sorts by _id desc).
+            return { ...p, costsStale: isQuoteCostsStale(quotes[0]) };
+        });
+    }, [projectList, projectSearchQuery, quotesByProjectId, costTablesVersion]);
+
+    const activeProjectCostsStale = useMemo(() => {
+        if (!activeProjectId) return false;
+        const quotes = quotesByProjectId.get(activeProjectId) ?? [];
+        return isQuoteCostsStale(quotes[0]);
+    }, [activeProjectId, quotesByProjectId, costTablesVersion]);
 
     // Owner of a project in the sidebar list (needed for owner-scoped API calls on
     // projects that belong to other users).
@@ -737,10 +776,12 @@ export default function Inputter() {
         const pid         = projectId;
 
         try {
-            // A saved quote already exists → view it instead of recalculating,
-            // so manual spec/cost edits made in the breakdown are preserved.
-            // Skip this when needsRecalc — inputs changed since last save, force fresh calculation.
-            if (!needsRecalc && projectOwner && pid && (await openLatestSavedQuote(pid, projectOwner))) return;
+            // A saved quote already exists → view it instead of regenerating, so manual
+            // edits are preserved. Skip only when needsRecalc (specs changed since last save).
+            // Outdated cost tables still open View Quote — user updates via the red button inside.
+            if (!needsRecalc && projectOwner && pid && (await openLatestSavedQuote(pid, projectOwner))) {
+                return;
+            }
 
             const res  = await fetch(`${API_BASE}/generate_quote`, {
                 method: "POST",
@@ -790,6 +831,9 @@ export default function Inputter() {
                     scenarios: persistedState.scenarios,
                     universal: persistedState.universal,
                     params: persistedState.params,
+                    ...(typeof quoteResult.cost_tables_version === "string"
+                        ? { cost_tables_version: quoteResult.cost_tables_version }
+                        : {}),
                 };
 
                 if (existingQuoteId) {
@@ -820,6 +864,7 @@ export default function Inputter() {
                         console.error("Could not persist quote:", apiErrorMessage(saveData) ?? saveData);
                     }
                 }
+                setProjectListRefreshKey((v) => v + 1);
                 // void refreshSavedQuoteList();
             }
         } catch (err) {
@@ -1077,6 +1122,8 @@ export default function Inputter() {
                     onBack={clearActiveQuote}
                     onNumStandeesChange={handleActiveQuoteNumStandeesChange}
                     onNumStandeesCommitted={(n) => void handleActiveQuoteNumStandeesCommitted(n)}
+                    costsStale={activeProjectCostsStale}
+                    onCostsSynced={() => setProjectListRefreshKey((v) => v + 1)}
                 />
                 {toastJsx}
             </>

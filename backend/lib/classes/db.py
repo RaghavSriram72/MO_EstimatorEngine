@@ -10,9 +10,12 @@ from typing import Any
 import numpy as np
 import pyodbc
 from dotenv import load_dotenv
+from pymongo import ReturnDocument
+from pymongo.mongo_client import MongoClient
+from pymongo.server_api import ServerApi
 from scipy.optimize import curve_fit
 
-from lib.globals import project_short_id
+from lib.globals import PROJECT_SHORT_ID_START, UNIT_MAP
 
 # Fields a caller may set via update_persisted_project / update_persisted_quote — also
 # the field set snapshotted into a history entry's "snapshot" and restored on revert.
@@ -28,6 +31,8 @@ _QUOTE_UPDATE_ALLOWED_FIELDS = {
     "standee_type",
     "elements",
     "contribution_margin",
+    # Stamp of cost-table version when engine defaults were last refreshed (data-collector sync).
+    "cost_tables_version",
 }
 # Subset of _QUOTE_UPDATE_ALLOWED_FIELDS that counts as "a real change" for history purposes.
 # `scenario` only records which tab was last open and `breakdown` is a legacy blob that's
@@ -165,9 +170,129 @@ class MidnightOilDB:
     def connect(self):
         """Establish a connection to the SQL Server database."""
         self._cache: dict[str, list] = {}
-        self.conn = pyodbc.connect(self.conn_str, autocommit=False)
+        self.client = MongoClient(self.uri, server_api=ServerApi("1"), tz_aware=True)
+        self.db_name = os.getenv("MONGO_DB_NAME", "DB")
+        self.db = self.client[self.db_name]
+        self.unit_costs_collection = self.db["unit_costs"]
+        self.standee_collection = self.db["standee_static_costs"]
+        self.print_blank_collection = self.db["print_blank_ratio"]
+        self.overs_collection = self.db["overs"]
+        self.packout_collection = self.db["packout"]
+        self.work_center_costs_collection = self.db["work_center_costs"]
+        self.suppliers_collection = self.db["suppliers"]
+        self.users_collection = self.db["users"]
+        self.projects_collection = self.db["projects"]
+        self.quotes_collection = self.db["quotes"]
+        self.history_collection = self.db["history"]
+        self.counters_collection = self.db["counters"]
+        self.history_collection.create_index([("project_id", 1), ("created_at", -1)])
+        self._ensure_short_id_counter()
+        self._backfill_quote_cost_table_versions()
         self._load_cache()
         return self
+
+    def _backfill_quote_cost_table_versions(self) -> None:
+        """Stamp quotes that predate fingerprinting (or still use legacy int counters)."""
+        fingerprint = self.get_cost_tables_version()
+        for row in self.quotes_collection.find({}, {"_id": 1, "cost_tables_version": 1}):
+            stamp = row.get("cost_tables_version")
+            if isinstance(stamp, str) and len(stamp) == 24:
+                continue
+            self.quotes_collection.update_one(
+                {"_id": row["_id"]},
+                {"$set": {"cost_tables_version": fingerprint}},
+            )
+
+    def _ensure_short_id_counter(self) -> None:
+        """Seed the estimate-ID counter; remint hash-style short_ids to 10100, 10101, …"""
+        needs_remint = not self.counters_collection.find_one({"_id": "project_short_id"})
+        if not needs_remint:
+            for row in self.projects_collection.find({}, {"short_id": 1}):
+                sid = row.get("short_id")
+                if sid is None:
+                    continue
+                text = str(sid)
+                if not text.isdigit() or int(text) < PROJECT_SHORT_ID_START or int(text) >= 1_000_000:
+                    needs_remint = True
+                    break
+        if not needs_remint:
+            return
+
+        projects = list(self.projects_collection.find({}, {"_id": 1}).sort("_id", 1))
+        n = PROJECT_SHORT_ID_START
+        for project in projects:
+            self.projects_collection.update_one(
+                {"_id": project["_id"]},
+                {"$set": {"short_id": str(n)}},
+            )
+            n += 1
+        self.counters_collection.update_one(
+            {"_id": "project_short_id"},
+            {"$set": {"seq": n - 1 if projects else PROJECT_SHORT_ID_START - 1}},
+            upsert=True,
+        )
+
+    def _allocate_project_short_id(self) -> str:
+        """Return the next sequential estimate ID (10100, 10101, …)."""
+        self._ensure_short_id_counter()
+        result = self.counters_collection.find_one_and_update(
+            {"_id": "project_short_id"},
+            {"$inc": {"seq": 1}},
+            return_document=ReturnDocument.AFTER,
+        )
+        return str(int(result["seq"]))
+
+    def get_cost_tables_version(self) -> str:
+        """Return a stable fingerprint of all data-collector tables that affect estimates.
+
+        Reverting a cost edit (e.g. 750 → 700 → 750) restores the same fingerprint, so
+        quotes stamped at the original value are no longer marked stale.
+        ``last_updated`` timestamps are excluded so metadata-only changes do not matter.
+        """
+
+        def _norm(value: Any) -> Any:
+            if isinstance(value, float) and value.is_integer():
+                return int(value)
+            if isinstance(value, dict):
+                return {k: _norm(v) for k, v in value.items()}
+            if isinstance(value, list):
+                return [_norm(v) for v in value]
+            if hasattr(value, "isoformat"):
+                return value.isoformat()
+            if isinstance(value, ObjectId):
+                return str(value)
+            return value
+
+        def _canon(rows: list[dict[str, Any]], drop: set[str]) -> list[dict[str, Any]]:
+            out: list[dict[str, Any]] = []
+            for row in rows:
+                cleaned = {
+                    k: _norm(v)
+                    for k, v in row.items()
+                    if k not in drop and not k.startswith("_")
+                }
+                out.append(cleaned)
+            return sorted(out, key=lambda r: json.dumps(r, sort_keys=True, default=str))
+
+        drop_meta = {"_id", "last_updated"}
+        payload = {
+            "unit_costs": _canon(list(self.unit_costs_collection.find()), drop_meta),
+            "standee_static_costs": _canon(list(self.standee_collection.find()), drop_meta),
+            "overs": _canon(list(self.overs_collection.find()), drop_meta),
+            "packout": _canon(list(self.packout_collection.find()), drop_meta),
+            "suppliers": _canon(list(self.suppliers_collection.find()), drop_meta),
+            "print_blank_ratio": _canon(list(self.print_blank_collection.find()), drop_meta),
+        }
+        raw = json.dumps(payload, sort_keys=True, default=str, separators=(",", ":"))
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:24]
+
+    def _load_cache(self) -> None:
+        self._cache["unit_costs"] = list(self.db["unit_costs"].find())
+        self._cache["standee_static_costs"] = list(self.db["standee_static_costs"].find())
+        self._cache["print_blank_ratio"] = list(self.db["print_blank_ratio"].find())
+        self._cache["overs"] = list(self.db["overs"].find())
+        self._cache["suppliers"] = list(self.db["suppliers"].find())
+        self._cache["packout"] = list(self.db["packout"].find())
 
     def close(self):
         """Close the SQL Server connection."""
@@ -423,94 +548,17 @@ class MidnightOilDB:
             ),
         )
 
-    # ------------------------------------------------------------------
-    # Elements (shared by projects and quotes)
-    # ------------------------------------------------------------------
-
-    def _replace_elements(self, table: str, fk_column: str, parent_id: int, elements: list[Any]) -> None:
-        """Replace all element rows for one parent, preserving list order via ``position``."""
-        self._execute(f"DELETE FROM {table} WHERE {fk_column} = ?", (parent_id,))
-        for position, element in enumerate(elements):
-            el = dict(element)
-            self._execute(
-                f"INSERT INTO {table} ({fk_column}, position, name, length, width, linear_inches, "
-                "complexity, description, mask_b64) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    parent_id,
-                    position,
-                    el.get("name", ""),
-                    el["length"],
-                    el["width"],
-                    el.get("linear_inches"),
-                    el.get("complexity", "Simple"),
-                    el.get("description", ""),
-                    el.get("mask_b64"),
-                ),
-            )
-
-    def _elements_by_parent(self, table: str, fk_column: str, parent_ids: list[int]) -> dict[int, list[dict]]:
-        """Load ordered element dicts for a set of parent rows in one query."""
-        if not parent_ids:
-            return {}
-        placeholders = ",".join("?" * len(parent_ids))
-        rows = self._fetchall(
-            f"SELECT {fk_column} AS parent_id, name, length, width, linear_inches, complexity, "
-            f"description, mask_b64 FROM {table} WHERE {fk_column} IN ({placeholders}) "
-            f"ORDER BY {fk_column}, position",
-            tuple(parent_ids),
-        )
-        out: dict[int, list[dict]] = {}
-        for row in rows:
-            parent_id = row.pop("parent_id")
-            out.setdefault(parent_id, []).append(row)
-        return out
-
-    # ------------------------------------------------------------------
-    # Projects
-    # ------------------------------------------------------------------
-
-    def _project_rows_to_docs(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        elements = self._elements_by_parent("project_elements", "project_id", [r["project_id"] for r in rows])
-        docs = []
-        for row in rows:
-            project_id = row["project_id"]
-            docs.append(
-                {
-                    "_id": str(project_id),
-                    "schema_version": row["schema_version"],
-                    "owner": row["owner"],
-                    "project_name": row["project_name"],
-                    "num_standees": row["num_standees"],
-                    "standee_type": row["standee_type"],
-                    "short_id": row["short_id"],
-                    "elements": elements.get(project_id, []),
-                }
-            )
-        return docs
-
-    def insert_persisted_project(self, doc: dict[str, Any], changed_by: str | None = None) -> str:
-        """Insert a canonical v1 project row; returns the new row id as a string.
+    def insert_persisted_project(self, doc: dict[str, Any], changed_by: str | None = None) -> tuple[str, str]:
+        """Insert a canonical v1 project document; returns ``(project_id, short_id)``.
 
         ``changed_by`` defaults to the row's own ``owner`` (true for normal creation,
         where you can only create your own projects) but can be overridden — e.g. duplicating
         someone else's project creates a row owned by the duplicator, which already matches.
         """
-        new_id = self._insert_returning_id(
-            "INSERT INTO projects (owner, schema_version, project_name, num_standees, standee_type) "
-            "OUTPUT INSERTED.project_id VALUES (?, ?, ?, ?, ?)",
-            (
-                doc["owner"],
-                doc.get("schema_version", 1),
-                doc.get("project_name", "Untitled project"),
-                doc["num_standees"],
-                doc["standee_type"],
-            ),
-        )
-        project_id = str(new_id)
-        self._execute(
-            "UPDATE projects SET short_id = ? WHERE project_id = ?", (project_short_id(project_id), new_id)
-        )
-        self._replace_elements("project_elements", "project_id", new_id, doc.get("elements", []))
+        short_id = self._allocate_project_short_id()
+        doc = {**doc, "short_id": short_id}
+        result = self.projects_collection.insert_one(doc)
+        project_id = str(result.inserted_id)
         self._record_history(
             project_id=project_id,
             owner=doc["owner"],
@@ -520,15 +568,15 @@ class MidnightOilDB:
             label=doc.get("project_name", "Untitled project"),
             snapshot={k: doc[k] for k in _PROJECT_UPDATE_ALLOWED_FIELDS if k in doc},
         )
-        self.conn.commit()
-        return project_id
+        return project_id, short_id
 
     def _ensure_project_short_id(self, doc: dict[str, Any]) -> dict[str, Any]:
         """Backfill ``short_id`` on legacy project rows (``doc['_id']`` must already be a str)."""
         if not doc.get("short_id"):
-            doc["short_id"] = project_short_id(doc["_id"])
-            self._execute(
-                "UPDATE projects SET short_id = ? WHERE project_id = ?", (doc["short_id"], int(doc["_id"]))
+            doc["short_id"] = self._allocate_project_short_id()
+            self.projects_collection.update_one(
+                {"_id": ObjectId(doc["_id"])},
+                {"$set": {"short_id": doc["short_id"]}},
             )
             self.conn.commit()
         return doc
@@ -1333,10 +1381,6 @@ class MidnightOilDB:
         if deleted == 0:
             raise ValueError(f"Overs record not found for id '{record_id}'")
         self._load_cache()
-
-    # ------------------------------------------------------------------
-    # Packout
-    # ------------------------------------------------------------------
 
     def get_packout(self, standees: int, forms: int, complexity: str) -> float:
         """Return the packout cost for a given quantity of standees, forms, and complexity."""

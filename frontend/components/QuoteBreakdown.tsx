@@ -49,9 +49,13 @@ type Props = {
     onBack: () => void;
     /** Keeps parent sidebar / payload in sync when standee count is edited. */
     onNumStandeesChange?: (numStandees: number) => void;
+    /** True when saved engine defaults are behind the current data-collector cost tables. */
+    costsStale?: boolean;
     /** Fires after a successful recalculate with a new standee count, so the
      * parent can persist it back to the project. */
     onNumStandeesCommitted?: (numStandees: number) => void;
+    /** Fires after engine defaults are recalculated and saved (clears stale cost highlight). */
+    onCostsSynced?: () => void;
 };
 
 function resolveInitialActiveScenario(quoteData: QuoteData, hint?: ScenarioId): ScenarioId {
@@ -71,7 +75,7 @@ const SCENARIO_META: Record<ScenarioId, { short: string; sub: string }> = {
     1: { short: "Internal",  sub: "Packed Out" },
     2: { short: "Internal",  sub: "Assembled" },
     3: { short: "Hybrid",    sub: "External Assembly" },
-    4: { short: "Hybrid",    sub: "External Mount/Die Cut / Assembly" },
+    4: { short: "Hybrid",    sub: "External Mount/Die Cut/Assembly" },
     5: { short: "External",  sub: "Full Outsource" },
 };
 
@@ -121,7 +125,7 @@ export const SCENARIO_KEYS: Record<ScenarioId, string[]> = {
     2: ["corrugate_cost", "print_form_cost", "print_cost", "rollx_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "kitting_and_assembly_cost"],
     3: ["corrugate_cost", "print_form_cost", "print_cost", "rollx_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "pallet_material_cost", "pallet_labor_cost", "freight_cost", "packout"],
     4: ["print_form_cost", "print_cost", "mount_die_buyout_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "pallet_material_cost", "pallet_labor_cost", "freight_cost", "die_cost", "packout"],
-    5: ["litho_buyout_cost", "mount_die_buyout_cost", "label_cost", "instruction_sheet_cost", "pallet_material_cost", "pallet_labor_cost", "freight_cost", "die_cost", "packout"],
+    5: ["litho_buyout_cost", "mount_die_buyout_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "pallet_material_cost", "pallet_labor_cost", "freight_cost", "die_cost", "packout"],
 };
 
 // Manual edits to a cost row propagate to every scenario that shares the same
@@ -134,7 +138,7 @@ const SCENARIO_SYNC_GROUPS: Partial<Record<string, ScenarioId[]>> = {
     print_cost:                [1, 2, 3, 4],
     rollx_cost:                [1, 2, 3],
     zund_cut_cost:             [1, 2, 3],
-    shipping_box_cost:         [1, 2, 3, 4],
+    shipping_box_cost:         [1, 2, 3, 4, 5],
     label_cost:                [1, 2, 3, 4, 5],
     kitting_and_assembly_cost: [1, 2],
     instruction_sheet_cost:    [1, 2, 3, 4, 5],
@@ -367,6 +371,8 @@ type QuoteSnapshot = {
     scenarioSubtotalOverride: Record<ScenarioId, string>;
     /** Latest raw backend blobs per scenario (the stored "defaults"). */
     sources: Record<ScenarioId, Record<string, unknown>>;
+    /** Set when engine defaults were freshly generated (clears stale cost highlight). */
+    costTablesVersion?: string;
 };
 
 function standeeTypeToPersistLabel(n: number): "Simple" | "Moderate" | "Complex" {
@@ -635,9 +641,11 @@ export default function QuoteBreakdown({
     persistedQuoteId = null,
     persistedState = null,
     quoteOwner = null,
+    costsStale = false,
     onBack,
     onNumStandeesChange,
     onNumStandeesCommitted,
+    onCostsSynced,
 }: Props) {
     const [activeScenario, setActiveScenario] = useState<ScenarioId>(() =>
         resolveInitialActiveScenario(quoteData, initialActiveScenario),
@@ -814,6 +822,8 @@ export default function QuoteBreakdown({
 
     const canPersistQuote = Boolean(persistedQuoteId?.trim() && quoteOwner?.trim());
     const needsSave = canPersistQuote && manualDirty;
+    // Param edits OR outdated cost tables both require a fresh engine run.
+    const canRecalculate = isDirty || costsStale;
 
     async function persistQuoteSnapshot(snapshot: QuoteSnapshot): Promise<boolean> {
         const qid = persistedQuoteId?.trim();
@@ -857,6 +867,9 @@ export default function QuoteBreakdown({
                 current: toSpecParams(snapshot.params),
                 defaults: toSpecParams(snapshot.paramDefaults),
             },
+            ...(typeof snapshot.costTablesVersion === "string"
+                ? { cost_tables_version: snapshot.costTablesVersion }
+                : {}),
         };
         const res = await fetch(`${API_BASE}/quotes/${encodeURIComponent(qid)}?owner=${encodeURIComponent(owner)}&changed_by=${encodeURIComponent(changedBy)}`, {
             method: "PATCH",
@@ -1039,8 +1052,12 @@ export default function QuoteBreakdown({
                         scenarioEdited: { 1: new Set(), 2: new Set(), 3: new Set(), 4: new Set(), 5: new Set() },
                         scenarioSubtotalOverride: newSso,
                         sources: newSources,
+                        ...(typeof data?.cost_tables_version === "string"
+                            ? { costTablesVersion: data.cost_tables_version as string }
+                            : {}),
                     });
                     if (!ok) setSaveQuoteError("Could not save quote after recalculate");
+                    else onCostsSynced?.();
                 } catch {
                     setSaveQuoteError("Could not save quote after recalculate");
                 } finally {
@@ -1174,6 +1191,22 @@ export default function QuoteBreakdown({
                             {debugExplanationsError && ` ${debugExplanationsError}`}
                         </p>
                     )}
+                    {costsStale && (
+                        <div className="flex flex-wrap items-center gap-3 rounded-sm border border-red-300 bg-red-50 px-3 py-2">
+                            <p className="text-[11px] font-semibold text-red-700 leading-snug flex-1 min-w-[200px]">
+                                Cost tables were updated in Data Collector since this quote was calculated.
+                                Recalculate to refresh totals.
+                            </p>
+                            <button
+                                type="button"
+                                onClick={() => void recalculate()}
+                                disabled={isRecalculating}
+                                className="shrink-0 text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-sm bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50 cursor-pointer"
+                            >
+                                {isRecalculating ? "Updating…" : "↻ Update costs"}
+                            </button>
+                        </div>
+                    )}
                 </div>
 
                 {/* Parameters card */}
@@ -1264,10 +1297,14 @@ export default function QuoteBreakdown({
                         <div className="flex items-center gap-2">
                             <button
                                 onClick={recalculate}
-                                disabled={isRecalculating || !isDirty}
-                                className="text-xs font-black uppercase tracking-widest px-4 py-2 rounded-sm bg-[#FFC843] text-[#000005] hover:bg-[#000005] hover:text-white transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                                disabled={isRecalculating || !canRecalculate}
+                                className={`text-xs font-black uppercase tracking-widest px-4 py-2 rounded-sm transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer ${
+                                    costsStale && !isDirty
+                                        ? "bg-red-600 text-white hover:bg-red-700"
+                                        : "bg-[#FFC843] text-[#000005] hover:bg-[#000005] hover:text-white"
+                                }`}
                             >
-                                {isRecalculating ? "Recalculating…" : "↻ Recalculate"}
+                                {isRecalculating ? "Recalculating…" : costsStale && !isDirty ? "↻ Update costs" : "↻ Recalculate"}
                             </button>
                             {needsSave && (
                                 <button

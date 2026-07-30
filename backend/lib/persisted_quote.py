@@ -31,8 +31,11 @@
   - ``defaults`` — same keys; engine-computed values from the last recalculate, so the UI can
     display what a manually-edited field "was before".
 
-- ``breakdown`` — JSON column: legacy v1 blob (``scenario_1`` … ``scenario_5`` + ``_breakdown_ui``).
-  Kept for old records; new writes leave this empty.
+- ``cost_tables_version`` — str fingerprint of data-collector cost tables when engine defaults
+  were last refreshed. Used to highlight projects whose saved quotes may be out of date.
+  Reverting cost edits restores the previous fingerprint so quotes are no longer stale.
+- ``breakdown`` — legacy v1 blob (``scenario_1`` … ``scenario_5`` + ``_breakdown_ui``). Kept for
+  old documents; new writes leave this empty.
 - ``created_at`` / ``updated_at`` — timezone-aware datetimes (set in ``main`` / insert path, not on Pydantic create body)
 
 Callers building insert documents merge timestamps first; ``project_id`` stays a str and the DB
@@ -71,6 +74,12 @@ class PersistedQuoteCreate(BaseModel):
     universal: dict[str, Any] = Field(default_factory=dict, description="Shared cost-line edits + subtotal override")
     params: dict[str, Any] = Field(default_factory=dict, description="Spec fields: current + defaults")
     breakdown: dict[str, Any] = Field(default_factory=dict, description="Legacy v1 blob; empty on new writes")
+    cost_tables_version: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=64,
+        description="Cost-table fingerprint when engine defaults were last refreshed",
+    )
 
 
 class PersistedQuoteCreateBody(BaseModel):
@@ -96,6 +105,12 @@ class PersistedQuoteCreateBody(BaseModel):
     universal: dict[str, Any] = Field(default_factory=dict, description="Shared cost-line edits + subtotal override")
     params: dict[str, Any] = Field(default_factory=dict, description="Spec fields: current + defaults")
     breakdown: dict[str, Any] = Field(default_factory=dict, description="Legacy v1 blob; empty on new writes")
+    cost_tables_version: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=64,
+        description="Cost-table fingerprint when engine defaults were last refreshed",
+    )
 
 
 def persisted_quote_create_from_path(project_id: str, body: PersistedQuoteCreateBody) -> PersistedQuoteCreate:
@@ -103,9 +118,9 @@ def persisted_quote_create_from_path(project_id: str, body: PersistedQuoteCreate
     return PersistedQuoteCreate(project_id=project_id, **body.model_dump(exclude={"changed_by"}))
 
 
-def persisted_quote_create_to_document(data: PersistedQuoteCreate) -> dict[str, Any]:
-    """Insert-ready dict except ``project_id`` (still str) and without ``created_at`` / ``updated_at``."""
-    return data.model_dump()
+def persisted_quote_create_to_mongo_document(data: PersistedQuoteCreate) -> dict[str, Any]:
+    """BSON-ready dict except ``project_id`` (still str) and without ``created_at`` / ``updated_at``."""
+    return data.model_dump(exclude_none=True)
 
 
 class PersistedQuoteUpdateBody(BaseModel):
@@ -121,11 +136,18 @@ class PersistedQuoteUpdateBody(BaseModel):
     universal: dict[str, Any] = Field(default_factory=dict, description="Shared cost-line edits + subtotal override")
     params: dict[str, Any] = Field(default_factory=dict, description="Spec fields: current + defaults")
     breakdown: dict[str, Any] = Field(default_factory=dict, description="Legacy v1 blob; empty on new writes")
+    cost_tables_version: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=64,
+        description="Cost-table fingerprint when engine defaults were last refreshed",
+    )
 
 
 def persisted_quote_update_to_set(data: PersistedQuoteUpdateBody) -> dict[str, Any]:
     """Fields allowed by ``MidnightOilDB.update_persisted_quote``."""
-    return data.model_dump()
+    # Omit unset cost_tables_version so a plain Save (manual line edits) does not clear the stamp.
+    return data.model_dump(exclude_none=True)
 
 
 def persisted_quote_insert_document(

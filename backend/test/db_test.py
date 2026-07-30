@@ -92,6 +92,18 @@ def _reset_test_db(db: MidnightOilDB) -> None:
 def _seed_db(db: MidnightOilDB) -> dict[str, str]:
     """Seed the disposable test database with baseline rows used by the tests."""
     _require_test_db(db)
+    d = db.db
+    # clean collections
+    d.users.delete_many({})
+    d.projects.delete_many({})
+    d.quotes.delete_many({})
+    d.unit_costs.delete_many({})
+    d.standee_static_costs.delete_many({})
+    d.print_blank_ratio.delete_many({})
+    d.suppliers.delete_many({})
+    d.overs.delete_many({})
+    d.packout.delete_many({})
+    d.counters.delete_many({})
 
     # users
     db._execute("INSERT INTO users (username, password_hash) VALUES (?, ?)", ("existing", "pw"))
@@ -247,7 +259,7 @@ class TestDbUserAndProjectMethods(_DbTestCase):
         """Verify project CRUD helpers and owner scoping."""
         db: Any = self.db
 
-        project_id = db.insert_persisted_project(
+        project_id, short_id = db.insert_persisted_project(
             {
                 "owner": "alice",
                 "project_name": "New project",
@@ -256,9 +268,13 @@ class TestDbUserAndProjectMethods(_DbTestCase):
                 "elements": [ELEMENT, {**ELEMENT, "name": "banana"}],
             }
         )
+        self.assertEqual(short_id, "10101")  # seeded "Poster" remints to 10100 first
 
         projects = db.list_projects_by_owner("alice")
         self.assertEqual([project["project_name"] for project in projects], ["New project", "Poster"])
+        self.assertEqual(db.get_project_by_owner(project_id, "alice")["short_id"], "10101")
+        poster = next(p for p in projects if p["project_name"] == "Poster")
+        self.assertEqual(poster["short_id"], "10100")
 
         fetched = db.get_project_by_owner(project_id, "alice")
         self.assertEqual(fetched["project_name"], "New project")
