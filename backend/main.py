@@ -37,8 +37,8 @@ from lib.persisted_project import (
     PersistedProjectUpdateBody,
     complexity_to_str,
     elements_to_persisted,
-    persisted_create_to_mongo_document,
-    persisted_update_to_mongo_set,
+    persisted_create_to_document,
+    persisted_update_to_set,
 )
 from lib.persisted_quote import (
     PersistedQuoteCreateBody,
@@ -308,7 +308,7 @@ async def get_cost_tables_version():
 
 @app.get("/standee-data")
 async def get_standee_data(standee_type: int, data_type: str):
-    """Return a single field from the standee static costs collection based on standee type and requested data_type."""
+    """Return a single field from the standee static costs table based on standee type and requested data_type."""
     type_mapping = {0: "Simple Standee", 1: "Moderate Standee", 2: "Complex Standee"}
     db = _ensure_db()
     standee_data = db.get_standee_data(type_mapping[standee_type], data_type.strip())
@@ -539,7 +539,7 @@ async def create_project(payload: PersistedProjectCreate):
     db = _ensure_db()
     if not db.check_username_exists(payload.owner):
         return JSONResponse(status_code=404, content={"error": "Unknown owner"})
-    doc = persisted_create_to_mongo_document(payload)
+    doc = persisted_create_to_document(payload)
     project_id, short_id = db.insert_persisted_project(doc)
     return JSONResponse(
         status_code=201,

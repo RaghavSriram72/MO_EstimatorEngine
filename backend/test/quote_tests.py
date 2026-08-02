@@ -49,7 +49,10 @@ class TestStaticCostCalculator(unittest.TestCase):
             num_standees=1,
             standee_type=Complexity.SIMPLE,
         )
-        total_cost = project.calculate_cost(Scenario1Input())
+        # calculate_cost returns None and populates the project in place;
+        # the rolled-up figure is the total_cost property.
+        project.calculate_cost(Scenario1Input())
+        total_cost = project.total_cost
 
         print(f"\nPrimate standee static cost breakdown ({project.num_standees} standees):")
         print(f"  Imposition cost:          ${project.imposition_cost or 0:.2f}")
@@ -104,7 +107,10 @@ class TestStaticCostCalculator(unittest.TestCase):
             num_standees=1,
             standee_type=Complexity.MODERATE,
         )
-        total_cost = project.calculate_cost(Scenario4Input())
+        # calculate_cost returns None and populates the project in place;
+        # the rolled-up figure is the total_cost property.
+        project.calculate_cost(Scenario4Input())
+        total_cost = project.total_cost
         print(f"\nSonic standee static cost breakdown ({project.num_standees} standees):")
         print(f"  Imposition cost:          ${project.imposition_cost or 0:.2f}")
         print(f"  Corrugate cost:           ${project.corrugate_cost or 0:.2f}")
@@ -141,7 +147,10 @@ class TestStaticCostCalculator(unittest.TestCase):
             num_standees=1,
             standee_type=Complexity.MODERATE,
         )
-        total_cost = project.calculate_cost(Scenario1Input())
+        # calculate_cost returns None and populates the project in place;
+        # the rolled-up figure is the total_cost property.
+        project.calculate_cost(Scenario1Input())
+        total_cost = project.total_cost
         print(f"\nSinner standee static cost breakdown ({project.num_standees} standees):")
         print(f"  Imposition cost:          ${project.imposition_cost or 0:.2f}")
         print(f"  Corrugate cost:           ${project.corrugate_cost or 0:.2f}")

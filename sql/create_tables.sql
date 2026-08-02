@@ -39,13 +39,24 @@ BEGIN
         project_name   NVARCHAR(512)         NOT NULL,
         num_standees   INT                   NOT NULL,
         standee_type   NVARCHAR(16)          NOT NULL,
-        short_id       CHAR(8)               NULL,  -- 8-digit UI hash of project_id; backfilled on read if NULL
+        short_id       NVARCHAR(16)          NULL,  -- sequential estimate ID shown in the UI (10100, 10101, …); backfilled on read if NULL
         created_at     DATETIME2(3)          NOT NULL CONSTRAINT DF_projects_created_at DEFAULT SYSUTCDATETIME(),
         CONSTRAINT FK_projects_owner FOREIGN KEY (owner) REFERENCES dbo.users (username),
         CONSTRAINT CK_projects_standee_type CHECK (standee_type IN (N'Simple', N'Moderate', N'Complex'))
     );
 
     CREATE INDEX IX_projects_owner ON dbo.projects (owner, project_id DESC);
+END;
+GO
+
+-- Upgrade path: short_id was CHAR(8) in the hash-ID era; widen it for sequential estimate IDs.
+IF EXISTS (
+    SELECT 1 FROM sys.columns c
+    JOIN sys.types t ON c.user_type_id = t.user_type_id
+    WHERE c.object_id = OBJECT_ID(N'dbo.projects') AND c.name = N'short_id' AND t.name = N'char'
+)
+BEGIN
+    ALTER TABLE dbo.projects ALTER COLUMN short_id NVARCHAR(16) NULL;
 END;
 GO
 
@@ -87,6 +98,9 @@ BEGIN
         num_standees        INT                   NOT NULL,
         contribution_margin FLOAT                 NOT NULL CONSTRAINT DF_quotes_contribution_margin DEFAULT 0,
         standee_type        NVARCHAR(16)          NOT NULL,
+        -- Fingerprint of the data-collector cost tables when engine defaults were last
+        -- refreshed; NULL until stamped. Used for stale-estimate detection in the UI.
+        cost_tables_version NVARCHAR(64)          NULL,
         -- Frontend-owned nested state; see backend/lib/persisted_quote.py for shapes.
         scenarios           JSON                  NOT NULL CONSTRAINT DF_quotes_scenarios DEFAULT N'{}',
         universal           JSON                  NOT NULL CONSTRAINT DF_quotes_universal DEFAULT N'{}',
@@ -103,6 +117,26 @@ BEGIN
 
     CREATE INDEX IX_quotes_project ON dbo.quotes (project_id, quote_id DESC);
     CREATE INDEX IX_quotes_owner ON dbo.quotes (owner, quote_id DESC);
+END;
+GO
+
+-- Upgrade path: add the stale-estimate fingerprint column to quotes tables created
+-- before it existed. The backend backfills the values on connect.
+IF COL_LENGTH(N'dbo.quotes', N'cost_tables_version') IS NULL
+BEGIN
+    ALTER TABLE dbo.quotes ADD cost_tables_version NVARCHAR(64) NULL;
+END;
+GO
+
+-- ───────────────────────────── counters ────────────────────────────
+-- Named sequence counters. Row 'project_short_id' holds the last allocated
+-- estimate ID (10100, 10101, …); seeded/reminted by the backend on connect.
+IF OBJECT_ID(N'dbo.counters', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.counters (
+        counter_id NVARCHAR(64) NOT NULL CONSTRAINT PK_counters PRIMARY KEY,
+        seq        BIGINT       NOT NULL
+    );
 END;
 GO
 

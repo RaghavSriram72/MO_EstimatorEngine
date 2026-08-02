@@ -118,8 +118,8 @@ def persisted_quote_create_from_path(project_id: str, body: PersistedQuoteCreate
     return PersistedQuoteCreate(project_id=project_id, **body.model_dump(exclude={"changed_by"}))
 
 
-def persisted_quote_create_to_mongo_document(data: PersistedQuoteCreate) -> dict[str, Any]:
-    """BSON-ready dict except ``project_id`` (still str) and without ``created_at`` / ``updated_at``."""
+def persisted_quote_create_to_document(data: PersistedQuoteCreate) -> dict[str, Any]:
+    """Insert-ready dict except ``project_id`` (still str) and without ``created_at`` / ``updated_at``."""
     return data.model_dump(exclude_none=True)
 
 
