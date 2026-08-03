@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import Dropdown from "@/components/Dropdown";
 import ModuleFooter from "./ModuleFooter";
+import DataCollectorHistoryModal from "./DataCollectorHistoryModal";
 import {
     API_BASE, UnitCostRecord, UnitEditFields,
     unitTypeLabel, formatDate,
@@ -14,6 +15,7 @@ export default function UnitCostsModule() {
     const [editedFields, setEditedFields]   = useState<UnitEditFields | null>(null);
     const [isLoading, setIsLoading]         = useState(false);
     const [isSaving, setIsSaving]           = useState(false);
+    const [historyOpen, setHistoryOpen]     = useState(false);
 
     // GET /unit-costs → load all records when the module mounts
     useEffect(() => {
@@ -79,11 +81,12 @@ export default function UnitCostsModule() {
         if (editedFields.throughput_unit !== undefined && editedFields.throughput_unit !== savedRecord.throughput_unit) changedFields.throughput_unit = editedFields.throughput_unit;
         setIsSaving(true);
         try {
+            const changedBy = localStorage.getItem("username") ?? "";
             // PATCH /unit-costs/:name → save only the changed fields
             await fetch(`${API_BASE}/unit-costs/${savedRecord.name}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(changedFields),
+                body: JSON.stringify({ ...changedFields, changed_by: changedBy }),
             });
             // GET /unit-costs → reload to reflect the new last_updated timestamp
             const data = await fetch(`${API_BASE}/unit-costs`).then((r) => r.json());
@@ -104,12 +107,6 @@ export default function UnitCostsModule() {
             }
         } catch (e) { console.error(e); }
         finally { setIsSaving(false); }
-    }
-
-    function clearSelections() {
-        setSelectedType("");
-        setSelectedName("");
-        setEditedFields(null);
     }
 
     return (
@@ -272,9 +269,20 @@ export default function UnitCostsModule() {
             <ModuleFooter
                 isDirty={hasUnsavedChanges}
                 isSaving={isSaving}
-                onClear={clearSelections}
+                secondaryLabel="HISTORY"
+                onSecondaryAction={() => setHistoryOpen(true)}
+                secondaryDisabled={!savedRecord}
                 onSubmit={() => void saveChanges()}
             />
+
+            {savedRecord && (
+                <DataCollectorHistoryModal
+                    open={historyOpen}
+                    onClose={() => setHistoryOpen(false)}
+                    title={`Unit Cost History — ${savedRecord.display_name}`}
+                    fetchUrl={`/unit-costs/${encodeURIComponent(savedRecord.name)}/history`}
+                />
+            )}
         </>
     );
 }

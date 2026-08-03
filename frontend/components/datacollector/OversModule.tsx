@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import ConfirmAlert from "@/components/ConfirmAlert";
 import ModuleFooter from "./ModuleFooter";
+import DataCollectorHistoryModal from "./DataCollectorHistoryModal";
 import {
     API_BASE, OversRecord, OversEditFields, PendingOversRow,
     formatDate,
@@ -15,6 +16,7 @@ export default function OversModule() {
     const [tierToDelete, setTierToDelete]       = useState<string | null>(null);
     const [isLoading, setIsLoading]             = useState(false);
     const [isSaving, setIsSaving]               = useState(false);
+    const [historyOpen, setHistoryOpen]         = useState(false);
 
     // GET /overs → load all quantity tiers when module mounts
     useEffect(() => {
@@ -79,6 +81,7 @@ export default function OversModule() {
         if (!hasUnsavedChanges) return;
         setIsSaving(true);
         try {
+            const changedBy = localStorage.getItem("username") ?? "";
             // PATCH /overs/:id for each tier whose values changed
             const patches = editBuffer
                 ? savedTiers
@@ -90,7 +93,7 @@ export default function OversModule() {
                         fetch(`${API_BASE}/overs/${t._id}`, {
                             method: "PATCH",
                             headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify(editBuffer[t._id]),
+                            body: JSON.stringify({ ...editBuffer[t._id], changed_by: changedBy }),
                         }),
                     )
                 : [];
@@ -106,6 +109,7 @@ export default function OversModule() {
                             lower_bound: parseInt(row.lower_bound),
                             upper_bound: row.upper_bound === "" ? null : parseInt(row.upper_bound),
                             overs: parseInt(row.overs),
+                            changed_by: changedBy,
                         }),
                     }),
                 );
@@ -122,15 +126,11 @@ export default function OversModule() {
         const id = tierToDelete;
         setTierToDelete(null);
         try {
+            const changedBy = localStorage.getItem("username") ?? "";
             // DELETE /overs/:id → permanently removes the tier
-            await fetch(`${API_BASE}/overs/${id}`, { method: "DELETE" });
+            await fetch(`${API_BASE}/overs/${id}?changed_by=${encodeURIComponent(changedBy)}`, { method: "DELETE" });
             await reloadTiers();
         } catch (e) { console.error(e); }
-    }
-
-    function resetAllEdits() {
-        setEditBuffer(buildEditBuffer(savedTiers));
-        setPendingNewRows([]);
     }
 
     return (
@@ -296,8 +296,16 @@ export default function OversModule() {
             <ModuleFooter
                 isDirty={hasUnsavedChanges}
                 isSaving={isSaving}
-                onClear={resetAllEdits}
+                secondaryLabel="HISTORY"
+                onSecondaryAction={() => setHistoryOpen(true)}
                 onSubmit={() => void saveChanges()}
+            />
+
+            <DataCollectorHistoryModal
+                open={historyOpen}
+                onClose={() => setHistoryOpen(false)}
+                title="Overs History"
+                fetchUrl="/overs/history"
             />
         </>
     );

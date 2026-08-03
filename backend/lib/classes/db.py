@@ -332,6 +332,70 @@ class MidnightOilDB:
         finally:
             cursor.close()
 
+    @staticmethod
+    def _diff_fields(old: dict[str, Any], new: dict[str, Any], fields: list[str]) -> dict[str, Any]:
+        """Return ``{field: {"old": ..., "new": ...}}`` for just the fields that differ."""
+        diff: dict[str, Any] = {}
+        for field in fields:
+            old_val, new_val = old.get(field), new.get(field)
+            if old_val != new_val:
+                diff[field] = {"old": old_val, "new": new_val}
+        return diff
+
+    def _log_data_collector_change(
+        self,
+        table_name: str,
+        record_key: str,
+        record_label: str,
+        change_type: str,
+        changed_by: str,
+        changes: dict[str, Any],
+    ) -> None:
+        """Insert one Data Collector audit row (part of the caller's transaction). No-op if nothing changed."""
+        if not changes:
+            return
+        self._execute(
+            "INSERT INTO data_collector_history (table_name, record_key, record_label, change_type, "
+            "changed_by, changes, created_at) VALUES (?, ?, ?, ?, ?, CAST(? AS NVARCHAR(MAX)), ?)",
+            (
+                table_name,
+                record_key,
+                record_label,
+                change_type,
+                changed_by,
+                json.dumps(changes, default=str),
+                _to_db_datetime(datetime.now(UTC)),
+            ),
+        )
+
+    def get_data_collector_history(self, table_name: str, record_key: str | None = None) -> list[dict[str, Any]]:
+        """Return Data Collector audit entries for one table (optionally one record), newest first."""
+        sql = (
+            "SELECT dc_history_id, record_key, record_label, change_type, changed_by, changes, created_at "
+            "FROM data_collector_history WHERE table_name = ?"
+        )
+        params: tuple = (table_name,)
+        if record_key is not None:
+            sql += " AND record_key = ?"
+            params = (table_name, record_key)
+        sql += " ORDER BY created_at DESC, dc_history_id DESC"
+
+        entries = []
+        for row in self._fetchall(sql, params):
+            created_at = _from_db_datetime(row["created_at"])
+            entries.append(
+                {
+                    "_id": str(row["dc_history_id"]),
+                    "record_key": row["record_key"],
+                    "record_label": row["record_label"],
+                    "change_type": row["change_type"],
+                    "changed_by": row["changed_by"],
+                    "changes": json.loads(row["changes"]) if row["changes"] else {},
+                    "created_at": created_at.isoformat() if isinstance(created_at, datetime) else created_at,
+                }
+            )
+        return entries
+
     def apply_schema(self, script_path: str | os.PathLike) -> None:
         """Run an idempotent T-SQL script (batches separated by ``GO`` lines)."""
         sql_text = Path(script_path).read_text(encoding="utf-8")
@@ -525,7 +589,7 @@ class MidnightOilDB:
         self._execute(
             "INSERT INTO history (project_id, owner, entity_type, quote_id, scenario, change_type, "
             "changed_by, label, snapshot, reverted_from_history_id, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS NVARCHAR(MAX)), ?, ?)",
             (
                 row_project_id,
                 owner,
@@ -799,7 +863,8 @@ class MidnightOilDB:
             "INSERT INTO quotes (project_id, owner, schema_version, quote_name, scenario, num_standees, "
             "contribution_margin, standee_type, cost_tables_version, scenarios, universal, params, "
             "breakdown, created_at, updated_at) "
-            "OUTPUT INSERTED.quote_id VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "OUTPUT INSERTED.quote_id VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, "
+            "CAST(? AS NVARCHAR(MAX)), CAST(? AS NVARCHAR(MAX)), CAST(? AS NVARCHAR(MAX)), CAST(? AS NVARCHAR(MAX)), ?, ?)",
             (
                 int(doc["project_id"]),
                 doc["owner"],
@@ -876,7 +941,7 @@ class MidnightOilDB:
                 values.append(fields[col])
         for col in _QUOTE_JSON_FIELDS:
             if col in fields:
-                assignments.append(f"{col} = ?")
+                assignments.append(f"{col} = CAST(? AS NVARCHAR(MAX))")
                 values.append(json.dumps(fields[col] or {}))
         assignments.append("updated_at = ?")
         values.append(_to_db_datetime(updated_at))
@@ -1129,11 +1194,12 @@ class MidnightOilDB:
         """Return the unit cost for a given cost name and type."""
         return [entry for entry in self._cache["unit_costs"] if entry["type"] == cost_type]
 
-    def update_unit_cost_entry(self, cost_name: str, updates: dict) -> None:
+    def update_unit_cost_entry(self, cost_name: str, updates: dict, changed_by: str) -> None:
         """Update arbitrary fields on a unit cost record, stamping last_updated."""
         if not updates:
             return
         try:
+            before = next((r for r in self._cache["unit_costs"] if r["name"] == cost_name), None)
             assignments = []
             values = []
             for key, value in updates.items():
@@ -1146,6 +1212,11 @@ class MidnightOilDB:
             self._execute(
                 f"UPDATE unit_costs SET {', '.join(assignments)} WHERE name = ?", (*values, cost_name)
             )
+            if before is not None:
+                diff = self._diff_fields(before, updates, list(updates.keys()))
+                self._log_data_collector_change(
+                    "unit_costs", cost_name, before.get("display_name") or cost_name, "update", changed_by, diff
+                )
             self.conn.commit()
             self._load_cache()
         except ValueError:
@@ -1335,6 +1406,7 @@ class MidnightOilDB:
         material_display_name: str,
         unit: str,
         price_breaks: list[dict[str, float]],
+        changed_by: str,
         material_type: str = "",
     ) -> None:
         """Insert or replace a supplier/material record and precompute curve parameters."""
@@ -1343,6 +1415,10 @@ class MidnightOilDB:
         amounts = [row["amount"] for row in ordered_breaks]
         costs = [row["cost"] for row in ordered_breaks]
         curve_params = _fit_supplier_curve(amounts, costs)
+
+        record_key = f"{supplier}|{material}|{material_type}"
+        label = f"{supplier} · {material}" + (f" ({material_type})" if material_type else "")
+        before = self._get_supplier_doc(supplier, material, material_type)
 
         now = _to_db_datetime(datetime.now(UTC))
         existing = self._fetchone(
@@ -1393,6 +1469,28 @@ class MidnightOilDB:
                 "INSERT INTO supplier_price_breaks (supplier_material_id, amount, cost) VALUES (?, ?, ?)",
                 (material_id, price_break["amount"], price_break["cost"]),
             )
+
+        new_price_breaks = [{"amount": b["amount"], "cost": b["cost"]} for b in ordered_breaks]
+        diff: dict[str, Any] = {}
+        if before is None:
+            diff["display_name"] = {"old": None, "new": material_display_name}
+            diff["unit"] = {"old": None, "new": unit}
+            diff["price_breaks"] = {"old": None, "new": new_price_breaks}
+        else:
+            if before.get("material_display_name") != material_display_name:
+                diff["display_name"] = {"old": before.get("material_display_name"), "new": material_display_name}
+            if before.get("unit") != unit:
+                diff["unit"] = {"old": before.get("unit"), "new": unit}
+            old_breaks = sorted(
+                ({"amount": b.get("amount"), "cost": b.get("cost")} for b in before.get("price_breaks", [])),
+                key=lambda b: b["amount"],
+            )
+            if old_breaks != new_price_breaks:
+                diff["price_breaks"] = {"old": old_breaks, "new": new_price_breaks}
+        self._log_data_collector_change(
+            "suppliers", record_key, label, "update" if before is not None else "create", changed_by, diff
+        )
+
         self.conn.commit()
         self._load_cache()
 
@@ -1432,13 +1530,21 @@ class MidnightOilDB:
             records.append(r)
         return records
 
-    def upsert_overs(self, record_id: str | None, lower_bound: int, upper_bound: int | None, overs: int) -> str:
+    @staticmethod
+    def _overs_label(lower_bound: int, upper_bound: int | None) -> str:
+        return f"{lower_bound}–{upper_bound if upper_bound is not None else '∞'}"
+
+    def upsert_overs(
+        self, record_id: str | None, lower_bound: int, upper_bound: int | None, overs: int, changed_by: str
+    ) -> str:
         """Upsert an overs tier record. Inserts a new row when record_id is None."""
         now = _to_db_datetime(datetime.now(UTC))
+        new_fields = {"lower_bound": lower_bound, "upper_bound": upper_bound, "overs": overs}
         if record_id is not None:
             row_id = _parse_id(record_id)
             if row_id is None:
                 raise ValueError(f"Invalid overs record id '{record_id}'")
+            before = next((r for r in self._cache["overs"] if str(r["_id"]) == str(row_id)), None)
             updated = self._execute(
                 "UPDATE overs SET lower_bound = ?, upper_bound = ?, overs = ?, last_updated = ? "
                 "WHERE overs_id = ?",
@@ -1446,22 +1552,38 @@ class MidnightOilDB:
             )
             if updated == 0:
                 raise ValueError(f"Overs record not found for id '{record_id}'")
+            if before is not None:
+                diff = self._diff_fields(before, new_fields, list(new_fields.keys()))
+                self._log_data_collector_change(
+                    "overs", str(row_id), self._overs_label(lower_bound, upper_bound), "update", changed_by, diff
+                )
         else:
             row_id = self._insert_returning_id(
                 "INSERT INTO overs (lower_bound, upper_bound, overs, last_updated) "
                 "OUTPUT INSERTED.overs_id VALUES (?, ?, ?, ?)",
                 (lower_bound, upper_bound, overs, now),
             )
+            diff = {k: {"old": None, "new": v} for k, v in new_fields.items()}
+            self._log_data_collector_change(
+                "overs", str(row_id), self._overs_label(lower_bound, upper_bound), "create", changed_by, diff
+            )
         self.conn.commit()
         self._load_cache()
         return str(row_id)
 
-    def delete_overs(self, record_id: str) -> None:
+    def delete_overs(self, record_id: str, changed_by: str) -> None:
         """Delete an overs tier record by id."""
         row_id = _parse_id(record_id)
         if row_id is None:
             raise ValueError(f"Invalid overs record id '{record_id}'")
+        before = next((r for r in self._cache["overs"] if str(r["_id"]) == str(row_id)), None)
         deleted = self._execute("DELETE FROM overs WHERE overs_id = ?", (row_id,))
+        if deleted > 0 and before is not None:
+            diff = {k: {"old": before.get(k), "new": None} for k in ("lower_bound", "upper_bound", "overs")}
+            self._log_data_collector_change(
+                "overs", str(row_id), self._overs_label(before["lower_bound"], before["upper_bound"]),
+                "delete", changed_by, diff,
+            )
         self.conn.commit()
         if deleted == 0:
             raise ValueError(f"Overs record not found for id '{record_id}'")
@@ -1496,6 +1618,15 @@ class MidnightOilDB:
             records.append(r)
         return records
 
+    @staticmethod
+    def _packout_label(
+        standees_lower_bound: int, standees_upper_bound: int | None,
+        forms_lower_bound: int, forms_upper_bound: int | None, complexity: str,
+    ) -> str:
+        standees = f"{standees_lower_bound}-{standees_upper_bound if standees_upper_bound is not None else '∞'}"
+        forms = f"{forms_lower_bound}-{forms_upper_bound if forms_upper_bound is not None else '∞'}"
+        return f"{complexity} · {standees} standees / {forms} forms"
+
     def upsert_packout(
         self,
         record_id: str | None,
@@ -1505,13 +1636,26 @@ class MidnightOilDB:
         forms_upper_bound: int | None,
         complexity: str,
         packout: int,
+        changed_by: str,
     ) -> str:
         """Upsert a packout tier record. Inserts a new row when record_id is None."""
         now = _to_db_datetime(datetime.now(UTC))
+        new_fields = {
+            "standees_lower_bound": standees_lower_bound,
+            "standees_upper_bound": standees_upper_bound,
+            "forms_lower_bound": forms_lower_bound,
+            "forms_upper_bound": forms_upper_bound,
+            "complexity": complexity,
+            "packout": packout,
+        }
+        label = self._packout_label(
+            standees_lower_bound, standees_upper_bound, forms_lower_bound, forms_upper_bound, complexity
+        )
         if record_id is not None:
             row_id = _parse_id(record_id)
             if row_id is None:
                 raise ValueError(f"Invalid packout record id '{record_id}'")
+            before = next((r for r in self._cache["packout"] if str(r["_id"]) == str(row_id)), None)
             updated = self._execute(
                 "UPDATE packout SET standees_lower_bound = ?, standees_upper_bound = ?, "
                 "forms_lower_bound = ?, forms_upper_bound = ?, complexity = ?, packout = ?, "
@@ -1529,6 +1673,9 @@ class MidnightOilDB:
             )
             if updated == 0:
                 raise ValueError(f"Packout record not found for id '{record_id}'")
+            if before is not None:
+                diff = self._diff_fields(before, new_fields, list(new_fields.keys()))
+                self._log_data_collector_change("packout", str(row_id), label, "update", changed_by, diff)
         else:
             row_id = self._insert_returning_id(
                 "INSERT INTO packout (standees_lower_bound, standees_upper_bound, forms_lower_bound, "
@@ -1544,17 +1691,31 @@ class MidnightOilDB:
                     now,
                 ),
             )
+            diff = {k: {"old": None, "new": v} for k, v in new_fields.items()}
+            self._log_data_collector_change("packout", str(row_id), label, "create", changed_by, diff)
         self.conn.commit()
         self._load_cache()
         return str(row_id)
 
-    def delete_packout(self, record_id: str) -> None:
+    def delete_packout(self, record_id: str, changed_by: str) -> None:
         """Delete a packout tier record by id."""
         row_id = _parse_id(record_id)
         if row_id is None:
             raise ValueError(f"Invalid packout record id '{record_id}'")
 
+        before = next((r for r in self._cache["packout"] if str(r["_id"]) == str(row_id)), None)
         deleted = self._execute("DELETE FROM packout WHERE packout_id = ?", (row_id,))
+        if deleted > 0 and before is not None:
+            fields = (
+                "standees_lower_bound", "standees_upper_bound",
+                "forms_lower_bound", "forms_upper_bound", "complexity", "packout",
+            )
+            diff = {k: {"old": before.get(k), "new": None} for k in fields}
+            label = self._packout_label(
+                before["standees_lower_bound"], before["standees_upper_bound"],
+                before["forms_lower_bound"], before["forms_upper_bound"], before["complexity"],
+            )
+            self._log_data_collector_change("packout", str(row_id), label, "delete", changed_by, diff)
         self.conn.commit()
 
         if deleted == 0:

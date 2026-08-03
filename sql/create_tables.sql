@@ -327,3 +327,24 @@ BEGIN
     CREATE INDEX IX_supplier_price_breaks_material ON dbo.supplier_price_breaks (supplier_material_id, amount);
 END;
 GO
+
+-- ───────────────────────── data_collector_history ──────────────────
+-- Append-only audit trail for edits made in the Data Collector UI (unit_costs,
+-- overs, packout, suppliers). Unlike dbo.history this isn't tied to a project —
+-- it just records what changed, who changed it, and when.
+IF OBJECT_ID(N'dbo.data_collector_history', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.data_collector_history (
+        dc_history_id BIGINT IDENTITY(1, 1) NOT NULL CONSTRAINT PK_data_collector_history PRIMARY KEY,
+        table_name    NVARCHAR(32)  NOT NULL,  -- 'unit_costs' | 'overs' | 'packout' | 'suppliers'
+        record_key    NVARCHAR(256) NOT NULL,  -- natural key of the edited row (see backend/lib/classes/db.py)
+        record_label  NVARCHAR(256) NOT NULL,  -- human-readable label captured at write time
+        change_type   NVARCHAR(16)  NOT NULL,  -- create / update / delete
+        changed_by    NVARCHAR(256) NOT NULL,
+        changes       JSON          NOT NULL,  -- {field: {old, new}, ...}
+        created_at    DATETIME2(3)  NOT NULL CONSTRAINT DF_dc_history_created_at DEFAULT SYSUTCDATETIME()
+    );
+
+    CREATE INDEX IX_dc_history_table_key ON dbo.data_collector_history (table_name, record_key, created_at DESC, dc_history_id DESC);
+END;
+GO

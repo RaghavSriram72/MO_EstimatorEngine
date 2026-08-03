@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo } from "react";
 import Dropdown from "@/components/Dropdown";
 import ConfirmAlert from "@/components/ConfirmAlert";
 import ModuleFooter from "./ModuleFooter";
+import DataCollectorHistoryModal from "./DataCollectorHistoryModal";
 import {
     API_BASE, SupplierMaterial, SupplierDocument, SupplierPriceBreak,
     supplierLabel, formatDate,
@@ -25,6 +26,7 @@ export default function SuppliersModule() {
     const [priceBreakToDelete, setPriceBreakToDelete] = useState<number | null>(null);
     const [isLoading, setIsLoading]                   = useState(false);
     const [isSaving, setIsSaving]                     = useState(false);
+    const [historyOpen, setHistoryOpen]                = useState(false);
 
     const supplierOptions = useMemo(() => supplierNames.map(supplierLabel), [supplierNames]);
     const isPQ = selectedSupplier === "pq";
@@ -123,6 +125,7 @@ export default function SuppliersModule() {
         if (!hasUnsavedChanges || !draftDoc) return;
         setIsSaving(true);
         try {
+            const changedBy = localStorage.getItem("username") ?? "";
             const typeParam = selectedType ? `?material_type=${encodeURIComponent(selectedType)}` : "";
             const base = `${API_BASE}/suppliers/${encodeURIComponent(selectedSupplier)}/${encodeURIComponent(selectedMaterial)}`;
             await fetch(base, {
@@ -133,6 +136,7 @@ export default function SuppliersModule() {
                     unit: draftDoc.unit,
                     price_breaks: draftDoc.price_breaks,
                     material_type: selectedType,
+                    changed_by: changedBy,
                 }),
             });
             const data = await fetch(`${base}${typeParam}`).then((r) => r.json());
@@ -141,14 +145,6 @@ export default function SuppliersModule() {
             setDraftDoc(updatedDoc ? JSON.parse(JSON.stringify(updatedDoc)) : null);
         } catch (e) { console.error(e); }
         finally { setIsSaving(false); }
-    }
-
-    function clearSelections() {
-        setSelectedSupplier("");
-        setSelectedMaterial("");
-        setSelectedType("");
-        setSavedDoc(null);
-        setDraftDoc(null);
     }
 
     return (
@@ -335,9 +331,20 @@ export default function SuppliersModule() {
             <ModuleFooter
                 isDirty={hasUnsavedChanges}
                 isSaving={isSaving}
-                onClear={clearSelections}
+                secondaryLabel="HISTORY"
+                onSecondaryAction={() => setHistoryOpen(true)}
+                secondaryDisabled={!selectedSupplier || !selectedMaterial || (isPQ && !selectedType)}
                 onSubmit={() => void saveChanges()}
             />
+
+            {selectedSupplier && selectedMaterial && (!isPQ || selectedType) && (
+                <DataCollectorHistoryModal
+                    open={historyOpen}
+                    onClose={() => setHistoryOpen(false)}
+                    title={`Supplier History — ${supplierLabel(selectedSupplier)} · ${materials.find((m) => m.material === selectedMaterial)?.display_name ?? selectedMaterial}`}
+                    fetchUrl={`/suppliers/${encodeURIComponent(selectedSupplier)}/${encodeURIComponent(selectedMaterial)}/history${selectedType ? `?material_type=${encodeURIComponent(selectedType)}` : ""}`}
+                />
+            )}
         </>
     );
 }

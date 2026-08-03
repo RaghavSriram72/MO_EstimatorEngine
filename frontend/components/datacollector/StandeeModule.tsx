@@ -132,7 +132,8 @@ export default function StandeeModule() {
             <ModuleFooter
                 isDirty={hasUnsavedChanges}
                 isSaving={isSaving}
-                onClear={clearSelections}
+                secondaryLabel="CLEAR"
+                onSecondaryAction={clearSelections}
                 onSubmit={() => void saveChanges()}
             />
         </>

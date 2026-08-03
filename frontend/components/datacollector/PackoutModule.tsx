@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import ConfirmAlert from "@/components/ConfirmAlert";
 import ModuleFooter from "./ModuleFooter";
+import DataCollectorHistoryModal from "./DataCollectorHistoryModal";
 import { API_BASE, PackoutRecord } from "./shared";
 
 const COMPLEXITIES = ["Simple", "Moderate", "Complex"] as const;
@@ -33,6 +34,11 @@ export default function PackoutModule() {
     // Tracks cost edits: maps a record's database ID to the new cost the user typed
     const [editedCosts, setEditedCosts]                   = useState<Record<string, number>>({});
 
+    // Tracks values typed into cells that have no backing record yet — keyed by
+    // "<standeeKey>::<formsKey>" — so a gap in the matrix can be filled in directly
+    // instead of only being addable via a brand-new "+ ADD ROW" standee range.
+    const [missingCellEdits, setMissingCellEdits]         = useState<Record<string, string>>({});
+
     // Tracks standee range edits: maps the original range key to the new bounds the user typed
     const [editedStandeeRanges, setEditedStandeeRanges]   = useState<Record<string, BoundedRange>>({});
 
@@ -49,6 +55,7 @@ export default function PackoutModule() {
 
     const [isLoading, setIsLoading]                       = useState(false);
     const [isSaving, setIsSaving]                         = useState(false);
+    const [historyOpen, setHistoryOpen]                   = useState(false);
 
     // Fetch all packout tiers from the API when the module first loads
     useEffect(() => {
@@ -67,6 +74,16 @@ export default function PackoutModule() {
         setEditedCosts({});
         setEditedStandeeRanges({});
         setEditedFormsRanges({});
+        setMissingCellEdits({});
+    }
+
+    function missingCellKey(standeeKey: string, formsKey: string): string {
+        return `${standeeKey}::${formsKey}`;
+    }
+
+    // Stores the user's typed value for a cell that has no backing record yet
+    function updateMissingCellEdit(standeeKey: string, formsKey: string, rawValue: string) {
+        setMissingCellEdits((prev) => ({ ...prev, [missingCellKey(standeeKey, formsKey)]: rawValue }));
     }
 
     // Only the tiers that belong to whichever complexity tab is currently active
@@ -213,13 +230,16 @@ export default function PackoutModule() {
         );
     }
 
+    const hasFilledMissingCells = Object.values(missingCellEdits).some((v) => v !== "");
+
     const hasUnsavedChanges =
-        tiersForActiveComplexity.some(recordHasUnsavedChanges) || newRowDrafts.length > 0;
+        tiersForActiveComplexity.some(recordHasUnsavedChanges) || newRowDrafts.length > 0 || hasFilledMissingCells;
 
     async function saveChanges() {
         if (!hasUnsavedChanges) return;
         setIsSaving(true);
         try {
+            const changedBy = localStorage.getItem("username") ?? "";
             // PATCH every existing record that has at least one change
             const patchRequests = tiersForActiveComplexity
                 .filter(recordHasUnsavedChanges)
@@ -227,9 +247,39 @@ export default function PackoutModule() {
                     fetch(`${API_BASE}/packout/${record._id}`, {
                         method: "PATCH",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify(buildSavePayload(record)),
+                        body: JSON.stringify({ ...buildSavePayload(record), changed_by: changedBy }),
                     })
                 );
+
+            // POST one new database record for each previously-empty matrix cell the user filled in
+            const missingCellRequests = uniqueStandeeRanges.flatMap((standeeRange) => {
+                const standeeKey = buildRangeKey(standeeRange.lowerBound, standeeRange.upperBound);
+                const currentStandeeBounds = getCurrentStandeeBounds(standeeRange);
+                return uniqueFormsTiers
+                    .filter((formsTier) => {
+                        const formsKey = buildRangeKey(formsTier.lowerBound, formsTier.upperBound);
+                        if (recordGrid.get(standeeKey)?.get(formsKey)) return false;
+                        const raw = missingCellEdits[missingCellKey(standeeKey, formsKey)];
+                        return raw !== undefined && raw !== "";
+                    })
+                    .map((formsTier) => {
+                        const formsKey = buildRangeKey(formsTier.lowerBound, formsTier.upperBound);
+                        const currentFormsBounds = getCurrentFormsBounds(formsTier);
+                        return fetch(`${API_BASE}/packout`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                standees_lower_bound: currentStandeeBounds.lowerBound,
+                                standees_upper_bound: currentStandeeBounds.upperBound,
+                                forms_lower_bound:    currentFormsBounds.lowerBound,
+                                forms_upper_bound:    currentFormsBounds.upperBound,
+                                complexity:           activeComplexity,
+                                packout:              parseInt(missingCellEdits[missingCellKey(standeeKey, formsKey)]) || 0,
+                                changed_by:           changedBy,
+                            }),
+                        });
+                    });
+            });
 
             // POST one new database record per forms tier for each new row draft
             const postRequests = newRowDrafts
@@ -252,12 +302,13 @@ export default function PackoutModule() {
                                     forms_upper_bound:    formsTier.upperBound,
                                     complexity:           activeComplexity,
                                     packout:              parseInt(draft.costByFormsKey[formsKey]) || 0,
+                                    changed_by:           changedBy,
                                 }),
                             });
                         })
                 );
 
-            await Promise.all([...patchRequests, ...postRequests]);
+            await Promise.all([...patchRequests, ...postRequests, ...missingCellRequests]);
             await fetchAndResetAllEdits();
             setNewRowDrafts([]);
         } catch (error) { console.error(error); }
@@ -270,18 +321,14 @@ export default function PackoutModule() {
         const idsToDelete = pendingDeletionIds;
         setPendingDeletionIds(null);
         try {
+            const changedBy = localStorage.getItem("username") ?? "";
             await Promise.all(
-                idsToDelete.map((id) => fetch(`${API_BASE}/packout/${id}`, { method: "DELETE" }))
+                idsToDelete.map((id) =>
+                    fetch(`${API_BASE}/packout/${id}?changed_by=${encodeURIComponent(changedBy)}`, { method: "DELETE" })
+                )
             );
             await fetchAndResetAllEdits();
         } catch (error) { console.error(error); }
-    }
-
-    function discardAllEdits() {
-        setEditedCosts({});
-        setEditedStandeeRanges({});
-        setEditedFormsRanges({});
-        setNewRowDrafts([]);
     }
 
     // Tailwind class for the small inline bound inputs in row/column headers.
@@ -444,7 +491,23 @@ export default function PackoutModule() {
                                                             </div>
                                                         </div>
                                                     ) : (
-                                                        <div className="border-2 border-dashed border-[#EDEAEA] rounded-md p-1.5 text-center text-[#ABABAB]">—</div>
+                                                        <div className="relative">
+                                                            {!!missingCellEdits[missingCellKey(standeeKey, formsKey)] && (
+                                                                <span className="absolute -top-3.5 left-0 text-[8px] text-[#FFB604] font-bold leading-none">NEW</span>
+                                                            )}
+                                                            <div className={`flex items-center border-2 rounded-md transition-colors focus-within:border-[#FFB604] ${
+                                                                missingCellEdits[missingCellKey(standeeKey, formsKey)] ? "border-[#FFE08A]" : "border-dashed border-[#EDEAEA]"
+                                                            }`}>
+                                                                <span className="pl-2 text-[#B1B3B6] select-none">$</span>
+                                                                <input
+                                                                    type="number" min={0} step={1}
+                                                                    placeholder="—"
+                                                                    value={missingCellEdits[missingCellKey(standeeKey, formsKey)] ?? ""}
+                                                                    onChange={(e) => updateMissingCellEdit(standeeKey, formsKey, e.target.value)}
+                                                                    className="w-full p-1.5 outline-none text-black text-xs bg-transparent"
+                                                                />
+                                                            </div>
+                                                        </div>
                                                     )}
                                                 </td>
                                             );
@@ -533,8 +596,16 @@ export default function PackoutModule() {
             <ModuleFooter
                 isDirty={hasUnsavedChanges}
                 isSaving={isSaving}
-                onClear={discardAllEdits}
+                secondaryLabel="HISTORY"
+                onSecondaryAction={() => setHistoryOpen(true)}
                 onSubmit={() => void saveChanges()}
+            />
+
+            <DataCollectorHistoryModal
+                open={historyOpen}
+                onClose={() => setHistoryOpen(false)}
+                title="Packout History"
+                fetchUrl="/packout/history"
             />
         </>
     );

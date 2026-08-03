@@ -134,12 +134,30 @@ export type SupplierDocument = {
     last_updated: string;
 };
 
+// GET .../history — audit trail entry for a Data Collector edit
+export type DataCollectorHistoryEntry = {
+    _id: string;
+    record_key: string;
+    record_label: string;
+    change_type: "create" | "update" | "delete";
+    changed_by: string;
+    changes: Record<string, { old: unknown; new: unknown }>;
+    created_at: string;
+};
+
 // ── Shared utility functions ───────────────────────────────────────────────
 
 export function formatDate(iso: string): string {
     if (!iso) return "—";
     return new Date(iso).toLocaleDateString("en-US", {
         month: "short", day: "numeric", year: "numeric",
+    });
+}
+
+export function formatDateTime(iso: string): string {
+    if (!iso) return "—";
+    return new Date(iso).toLocaleString("en-US", {
+        month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit",
     });
 }
 

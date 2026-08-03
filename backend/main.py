@@ -333,6 +333,7 @@ class UpdateCostRequest(BaseModel):
     throughput: float | None = None
     throughput_unit: str | None = None
     setup_time: float | None = None
+    changed_by: str = Field(..., min_length=1)
 
 
 @app.get("/standee-static-costs")
@@ -367,12 +368,21 @@ async def update_standee_static_costs(standee_type: str, payload: UpdateStandeeR
 async def update_unit_cost(name: str, payload: UpdateCostRequest):
     """Update fields on a unit cost record. Only fields included in the payload will be updated."""
     db = _ensure_db()
-    updates = {k: v for k, v in payload.model_dump().items() if v is not None}
+    updates = {
+        k: v for k, v in payload.model_dump().items() if v is not None and k != "changed_by"
+    }
     try:
-        db.update_unit_cost_entry(name, updates)
+        db.update_unit_cost_entry(name, updates, payload.changed_by)
         return {"message": "Updated successfully"}
     except ValueError as e:
         return JSONResponse(status_code=404, content={"error": str(e)})
+
+
+@app.get("/unit-costs/{name}/history")
+async def get_unit_cost_history(name: str):
+    """Return the audit trail for one unit cost record, newest first."""
+    db = _ensure_db()
+    return {"data": db.get_data_collector_history("unit_costs", name)}
 
 
 @app.get("/overs")
@@ -388,22 +398,23 @@ class UpdateOversRequest(BaseModel):
     lower_bound: int
     upper_bound: int | None
     overs: int
+    changed_by: str = Field(..., min_length=1)
 
 
 @app.post("/overs")
 async def add_overs(payload: UpdateOversRequest):
     """Insert a new overs tier record."""
     db = _ensure_db()
-    new_id = db.upsert_overs(None, payload.lower_bound, payload.upper_bound, payload.overs)
+    new_id = db.upsert_overs(None, payload.lower_bound, payload.upper_bound, payload.overs, payload.changed_by)
     return {"message": "Created successfully", "id": new_id}
 
 
 @app.delete("/overs/{record_id}")
-async def delete_overs(record_id: str):
+async def delete_overs(record_id: str, changed_by: str = Query(..., min_length=1)):
     """Delete an overs tier record by id."""
     db = _ensure_db()
     try:
-        db.delete_overs(record_id)
+        db.delete_overs(record_id, changed_by)
         return {"message": "Deleted successfully"}
     except ValueError as e:
         return JSONResponse(status_code=404, content={"error": str(e)})
@@ -414,10 +425,17 @@ async def update_overs(record_id: str, payload: UpdateOversRequest):
     """Upsert lower_bound, upper_bound, and overs percentage for a tier."""
     db = _ensure_db()
     try:
-        db.upsert_overs(record_id, payload.lower_bound, payload.upper_bound, payload.overs)
+        db.upsert_overs(record_id, payload.lower_bound, payload.upper_bound, payload.overs, payload.changed_by)
         return {"message": "Updated successfully"}
     except ValueError as e:
         return JSONResponse(status_code=404, content={"error": str(e)})
+
+
+@app.get("/overs/history")
+async def get_overs_history():
+    """Return the audit trail for the overs table (whole-table history), newest first."""
+    db = _ensure_db()
+    return {"data": db.get_data_collector_history("overs")}
 
 
 @app.get("/packout")
@@ -436,6 +454,7 @@ class UpdatePackoutRequest(BaseModel):
     forms_upper_bound: int | None
     complexity: str
     packout: int
+    changed_by: str = Field(..., min_length=1)
 
 
 @app.post("/packout")
@@ -450,16 +469,17 @@ async def add_packout(payload: UpdatePackoutRequest):
         payload.forms_upper_bound,
         payload.complexity,
         payload.packout,
+        payload.changed_by,
     )
     return {"message": "Created successfully", "id": new_id}
 
 
 @app.delete("/packout/{record_id}")
-async def delete_packout(record_id: str):
+async def delete_packout(record_id: str, changed_by: str = Query(..., min_length=1)):
     """Delete a packout tier record by id."""
     db = _ensure_db()
     try:
-        db.delete_packout(record_id)
+        db.delete_packout(record_id, changed_by)
         return {"message": "Deleted successfully"}
     except ValueError as e:
         return JSONResponse(status_code=404, content={"error": str(e)})
@@ -478,10 +498,18 @@ async def update_packout(record_id: str, payload: UpdatePackoutRequest):
             payload.forms_upper_bound,
             payload.complexity,
             payload.packout,
+            payload.changed_by,
         )
         return {"message": "Updated successfully"}
     except ValueError as e:
         return JSONResponse(status_code=404, content={"error": str(e)})
+
+
+@app.get("/packout/history")
+async def get_packout_history():
+    """Return the audit trail for the packout table (whole-table history), newest first."""
+    db = _ensure_db()
+    return {"data": db.get_data_collector_history("packout")}
 
 
 @app.post("/refresh-cache")
@@ -520,6 +548,7 @@ class UpdateSupplierMaterialRequest(BaseModel):
     price_breaks: list[dict[str, float]]
     display_name: str
     material_type: str = ""
+    changed_by: str = Field(..., min_length=1)
 
 
 @app.patch("/suppliers/{supplier}/{material}")
@@ -527,10 +556,26 @@ async def update_supplier_material(supplier: str, material: str, payload: Update
     """Update the unit or cost fields for a supplier/material document."""
     db = _ensure_db()
     try:
-        db.upsert_supplier_material(supplier, material, payload.display_name, payload.unit, payload.price_breaks, payload.material_type)
+        db.upsert_supplier_material(
+            supplier,
+            material,
+            payload.display_name,
+            payload.unit,
+            payload.price_breaks,
+            payload.changed_by,
+            material_type=payload.material_type,
+        )
         return {"message": "Updated successfully"}
     except ValueError as e:
         return JSONResponse(status_code=404, content={"error": str(e)})
+
+
+@app.get("/suppliers/{supplier}/{material}/history")
+async def get_supplier_material_history(supplier: str, material: str, material_type: str = Query("")):
+    """Return the audit trail for one supplier/material document, newest first."""
+    db = _ensure_db()
+    record_key = f"{supplier}|{material}|{material_type}"
+    return {"data": db.get_data_collector_history("suppliers", record_key)}
 
 
 @app.post("/create-project")
