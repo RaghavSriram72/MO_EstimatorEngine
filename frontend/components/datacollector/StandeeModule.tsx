@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import EditableValueBox from "@/components/EditableValueBox";
 import ModuleFooter from "./ModuleFooter";
+import DataCollectorHistoryModal from "./DataCollectorHistoryModal";
 import {
     API_BASE, StandeeRecord,
     STANDEE_TYPES, formatFieldLabel, standeeNumericFields,
@@ -13,6 +14,7 @@ export default function StandeeModule() {
     const [editedFields, setEditedFields]   = useState<Record<string, number> | null>(null);
     const [isLoading, setIsLoading]         = useState(false);
     const [isSaving, setIsSaving]           = useState(false);
+    const [historyOpen, setHistoryOpen]     = useState(false);
 
     // GET /standee-static-costs?standee_type=... → load when a type is selected
     useEffect(() => {
@@ -49,13 +51,14 @@ export default function StandeeModule() {
         });
         setIsSaving(true);
         try {
+            const changedBy = localStorage.getItem("username") ?? "";
             // PATCH /standee-static-costs?standee_type=... → save changed numeric fields
             await fetch(
                 `${API_BASE}/standee-static-costs?standee_type=${encodeURIComponent(standeeType)}`,
                 {
                     method: "PATCH",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ updates: changedFields }),
+                    body: JSON.stringify({ updates: changedFields, changed_by: changedBy }),
                 },
             );
             // GET /standee-static-costs?standee_type=... → reload to confirm saved values
@@ -69,12 +72,6 @@ export default function StandeeModule() {
             setEditedFields(edits);
         } catch (e) { console.error(e); }
         finally { setIsSaving(false); }
-    }
-
-    function clearSelections() {
-        setStandeeType("");
-        setSavedRecord(null);
-        setEditedFields(null);
     }
 
     return (
@@ -132,10 +129,20 @@ export default function StandeeModule() {
             <ModuleFooter
                 isDirty={hasUnsavedChanges}
                 isSaving={isSaving}
-                secondaryLabel="CLEAR"
-                onSecondaryAction={clearSelections}
+                secondaryLabel="HISTORY"
+                onSecondaryAction={() => setHistoryOpen(true)}
+                secondaryDisabled={!savedRecord}
                 onSubmit={() => void saveChanges()}
             />
+
+            {savedRecord && (
+                <DataCollectorHistoryModal
+                    open={historyOpen}
+                    onClose={() => setHistoryOpen(false)}
+                    title={`Standee History — ${savedRecord.standee_type}`}
+                    fetchUrl={`/standee-static-costs/history?standee_type=${encodeURIComponent(savedRecord.standee_type)}`}
+                />
+            )}
         </>
     );
 }

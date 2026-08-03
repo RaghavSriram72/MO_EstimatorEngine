@@ -1274,11 +1274,14 @@ class MidnightOilDB:
         else:
             raise ValueError(f"Data field '{data_field}' not found for standee category '{standee_category}'")
 
-    def update_standee_record(self, standee_category: str, updates: dict) -> None:
+    def update_standee_record(self, standee_category: str, updates: dict, changed_by: str) -> None:
         """Update arbitrary numeric fields on a standee static cost record."""
         if not updates:
             return
         try:
+            before = next(
+                (r for r in self._cache["standee_static_costs"] if r["standee_type"] == standee_category), None
+            )
             assignments = []
             values = []
             for key, value in updates.items():
@@ -1290,6 +1293,11 @@ class MidnightOilDB:
                 f"UPDATE standee_static_costs SET {', '.join(assignments)} WHERE standee_type = ?",
                 (*values, standee_category),
             )
+            if before is not None:
+                diff = self._diff_fields(before, updates, list(updates.keys()))
+                self._log_data_collector_change(
+                    "standee_static_costs", standee_category, standee_category, "update", changed_by, diff
+                )
             self.conn.commit()
             self._load_cache()
         except ValueError:

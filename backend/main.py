@@ -351,6 +351,7 @@ class UpdateStandeeRequest(BaseModel):
     """Payload for updating standee static cost fields. Only changed fields need to be sent."""
 
     updates: dict[str, float]
+    changed_by: str = Field(..., min_length=1)
 
 
 @app.patch("/standee-static-costs")
@@ -358,10 +359,17 @@ async def update_standee_static_costs(standee_type: str, payload: UpdateStandeeR
     """Update numeric fields on a standee static cost record."""
     db = _ensure_db()
     try:
-        db.update_standee_record(standee_type, payload.updates)
+        db.update_standee_record(standee_type, payload.updates, payload.changed_by)
         return {"message": "Updated successfully"}
     except ValueError as e:
         return JSONResponse(status_code=404, content={"error": str(e)})
+
+
+@app.get("/standee-static-costs/history")
+async def get_standee_static_costs_history(standee_type: str):
+    """Return the audit trail for one standee static cost record, newest first."""
+    db = _ensure_db()
+    return {"data": db.get_data_collector_history("standee_static_costs", standee_type)}
 
 
 @app.patch("/unit-costs/{name}")
