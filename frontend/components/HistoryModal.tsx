@@ -620,7 +620,7 @@ export default function HistoryModal({ open, onClose, projectId, owner, onRevert
                         type="button"
                         onClick={onClose}
                         aria-label="Close history"
-                        className="shrink-0 text-[#B1B3B6] hover:text-[#000005] text-lg font-black leading-none px-1"
+                        className="cursor-pointer shrink-0 text-[#B1B3B6] hover:text-red-500 text-3xl font-black leading-none px-1 transition-colors duration-150"
                     >
                         ×
                     </button>

@@ -815,8 +815,9 @@ async def update_project(
         return JSONResponse(status_code=404, content={"error": "Unknown owner"})
     if not db.check_username_exists(changed_by):
         return JSONResponse(status_code=404, content={"error": "Unknown changed_by user"})
-    if err := _require_owner_or_admin(db, changed_by, owner):
-        return err
+    # Intentionally not owner-or-admin gated: editing project/quote details is left open to any
+    # signed-in user (matches the original design), since every change is attributed and logged
+    # in dbo.history via `changed_by`. Rename, delete, and revert stay owner-or-admin only.
     fields = persisted_update_to_set(payload)
     if not db.update_persisted_project(project_id, owner, fields, changed_by=changed_by, change_type="update"):
         return JSONResponse(status_code=404, content={"error": "Project not found"})
