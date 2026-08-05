@@ -23,9 +23,23 @@ BEGIN
         user_id       INT IDENTITY(1, 1) NOT NULL CONSTRAINT PK_users PRIMARY KEY,
         username      NVARCHAR(256)      NOT NULL,
         password_hash NVARCHAR(512)      NOT NULL,
+        role          NVARCHAR(20)       NOT NULL CONSTRAINT DF_users_role DEFAULT N'user',
         created_at    DATETIME2(3)       NOT NULL CONSTRAINT DF_users_created_at DEFAULT SYSUTCDATETIME(),
-        CONSTRAINT UQ_users_username UNIQUE (username)
+        CONSTRAINT UQ_users_username UNIQUE (username),
+        CONSTRAINT CK_users_role CHECK (role IN (N'admin', N'user'))
     );
+END;
+GO
+
+-- Upgrade path: add role to users tables created before roles existed. Existing
+-- accounts default to 'user' — promote the first admin manually after migrating:
+--   UPDATE dbo.users SET role = 'admin' WHERE username = '<you>';
+IF COL_LENGTH(N'dbo.users', N'role') IS NULL
+BEGIN
+    ALTER TABLE dbo.users ADD role NVARCHAR(20) NOT NULL CONSTRAINT DF_users_role DEFAULT N'user' WITH VALUES;
+    -- EXEC defers compilation to runtime so this sees the column ADD TABLE just committed above —
+    -- referencing it directly here would fail since the whole batch is bound together at compile time.
+    EXEC('ALTER TABLE dbo.users ADD CONSTRAINT CK_users_role CHECK (role IN (N''admin'', N''user''))');
 END;
 GO
 

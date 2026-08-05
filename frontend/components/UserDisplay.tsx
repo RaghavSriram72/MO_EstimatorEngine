@@ -2,17 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function UserDisplay() {
     const router = useRouter();
+    const { username: authUsername, signOut } = useAuth();
+    const username = (authUsername ?? "Guest").toUpperCase();
     const [isOpen, setIsOpen] = useState(false);
-    const [username, setUsername] = useState("Guest");
     const containerRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        const stored = localStorage.getItem("username");
-        if (stored) setUsername(stored.toUpperCase());
-    }, []);
 
     useEffect(() => {
         function handleClickOutside(e: MouseEvent) {
@@ -25,7 +22,7 @@ export default function UserDisplay() {
     }, []);
 
     const handleSignOut = () => {
-        localStorage.removeItem("username");
+        signOut();
         setIsOpen(false);
         router.push("/sign-in");
     };

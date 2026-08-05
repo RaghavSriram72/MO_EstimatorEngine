@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Alert from "@/components/Alert";
 import { API_BASE } from "@/lib/config";
+import { useAuth } from "@/contexts/AuthContext";
 
 const ALERT_DURATION_MS = 1500;
 
@@ -21,6 +22,7 @@ const EyeIcon = ({ show }: { show: boolean }) => show ? (
 
 export default function SignIn() {
     const router = useRouter();
+    const { signIn } = useAuth();
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
@@ -42,10 +44,11 @@ export default function SignIn() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ username, password }),
-        }).then((response) => {
+        }).then(async (response) => {
             if (response.ok) {
+                const data = await response.json().catch(() => ({}));
                 triggerAlert("Sign-in successful!", 0);
-                localStorage.setItem("username", username);
+                signIn(username, data.role === "admin" ? "admin" : "user");
                 setTimeout(() => router.push("/quoteEngine"), ALERT_DURATION_MS + 800);
             } else {
                 triggerAlert("Invalid username or password", 1);

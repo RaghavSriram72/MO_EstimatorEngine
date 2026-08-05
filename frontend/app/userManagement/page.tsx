@@ -2,20 +2,23 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Header from "@/components/Header";
-import Inputter from "@/pages/Inputter";
+import UserManagement from "@/pages/UserManagement";
 import { useAuth } from "@/contexts/AuthContext";
 
-export default function QuoteEnginePage() {
+export default function UserManagementPage() {
     const router = useRouter();
-    const { isAuthenticated } = useAuth();
+    const { isAuthenticated, isAdmin } = useAuth();
     useEffect(() => {
-        if (!isAuthenticated) router.replace("/sign-in");
-    }, [isAuthenticated, router]);
+        if (!isAuthenticated) { router.replace("/sign-in"); return; }
+        if (!isAdmin) router.replace("/quoteEngine");
+    }, [isAuthenticated, isAdmin, router]);
+
+    if (!isAuthenticated || !isAdmin) return null;
 
     return (
         <div className="flex flex-col h-screen w-full bg-white" style={{ fontFamily: "'Proxima Nova', sans-serif" }}>
             <Header />
-            <Inputter />
+            <UserManagement />
         </div>
     );
 }

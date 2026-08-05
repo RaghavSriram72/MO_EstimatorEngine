@@ -43,6 +43,7 @@ const IconCopy = () => (
 type Props = {
     activeProjectId: string | null;
     currentUser: string | null;
+    isAdmin?: boolean;
     projects: ProjectSummary[];
     hasProjects: boolean;
     isLoading: boolean;
@@ -59,6 +60,7 @@ type Props = {
 export default function ProjectSidebar({
     activeProjectId,
     currentUser,
+    isAdmin = false,
     projects,
     hasProjects,
     isLoading,
@@ -146,7 +148,7 @@ export default function ProjectSidebar({
                 {projects.map((p) => {
                     const isActive  = activeProjectId === p._id;
                     const isEditing = editingId === p._id;
-                    const isOwner   = !!currentUser && p.owner === currentUser;
+                    const isOwner   = (!!currentUser && p.owner === currentUser) || isAdmin;
                     const isStale   = !!p.costsStale;
                     return (
                         <div
@@ -235,7 +237,7 @@ export default function ProjectSidebar({
                             <button
                                 type="button"
                                 disabled={!isOwner}
-                                title={isOwner ? "Edit Project" : "Only the owner can rename this project"}
+                                title={isOwner ? "Edit Project" : "Only the owner or an admin can rename this project"}
                                 aria-label={`Rename project ${p.project_name || "Untitled"}`}
                                 onClick={(e) => { e.stopPropagation(); if (!isOwner) return; isEditing ? cancelEdit() : startEdit(p._id, p.project_name || "Untitled"); }}
                                 className={`shrink-0 w-7 flex items-center justify-center border-l border-[#F0F0F0] transition-colors ${
@@ -253,7 +255,7 @@ export default function ProjectSidebar({
                             <button
                                 type="button"
                                 disabled={!isOwner}
-                                title={isOwner ? "Delete Project" : "Only the owner can delete this project"}
+                                title={isOwner ? "Delete Project" : "Only the owner or an admin can delete this project"}
                                 aria-label={`Delete project ${p.project_name || "Untitled"}`}
                                 onClick={(e) => { e.stopPropagation(); if (!isOwner) return; setPendingDelete({ id: p._id, label: p.project_name || "Untitled" }); }}
                                 className={`shrink-0 w-7 flex items-center justify-center border-l border-[#F0F0F0] transition-colors ${

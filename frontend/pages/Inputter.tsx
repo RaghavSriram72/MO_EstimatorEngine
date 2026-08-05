@@ -9,6 +9,7 @@ import ProjectSidebar, { type ProjectSummary } from "@/components/inputter/Proje
 // import QuotesSidebar, { type SavedQuoteListItem } from "@/components/inputter/QuotesSidebar";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { API_BASE } from "@/lib/config";
+import { useAuth } from "@/contexts/AuthContext";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -369,11 +370,8 @@ export default function Inputter() {
     const [needsRecalc, setNeedsRecalc]                 = useState(false);
     const [toast, setToast]                             = useState<{ message: string; type: "save" | "delete" } | null>(null);
     const [toastVisible, setToastVisible]               = useState(false);
-    const [currentUser, setCurrentUser]                 = useState<string | null>(null);
-
-    useEffect(() => {
-        setCurrentUser(localStorage.getItem("username"));
-    }, []);
+    const { username: authUsername, isAdmin } = useAuth();
+    const currentUser = authUsername;
 
     // Slides the toast in from the top, then fades it out after 2.5 s
     useEffect(() => {
@@ -517,7 +515,7 @@ export default function Inputter() {
         const fromList = projectList.find((p) => p._id === projectId)?.owner;
         if (fromList) return fromList;
         if (activeProjectId === projectId && activeProjectOwner) return activeProjectOwner;
-        return typeof window !== "undefined" ? localStorage.getItem("username") : null;
+        return authUsername;
     }
 
     // ── Project actions ────────────────────────────────────────────────────
@@ -548,7 +546,7 @@ export default function Inputter() {
 
     // POST /create-project  or  PATCH /projects/:id  → save current form to the database
     async function saveCurrentProject(): Promise<{ success: boolean; projectId?: string; shortId?: string; errorMessage?: string }> {
-        const owner = localStorage.getItem("username");
+        const owner = authUsername;
         if (!owner?.trim()) return { success: false, errorMessage: "Not signed in" };
         if (!canCalculate)  return { success: false, errorMessage: "Add standees and at least one element" };
         const num        = standeeCount as number;
@@ -668,15 +666,15 @@ export default function Inputter() {
     async function deleteProject(projectId: string, projectLabel: string) {
         const owner = ownerForProject(projectId);
         if (!owner) return;
-        const currentUser = typeof window !== "undefined" ? localStorage.getItem("username")?.trim() : null;
-        if (!currentUser || currentUser !== owner) {
-            setProjectListError("Only the project owner can delete this project");
+        const actingUser = authUsername?.trim() ?? null;
+        if (!actingUser || (actingUser !== owner && !isAdmin)) {
+            setProjectListError("Only the project owner or an admin can delete this project");
             return;
         }
         setProjectListError(null);
         try {
             const res = await fetch(
-                `${API_BASE}/projects/${encodeURIComponent(projectId)}?owner=${encodeURIComponent(owner)}`,
+                `${API_BASE}/projects/${encodeURIComponent(projectId)}?owner=${encodeURIComponent(owner)}&requester=${encodeURIComponent(actingUser)}`,
                 { method: "DELETE" },
             );
             const data = await res.json().catch(() => ({}));
@@ -750,7 +748,7 @@ export default function Inputter() {
     // project, fires all 5 scenarios, and auto-saves a new quote.
     async function handleContinue() {
         if (!canCalculate || isSavingBeforeContinue) return;
-        const owner = typeof window !== "undefined" ? localStorage.getItem("username")?.trim() : null;
+        const owner = authUsername?.trim() ?? null;
         // Quotes are scoped to the project's owner, which can differ from the signed-in user.
         const projectOwner = activeProjectOwner ?? owner;
         let projectId = activeProjectId;
@@ -877,7 +875,7 @@ export default function Inputter() {
     // "Save" button — saves without generating a quote
     async function handleSave() {
         if (!canCalculate) return;
-        if (!localStorage.getItem("username")?.trim()) return;
+        if (!authUsername?.trim()) return;
         const r = await saveCurrentProject();
         if (r.success) {
             if (isDirty) { setIsDirty(false); setNeedsRecalc(true); }
@@ -890,14 +888,14 @@ export default function Inputter() {
     async function renameProject(projectId: string, newName: string) {
         const owner = ownerForProject(projectId);
         if (!owner) return;
-        const currentUser = typeof window !== "undefined" ? localStorage.getItem("username")?.trim() : null;
-        if (!currentUser || currentUser !== owner) {
-            setProjectListError("Only the project owner can rename this project");
+        const actingUser = authUsername?.trim() ?? null;
+        if (!actingUser || (actingUser !== owner && !isAdmin)) {
+            setProjectListError("Only the project owner or an admin can rename this project");
             return;
         }
         try {
             const res = await fetch(
-                `${API_BASE}/projects/${encodeURIComponent(projectId)}/rename?owner=${encodeURIComponent(owner)}&changed_by=${encodeURIComponent(currentUser)}`,
+                `${API_BASE}/projects/${encodeURIComponent(projectId)}/rename?owner=${encodeURIComponent(owner)}&changed_by=${encodeURIComponent(actingUser)}`,
                 {
                     method: "PATCH",
                     headers: { "Content-Type": "application/json" },
@@ -918,7 +916,7 @@ export default function Inputter() {
     // signed-in user, with a fresh (empty) history of its own.
     async function duplicateProject(projectId: string, projectLabel: string) {
         const sourceOwner = ownerForProject(projectId);
-        const newOwner = typeof window !== "undefined" ? localStorage.getItem("username")?.trim() : null;
+        const newOwner = authUsername?.trim() ?? null;
         if (!sourceOwner || !newOwner) return;
         setProjectListError(null);
         try {
@@ -1028,12 +1026,11 @@ export default function Inputter() {
     // estimator form and persist it to the project so the sidebar stays accurate.
     async function handleActiveQuoteNumStandeesCommitted(numStandees: number) {
         setStandeeCount(numStandees);
-        const currentUser = localStorage.getItem("username");
-        const owner = activeProjectOwner ?? currentUser;
-        if (!owner?.trim() || !currentUser?.trim() || !activeProjectId) return;
+        const owner = activeProjectOwner ?? authUsername;
+        if (!owner?.trim() || !authUsername?.trim() || !activeProjectId) return;
         try {
             const res = await fetch(
-                `${API_BASE}/projects/${encodeURIComponent(activeProjectId)}?owner=${encodeURIComponent(owner)}&changed_by=${encodeURIComponent(currentUser)}`,
+                `${API_BASE}/projects/${encodeURIComponent(activeProjectId)}?owner=${encodeURIComponent(owner)}&changed_by=${encodeURIComponent(authUsername)}`,
                 {
                     method: "PATCH",
                     headers: { "Content-Type": "application/json" },
@@ -1118,7 +1115,7 @@ export default function Inputter() {
                     initialContributionMargin={activeQuoteContributionMargin}
                     persistedQuoteId={activePersistedQuoteId}
                     persistedState={activePersistedQuoteState}
-                    quoteOwner={activeProjectOwner ?? (typeof window !== "undefined" ? localStorage.getItem("username") : null)}
+                    quoteOwner={activeProjectOwner ?? authUsername}
                     onBack={clearActiveQuote}
                     onNumStandeesChange={handleActiveQuoteNumStandeesChange}
                     onNumStandeesCommitted={(n) => void handleActiveQuoteNumStandeesCommitted(n)}
@@ -1139,7 +1136,7 @@ export default function Inputter() {
                 open={historyModalOpen}
                 onClose={() => setHistoryModalOpen(false)}
                 projectId={activeProjectId}
-                owner={activeProjectOwner ?? (typeof window !== "undefined" ? localStorage.getItem("username") ?? "" : "")}
+                owner={activeProjectOwner ?? authUsername ?? ""}
                 onReverted={(entityType, label) => {
                     if (entityType === "project") void loadProject(activeProjectId);
                     showToast(`Reverted ${label}`, "save");
@@ -1151,6 +1148,7 @@ export default function Inputter() {
             <ProjectSidebar
                 activeProjectId={activeProjectId}
                 currentUser={currentUser}
+                isAdmin={isAdmin}
                 projects={filteredProjects}
                 hasProjects={projectList.length > 0}
                 isLoading={projectListLoading}

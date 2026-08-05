@@ -95,6 +95,24 @@ def _verify_password(password: str, stored_hash: str) -> bool:
     except (ValueError, TypeError):
         return False
 
+
+def _require_admin(db, requester: str) -> JSONResponse | None:
+    """Return an error response if ``requester`` isn't a known admin account, else None."""
+    role = db.get_user_role(requester)
+    if role is None:
+        return JSONResponse(status_code=404, content={"error": "Unknown requester"})
+    if role != "admin":
+        return JSONResponse(status_code=403, content={"error": "Admin access required"})
+    return None
+
+
+def _require_owner_or_admin(db, requester: str, owner: str) -> JSONResponse | None:
+    """Return an error response unless ``requester`` is ``owner`` or a known admin."""
+    if requester == owner:
+        return None
+    return _require_admin(db, requester)
+
+
 async def root():
     """Simple root endpoint to verify the server is running."""
     return {"message": "Hello from FastAPI"}
@@ -358,6 +376,8 @@ class UpdateStandeeRequest(BaseModel):
 async def update_standee_static_costs(standee_type: str, payload: UpdateStandeeRequest):
     """Update numeric fields on a standee static cost record."""
     db = _ensure_db()
+    if err := _require_admin(db, payload.changed_by):
+        return err
     try:
         db.update_standee_record(standee_type, payload.updates, payload.changed_by)
         return {"message": "Updated successfully"}
@@ -376,6 +396,8 @@ async def get_standee_static_costs_history(standee_type: str):
 async def update_unit_cost(name: str, payload: UpdateCostRequest):
     """Update fields on a unit cost record. Only fields included in the payload will be updated."""
     db = _ensure_db()
+    if err := _require_admin(db, payload.changed_by):
+        return err
     updates = {
         k: v for k, v in payload.model_dump().items() if v is not None and k != "changed_by"
     }
@@ -413,6 +435,8 @@ class UpdateOversRequest(BaseModel):
 async def add_overs(payload: UpdateOversRequest):
     """Insert a new overs tier record."""
     db = _ensure_db()
+    if err := _require_admin(db, payload.changed_by):
+        return err
     new_id = db.upsert_overs(None, payload.lower_bound, payload.upper_bound, payload.overs, payload.changed_by)
     return {"message": "Created successfully", "id": new_id}
 
@@ -421,6 +445,8 @@ async def add_overs(payload: UpdateOversRequest):
 async def delete_overs(record_id: str, changed_by: str = Query(..., min_length=1)):
     """Delete an overs tier record by id."""
     db = _ensure_db()
+    if err := _require_admin(db, changed_by):
+        return err
     try:
         db.delete_overs(record_id, changed_by)
         return {"message": "Deleted successfully"}
@@ -432,6 +458,8 @@ async def delete_overs(record_id: str, changed_by: str = Query(..., min_length=1
 async def update_overs(record_id: str, payload: UpdateOversRequest):
     """Upsert lower_bound, upper_bound, and overs percentage for a tier."""
     db = _ensure_db()
+    if err := _require_admin(db, payload.changed_by):
+        return err
     try:
         db.upsert_overs(record_id, payload.lower_bound, payload.upper_bound, payload.overs, payload.changed_by)
         return {"message": "Updated successfully"}
@@ -469,6 +497,8 @@ class UpdatePackoutRequest(BaseModel):
 async def add_packout(payload: UpdatePackoutRequest):
     """Insert a new packout tier record."""
     db = _ensure_db()
+    if err := _require_admin(db, payload.changed_by):
+        return err
     new_id = db.upsert_packout(
         None,
         payload.standees_lower_bound,
@@ -486,6 +516,8 @@ async def add_packout(payload: UpdatePackoutRequest):
 async def delete_packout(record_id: str, changed_by: str = Query(..., min_length=1)):
     """Delete a packout tier record by id."""
     db = _ensure_db()
+    if err := _require_admin(db, changed_by):
+        return err
     try:
         db.delete_packout(record_id, changed_by)
         return {"message": "Deleted successfully"}
@@ -497,6 +529,8 @@ async def delete_packout(record_id: str, changed_by: str = Query(..., min_length
 async def update_packout(record_id: str, payload: UpdatePackoutRequest):
     """Update all fields on an existing packout tier record."""
     db = _ensure_db()
+    if err := _require_admin(db, payload.changed_by):
+        return err
     try:
         db.upsert_packout(
             record_id,
@@ -563,6 +597,8 @@ class UpdateSupplierMaterialRequest(BaseModel):
 async def update_supplier_material(supplier: str, material: str, payload: UpdateSupplierMaterialRequest):
     """Update the unit or cost fields for a supplier/material document."""
     db = _ensure_db()
+    if err := _require_admin(db, payload.changed_by):
+        return err
     try:
         db.upsert_supplier_material(
             supplier,
@@ -779,6 +815,8 @@ async def update_project(
         return JSONResponse(status_code=404, content={"error": "Unknown owner"})
     if not db.check_username_exists(changed_by):
         return JSONResponse(status_code=404, content={"error": "Unknown changed_by user"})
+    if err := _require_owner_or_admin(db, changed_by, owner):
+        return err
     fields = persisted_update_to_set(payload)
     if not db.update_persisted_project(project_id, owner, fields, changed_by=changed_by, change_type="update"):
         return JSONResponse(status_code=404, content={"error": "Project not found"})
@@ -804,6 +842,8 @@ async def rename_project(
         return JSONResponse(status_code=404, content={"error": "Unknown owner"})
     if not db.check_username_exists(changed_by):
         return JSONResponse(status_code=404, content={"error": "Unknown changed_by user"})
+    if err := _require_owner_or_admin(db, changed_by, owner):
+        return err
     if not db.update_persisted_project(
         project_id, owner, {"project_name": payload.project_name.strip()}, changed_by=changed_by, change_type="rename"
     ):
@@ -885,11 +925,14 @@ async def duplicate_project(
 async def delete_project(
     project_id: str,
     owner: str = Query(..., description="Owner must match project document's owner field"),
+    requester: str = Query(..., description="Username of the person actually performing this delete"),
 ):
     """Delete one project document if it exists and belongs to ``owner``. Also deletes all linked quotes."""
     db = _ensure_db()
     if not db.check_username_exists(owner):
         return JSONResponse(status_code=404, content={"error": "Unknown owner"})
+    if err := _require_owner_or_admin(db, requester, owner):
+        return err
     if not db.delete_persisted_project(project_id, owner):
         return JSONResponse(status_code=404, content={"error": "Project not found"})
     return {"message": "Project deleted", "project_id": project_id}
@@ -940,6 +983,8 @@ async def revert_project_history(
         return JSONResponse(status_code=404, content={"error": "Unknown owner"})
     if not db.check_username_exists(changed_by):
         return JSONResponse(status_code=404, content={"error": "Unknown changed_by user"})
+    if err := _require_owner_or_admin(db, changed_by, owner):
+        return err
     result = db.revert_history_entry(project_id, history_id, owner, changed_by=changed_by)
     if result is None:
         return JSONResponse(status_code=404, content={"error": "History entry not found"})
@@ -975,7 +1020,40 @@ async def sign_in(payload: AccountRequest):
     if not user or not _verify_password(password, user["password_hash"]):
         return JSONResponse(status_code=400, content={"error": "Invalid username or password"})
     else:
-        return JSONResponse(status_code=200, content={"message": "Sign-in successful"})
+        return JSONResponse(status_code=200, content={"message": "Sign-in successful", "role": user["role"]})
+
+
+@app.get("/users")
+async def list_users(requester: str = Query(..., description="Username of the person requesting the user list")):
+    """Admin-only: list every account's username, role, and creation date."""
+    db = _ensure_db()
+    if err := _require_admin(db, requester):
+        return err
+    return {"data": db.list_users()}
+
+
+class UpdateUserRoleRequest(BaseModel):
+    role: str = Field(..., description="'admin' or 'user'")
+
+
+@app.patch("/users/{username}/role")
+async def update_user_role(
+    username: str,
+    payload: UpdateUserRoleRequest,
+    requester: str = Query(..., description="Username of the admin making this change"),
+):
+    """Admin-only: promote or demote another account. Roles are mutually exclusive."""
+    db = _ensure_db()
+    if err := _require_admin(db, requester):
+        return err
+    if payload.role not in ("admin", "user"):
+        return JSONResponse(status_code=400, content={"error": "role must be 'admin' or 'user'"})
+    if not db.check_username_exists(username):
+        return JSONResponse(status_code=404, content={"error": "Unknown user"})
+    if payload.role == "user" and db.get_user_role(username) == "admin" and db.count_admins() <= 1:
+        return JSONResponse(status_code=400, content={"error": "Cannot remove the last remaining admin"})
+    db.set_user_role(username, payload.role)
+    return {"message": "Role updated", "username": username, "role": payload.role}
 
 
 _MAX_HIGHLIGHT_WIDTH = 800

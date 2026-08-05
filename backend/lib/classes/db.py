@@ -510,12 +510,12 @@ class MidnightOilDB:
         return self._fetchone("SELECT 1 AS present FROM users WHERE username = ?", (username,)) is not None
 
     def create_user(self, username: str, password: str) -> bool:
-        """Create a new user if the username doesn't already exist."""
+        """Create a new user if the username doesn't already exist. Always starts as role 'user'."""
         if self.check_username_exists(username):
             return False
 
         self._execute(
-            "INSERT INTO users (username, password_hash) VALUES (?, ?)",
+            "INSERT INTO users (username, password_hash, role) VALUES (?, ?, N'user')",
             (username, _hash_password(password)),
         )
         self.conn.commit()
@@ -524,8 +524,32 @@ class MidnightOilDB:
     def get_user(self, username: str):
         """Retrieve a user row by username."""
         return self._fetchone(
-            "SELECT user_id, username, password_hash FROM users WHERE username = ?", (username,)
+            "SELECT user_id, username, password_hash, role FROM users WHERE username = ?", (username,)
         )
+
+    def get_user_role(self, username: str) -> str | None:
+        """Return 'admin' or 'user' for a known username, or None if the username doesn't exist."""
+        row = self._fetchone("SELECT role FROM users WHERE username = ?", (username,))
+        return row["role"] if row is not None else None
+
+    def list_users(self) -> list[dict[str, Any]]:
+        """Return every user's username, role, and creation date, newest first."""
+        rows = self._fetchall("SELECT username, role, created_at FROM users ORDER BY created_at DESC")
+        for row in rows:
+            row["created_at"] = _from_db_datetime(row["created_at"])
+        return rows
+
+    def count_admins(self) -> int:
+        """Number of accounts currently holding the admin role."""
+        row = self._fetchone("SELECT COUNT(*) AS n FROM users WHERE role = N'admin'")
+        return row["n"] if row is not None else 0
+
+    def set_user_role(self, username: str, role: str) -> bool:
+        """Set a user's role to 'admin' or 'user'. Returns False if the username doesn't exist."""
+        updated = self._execute("UPDATE users SET role = ? WHERE username = ?", (role, username))
+        if updated > 0:
+            self.conn.commit()
+        return updated > 0
 
     # ------------------------------------------------------------------
     # History
