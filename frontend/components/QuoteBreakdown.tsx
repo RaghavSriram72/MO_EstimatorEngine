@@ -1099,6 +1099,24 @@ export default function QuoteBreakdown({
     const availableScenarios: ScenarioId[] = [1, 3, 4, 5].filter(
         (id) => quoteData[`scenario_${id}`] !== undefined,
     ) as ScenarioId[];
+    const scenarioGrandTotals = availableScenarios.map((id) => {
+        const linesTotal = (scenarioLines[id] ?? []).reduce((sum, line) => sum + lineTotal(line), 0);
+        const override = parseFloat(scenarioSubtotalOverride[id] ?? "");
+        const scenarioCost =
+            (scenarioSubtotalOverride[id] ?? "").trim() !== "" && Number.isFinite(override)
+                ? override
+                : linesTotal;
+        return { id, total: universalTotal + scenarioCost };
+    });
+    const lowestScenarioTotal =
+        scenarioGrandTotals.length > 0
+            ? Math.min(...scenarioGrandTotals.map(({ total }) => total))
+            : null;
+    const lowestCostScenarioIds = new Set(
+        scenarioGrandTotals
+            .filter(({ total }) => lowestScenarioTotal !== null && Math.abs(total - lowestScenarioTotal) < 0.005)
+            .map(({ id }) => id),
+    );
 
     return (
         <div className="flex flex-row w-full flex-1 min-h-0 overflow-hidden text-[#000005]">
@@ -1141,24 +1159,41 @@ export default function QuoteBreakdown({
                 <div className="flex flex-col gap-1.5 flex-1 min-h-0">
                     <span className="text-[10px] font-black text-[#B1B3B6] uppercase tracking-widest shrink-0">Scenario</span>
                     <div className="flex flex-col gap-1.5">
-                        {availableScenarios.map((id) => (
-                            <div
-                                key={id}
-                                onClick={() => setActiveScenario(id)}
-                                className={`text-left w-full cursor-pointer rounded-sm border-2 px-3 py-2.5 transition-all duration-200 ${
-                                    activeScenario === id
-                                        ? "border-[#000005] bg-[#000005]"
-                                        : "border-[#E0E0E0] hover:border-[#B1B3B6] bg-white"
-                                }`}
-                            >
-                                <span className={`block text-xs font-black uppercase tracking-wide ${activeScenario === id ? "text-white" : "text-[#000005]"}`}>
-                                    {SCENARIO_META[id].short}
-                                </span>
-                                <span className={`block text-[10px] font-semibold ${activeScenario === id ? "text-[#FFC843]" : "text-[#B1B3B6]"}`}>
-                                    {SCENARIO_META[id].sub}
-                                </span>
-                            </div>
-                        ))}
+                        {availableScenarios.map((id) => {
+                            const isActive = activeScenario === id;
+                            const isLowestCost = lowestCostScenarioIds.has(id);
+                            return (
+                                <div
+                                    key={id}
+                                    onClick={() => setActiveScenario(id)}
+                                    className={`text-left w-full cursor-pointer rounded-sm border-2 px-3 py-2.5 transition-all duration-200 ${
+                                        isActive
+                                            ? isLowestCost
+                                                ? "border-green-500 bg-[#000005]"
+                                                : "border-[#000005] bg-[#000005]"
+                                            : isLowestCost
+                                                ? "border-green-500 bg-green-50 hover:border-green-600"
+                                                : "border-[#E0E0E0] hover:border-[#B1B3B6] bg-white"
+                                    }`}
+                                >
+                                    <div className="flex items-center justify-between gap-2">
+                                        <span className={`block text-xs font-black uppercase tracking-wide ${isActive ? "text-white" : "text-[#000005]"}`}>
+                                            {SCENARIO_META[id].short}
+                                        </span>
+                                        {isLowestCost && (
+                                            <span className={`shrink-0 text-[8px] font-black uppercase tracking-wide rounded-sm px-1.5 py-0.5 ${
+                                                isActive ? "bg-green-500 text-white" : "bg-green-100 text-green-700"
+                                            }`}>
+                                                Lowest cost
+                                            </span>
+                                        )}
+                                    </div>
+                                    <span className={`block text-[10px] font-semibold ${isActive ? "text-[#FFC843]" : "text-[#B1B3B6]"}`}>
+                                        {SCENARIO_META[id].sub}
+                                    </span>
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
 
