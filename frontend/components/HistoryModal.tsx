@@ -91,6 +91,10 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
     return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
+function isFiniteNumber(v: unknown): v is number {
+    return typeof v === "number" && Number.isFinite(v);
+}
+
 function deepEqual(a: unknown, b: unknown): boolean {
     if (a === b) return true;
     if (isPlainObject(a) && isPlainObject(b)) {
@@ -216,7 +220,20 @@ function computeProjectChangeRows(before: Record<string, unknown>, after: Record
 }
 
 type LineEdit = { qty?: unknown; unit_cost?: unknown };
-type ScenarioChild = { defaults?: Record<string, unknown>; line_edits?: Record<string, LineEdit>; subtotal_override?: unknown };
+type CustomLineSnapshot = { id?: unknown; title?: unknown; cost?: unknown };
+type ScenarioChild = {
+    defaults?: Record<string, unknown>;
+    line_edits?: Record<string, LineEdit>;
+    subtotal_override?: unknown;
+    /** Only present on the `universal` child — user-added specialty cost items. */
+    custom_lines?: CustomLineSnapshot[];
+};
+
+function getCustomLines(universal: unknown): CustomLineSnapshot[] {
+    if (!isPlainObject(universal)) return [];
+    const lines = (universal as ScenarioChild).custom_lines;
+    return Array.isArray(lines) ? lines : [];
+}
 
 function getParamsCurrent(snapshot: Record<string, unknown>): Record<string, unknown> {
     const params = snapshot.params;
@@ -327,16 +344,36 @@ function computeQuoteChangeRows(before: Record<string, unknown>, after: Record<s
         });
     }
 
+    // Specialty cost items (free-titled, user-added universal line items) — diffed by id since
+    // they carry no fixed cost key like the engine-computed lines above.
+    const beforeCustomLines = getCustomLines(before.universal);
+    const afterCustomLines = getCustomLines(after.universal);
+    const customLineIds = new Set([...beforeCustomLines, ...afterCustomLines].map((l) => String(l.id)));
+    for (const id of customLineIds) {
+        const b = beforeCustomLines.find((l) => String(l.id) === id);
+        const a = afterCustomLines.find((l) => String(l.id) === id);
+        if (deepEqual(b, a)) continue;
+        const bCost = isFiniteNumber(b?.cost) ? b.cost : 0;
+        const aCost = isFiniteNumber(a?.cost) ? a.cost : 0;
+        if (!b) {
+            rows.push({ kind: "scalar", label: `Specialty Cost Added — ${String(a?.title || "Untitled")}`, before: "—", after: formatCurrency(aCost) });
+        } else if (!a) {
+            rows.push({ kind: "scalar", label: `Specialty Cost Removed — ${String(b.title || "Untitled")}`, before: formatCurrency(bCost), after: "—" });
+        } else {
+            rows.push({ kind: "scalar", label: `Specialty Cost — ${String(a.title || b.title || "Untitled")}`, before: formatCurrency(bCost), after: formatCurrency(aCost) });
+        }
+    }
+
     // Per-scenario grand totals (universal + that scenario's own lines, respecting overrides) —
     // reuses QuoteBreakdown's own total formula so these numbers can't drift from the live UI.
     for (const sid of scenarioIds) {
         const beforeChild = beforeScenarios[String(sid)];
         const afterChild = afterScenarios[String(sid)];
         const beforeTotal =
-            computeUniversalTotal(beforeChild?.defaults, beforeUniversalEdits, beforeUniversal?.subtotal_override) +
+            computeUniversalTotal(beforeChild?.defaults, beforeUniversalEdits, beforeUniversal?.subtotal_override, beforeCustomLines) +
             computeScenarioLinesTotal(sid, beforeChild?.defaults, getLineEdits(beforeChild), beforeChild?.subtotal_override);
         const afterTotal =
-            computeUniversalTotal(afterChild?.defaults, afterUniversalEdits, afterUniversal?.subtotal_override) +
+            computeUniversalTotal(afterChild?.defaults, afterUniversalEdits, afterUniversal?.subtotal_override, afterCustomLines) +
             computeScenarioLinesTotal(sid, afterChild?.defaults, getLineEdits(afterChild), afterChild?.subtotal_override);
         if (Math.abs(beforeTotal - afterTotal) >= 0.005) {
             rows.push({

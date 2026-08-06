@@ -51,6 +51,9 @@ export type QuoteData = {
 
 export type PersistedLineEdit = { qty: number; unit_cost: number };
 
+/** A user-added, freely-titled cost line in the Universal Costs section (e.g. a one-off specialty item). */
+export type PersistedCustomLine = { id: string; title: string; cost: number };
+
 export type PersistedScenarioChild = {
     /** Raw engine-computed scenario blob — values before any manual edits. */
     defaults: Record<string, number>;
@@ -70,8 +73,12 @@ export type PersistedSpecParams = {
 export type PersistedQuoteState = {
     /** Five scenario children keyed "1" … "5". */
     scenarios: Record<string, PersistedScenarioChild>;
-    /** Shared (cross-scenario) cost-line edits + subtotal override. */
-    universal: { line_edits: Record<string, PersistedLineEdit>; subtotal_override: string };
+    /** Shared (cross-scenario) cost-line edits + subtotal override + user-added specialty items. */
+    universal: {
+        line_edits: Record<string, PersistedLineEdit>;
+        subtotal_override: string;
+        custom_lines: PersistedCustomLine[];
+    };
     /** Spec fields: what the user set (current) vs what the engine computed (defaults). */
     params: { current: PersistedSpecParams; defaults: PersistedSpecParams };
 };
@@ -135,7 +142,7 @@ function freshPersistedQuoteState(quoteResult: Record<string, unknown>, numStand
     };
     return {
         scenarios,
-        universal: { line_edits: {}, subtotal_override: "" },
+        universal: { line_edits: {}, subtotal_override: "", custom_lines: [] },
         params: { current: { ...specDefaults }, defaults: { ...specDefaults } },
     };
 }
@@ -171,6 +178,7 @@ function persistedStateFromQuoteDoc(doc: Record<string, unknown>): PersistedQuot
         universal: {
             line_edits: universalRaw?.line_edits ?? {},
             subtotal_override: universalRaw?.subtotal_override ?? "",
+            custom_lines: universalRaw?.custom_lines ?? [],
         },
         params: {
             current: paramsRaw?.current ?? { ...fallbackSpec },

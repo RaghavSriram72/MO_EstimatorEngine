@@ -24,6 +24,9 @@
 
   - ``line_edits`` — same shape as scenario ``line_edits`` for universal cost rows.
   - ``subtotal_override`` — str.
+  - ``custom_lines`` — user-added, freely-titled specialty cost items (e.g. a one-off item
+    with no fixed cost key): ``[{"id": str, "title": str, "cost": float}, ...]``. Frontend-owned
+    like the rest of this column — the backend never reads or validates these fields.
 
 - ``params`` — JSON column: the spec fields above the breakdown table:
 

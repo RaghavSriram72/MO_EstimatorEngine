@@ -9,6 +9,7 @@ import {
     type PersistedScenarioChild,
     type PersistedLineEdit,
     type PersistedSpecParams,
+    type PersistedCustomLine,
 } from "@/pages/Inputter";
 import { API_BASE } from "@/lib/config";
 import { COST_LINE_TOOLTIPS } from "@/lib/costLineTooltips";
@@ -366,6 +367,8 @@ type QuoteSnapshot = {
     universalLines: CostLine[];
     universalEdited: Set<string>;
     universalSubtotalOverride: string;
+    /** User-added freely-titled specialty cost items in the Universal Costs section. */
+    customLines: PersistedCustomLine[];
     scenarioLines: Record<ScenarioId, CostLine[]>;
     scenarioEdited: Record<ScenarioId, Set<string>>;
     scenarioSubtotalOverride: Record<ScenarioId, string>;
@@ -705,6 +708,9 @@ export default function QuoteBreakdown({
             ? (persistedState.universal?.subtotal_override ?? "")
             : universalSubtotalOverrideFromUi(persistedBreakdownUi),
     );
+    const [customLines, setCustomLines] = useState<PersistedCustomLine[]>(
+        () => persistedState?.universal?.custom_lines ?? [],
+    );
     const [scenarioLines, setScenarioLines] = useState<Record<ScenarioId, CostLine[]>>(
         () => hydratedScenarioLines,
     );
@@ -862,6 +868,7 @@ export default function QuoteBreakdown({
             universal: {
                 line_edits: lineEditsFor(snapshot.universalLines, snapshot.universalEdited),
                 subtotal_override: snapshot.universalSubtotalOverride.trim(),
+                custom_lines: snapshot.customLines,
             },
             params: {
                 current: toSpecParams(snapshot.params),
@@ -895,6 +902,7 @@ export default function QuoteBreakdown({
                 universalLines,
                 universalEdited: editedUniversalKeys,
                 universalSubtotalOverride,
+                customLines,
                 scenarioLines,
                 scenarioEdited: editedScenarioKeys,
                 scenarioSubtotalOverride,
@@ -932,6 +940,24 @@ export default function QuoteBreakdown({
             else s.add(key);
             return s;
         });
+    }
+
+    function addCustomLine() {
+        setManualDirty(true);
+        setCustomLines((prev) => [
+            ...prev,
+            { id: `custom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, title: "", cost: 0 },
+        ]);
+    }
+
+    function updateCustomLine(id: string, field: "title" | "cost", value: string | number) {
+        setManualDirty(true);
+        setCustomLines((prev) => prev.map((l) => (l.id === id ? { ...l, [field]: value } : l)));
+    }
+
+    function removeCustomLine(id: string) {
+        setManualDirty(true);
+        setCustomLines((prev) => prev.filter((l) => l.id !== id));
     }
 
     function updateScenario(key: string, field: "qty" | "unitCost", value: number) {
@@ -1048,6 +1074,7 @@ export default function QuoteBreakdown({
                         universalLines: newUniversalLines,
                         universalEdited: new Set(),
                         universalSubtotalOverride: "",
+                        customLines,
                         scenarioLines: newSl,
                         scenarioEdited: { 1: new Set(), 2: new Set(), 3: new Set(), 4: new Set(), 5: new Set() },
                         scenarioSubtotalOverride: newSso,
@@ -1072,7 +1099,8 @@ export default function QuoteBreakdown({
         }
     }
 
-    const universalLinesSum = universalLines.reduce((s, l) => s + lineTotal(l), 0);
+    const customLinesSum = customLines.reduce((s, l) => s + (Number.isFinite(l.cost) ? l.cost : 0), 0);
+    const universalLinesSum = universalLines.reduce((s, l) => s + lineTotal(l), 0) + customLinesSum;
     const scenarioLinesSum  = scenarioLines[activeScenario].reduce((s, l) => s + lineTotal(l), 0);
     const parsedUniversalOv = parseFloat(universalSubtotalOverride);
     const parsedScenarioOv  = parseFloat(scenarioSubtotalOverride[activeScenario]);
@@ -1400,6 +1428,59 @@ export default function QuoteBreakdown({
                                         origLine={origUniversalLines.current.find((l) => l.key === line.key)}
                                     />
                                 ))}
+                                {customLines.map((line) => (
+                                    <div
+                                        key={line.id}
+                                        className="group/row grid grid-cols-[1fr_auto] items-center gap-6 px-8 py-2.5 rounded-lg border-[#F0F0F0] last:border-0 -mx-4 px-4 transition-colors"
+                                    >
+                                        <div className="flex items-center gap-2 min-w-0">
+                                            <input
+                                                type="text"
+                                                value={line.title}
+                                                onChange={(e) => updateCustomLine(line.id, "title", e.target.value)}
+                                                placeholder="Specialty item title"
+                                                className="text-xs text-[#000005] font-semibold bg-transparent outline-none border-b border-transparent hover:border-[#E0E0E0] focus:border-[#FFC843] transition-colors w-48 max-w-full py-0.5"
+                                            />
+                                            <span className="text-[9px] font-bold uppercase tracking-wide bg-[#FFF8E1] text-[#F57F17] rounded-sm px-1.5 py-0.5 shrink-0">
+                                                specialty
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() => removeCustomLine(line.id)}
+                                                aria-label="Remove specialty cost"
+                                                className="cursor-pointer shrink-0 h-5 w-5 flex items-center justify-center rounded-md text-[#B1B3B6] opacity-60 group-hover/row:opacity-100 hover:text-red-400 hover:bg-red-50 transition-all"
+                                            >
+                                                ✕
+                                            </button>
+                                        </div>
+
+                                        <div className="flex items-center gap-3">
+                                            <div className="flex flex-col items-end gap-0.5">
+                                                <span className="text-[9px] text-[#B1B3B6] uppercase font-bold tracking-wider">cost ($)</span>
+                                                <input
+                                                    type="number"
+                                                    min={0}
+                                                    step={0.01}
+                                                    value={parseFloat(line.cost.toFixed(2))}
+                                                    onChange={(e) => updateCustomLine(line.id, "cost", parseFloat(e.target.value) || 0)}
+                                                    className="border border-[#E0E0E0] rounded-sm px-2 py-1 text-xs text-[#000005] outline-none bg-[#F8F8F8] focus:border-[#FFC843] focus:bg-white w-[96px] text-right transition-colors font-semibold"
+                                                />
+                                            </div>
+
+                                            <div className="flex flex-col items-end gap-0.5 w-[80px]">
+                                                <span className="text-[9px] text-[#B1B3B6] uppercase font-bold tracking-wider">total</span>
+                                                <span className="text-xs font-black text-[#000005]">${fmt(line.cost)}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                                <button
+                                    type="button"
+                                    onClick={addCustomLine}
+                                    className="mt-1 cursor-pointer px-3 py-1.5 text-[10px] font-black uppercase tracking-wider border-2 border-dashed border-[#EDEAEA] rounded-md text-[#ABABAB] hover:border-[#FFC843] hover:text-[#FFC843] transition-colors"
+                                >
+                                    + Add Specialty Cost
+                                </button>
                                 <div className="flex justify-between items-center pt-3 mt-1 border-t-2 border-[#F0F0F0]">
                                     <span className="text-xs font-black text-[#B1B3B6] uppercase tracking-wider">Subtotal</span>
                                     <span className="text-sm font-black text-[#000005]">${fmt(universalLinesSum)}</span>

@@ -3,9 +3,15 @@
 import { UNIVERSAL_LINE_DEFS, SCENARIO_LINE_DEFS, SCENARIO_KEYS, lineTotal, type ScenarioId } from "@/components/QuoteBreakdown";
 
 type LineEdit = { qty?: unknown; unit_cost?: unknown };
+type CustomLine = { cost?: unknown };
 
 function isFiniteNumber(v: unknown): v is number {
     return typeof v === "number" && Number.isFinite(v);
+}
+
+function customLinesSum(customLines: CustomLine[] | undefined): number {
+    if (!Array.isArray(customLines)) return 0;
+    return customLines.reduce((s, l) => s + (isFiniteNumber(l?.cost) ? l.cost : 0), 0);
 }
 
 /** A line's engine-computed dollar total is `defaults[key]` directly (that's what the backend's
@@ -28,6 +34,7 @@ export function computeUniversalTotal(
     defaults: Record<string, unknown> | undefined,
     lineEdits: Record<string, LineEdit> | undefined,
     subtotalOverride: unknown,
+    customLines?: CustomLine[],
 ): number {
     const override = overrideValue(subtotalOverride);
     if (override !== null) return override;
@@ -35,7 +42,7 @@ export function computeUniversalTotal(
     for (const key of Object.keys(UNIVERSAL_LINE_DEFS)) {
         sum += effectiveLineValue(UNIVERSAL_LINE_DEFS[key].unit, defaults?.[key], lineEdits?.[key]);
     }
-    return sum;
+    return sum + customLinesSum(customLines);
 }
 
 export function computeScenarioLinesTotal(
