@@ -294,14 +294,23 @@ BEGIN
         packout_id           INT IDENTITY(1, 1) NOT NULL CONSTRAINT PK_packout PRIMARY KEY,
         standees_lower_bound INT                NOT NULL,
         standees_upper_bound INT                NULL,  -- NULL = open-ended
-        forms_lower_bound    INT                NOT NULL,
-        forms_upper_bound    INT                NULL,  -- NULL = open-ended
-        complexity           NVARCHAR(32)       NOT NULL,
-        packout              FLOAT              NOT NULL,
-        last_updated         DATETIME2(3)       NOT NULL CONSTRAINT DF_packout_last_updated DEFAULT SYSUTCDATETIME()
+        complexity            NVARCHAR(32)       NOT NULL,
+        packout               FLOAT              NOT NULL,
+        last_updated          DATETIME2(3)       NOT NULL CONSTRAINT DF_packout_last_updated DEFAULT SYSUTCDATETIME()
     );
 
-    CREATE INDEX IX_packout_bounds ON dbo.packout (standees_lower_bound, forms_lower_bound);
+    CREATE INDEX IX_packout_bounds ON dbo.packout (standees_lower_bound);
+END;
+GO
+
+-- Upgrade path: packout tiers used to also key on a forms range; that dimension was
+-- dropped — packout now varies only by standee count and complexity.
+IF COL_LENGTH(N'dbo.packout', N'forms_lower_bound') IS NOT NULL
+BEGIN
+    IF EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_packout_bounds' AND object_id = OBJECT_ID(N'dbo.packout'))
+        DROP INDEX IX_packout_bounds ON dbo.packout;
+    ALTER TABLE dbo.packout DROP COLUMN forms_lower_bound, forms_upper_bound;
+    CREATE INDEX IX_packout_bounds ON dbo.packout (standees_lower_bound);
 END;
 GO
 

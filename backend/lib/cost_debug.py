@@ -430,11 +430,10 @@ def _explain_packout(project: Any, _scenario_id: int) -> tuple[str | None, str |
     if not _has_cost(project, "packout"):
         return None, None
     complexity = project.standee_key.split()[0]
-    unit = project.db.get_packout(project.num_standees, project.print_forms_per_standee, complexity)
+    unit = project.db.get_packout(project.num_standees, complexity)
     return (
         "packout",
-        f"packout lookup({complexity}, standees={_num(project.num_standees, 0)}, "
-        f"print_forms_per_standee={_num(project.print_forms_per_standee, 0)}) = {_money(unit)}/standee\n"
+        f"packout lookup({complexity}, standees={_num(project.num_standees, 0)}) = {_money(unit)}/standee\n"
         f"× {_num(project.num_standees, 0)} standees = {_money(project.packout)}",
     )
 

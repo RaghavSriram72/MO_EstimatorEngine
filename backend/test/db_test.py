@@ -157,8 +157,8 @@ def _seed_db(db: MidnightOilDB) -> dict[str, str]:
     db.upsert_overs(None, 50, 199, 8)
 
     # packout tiers
-    packout_id = db.upsert_packout(None, 0, 9, 0, 3, "simple", 12)
-    db.upsert_packout(None, 10, None, 4, None, "COMPLEX", 18)
+    packout_id = db.upsert_packout(None, 0, 9, "simple", 12)
+    db.upsert_packout(None, 10, None, "COMPLEX", 18)
 
     db._load_cache()
     return {"project_id": project_id, "quote_id": quote_id, "overs_id": overs_id, "packout_id": packout_id}
@@ -546,16 +546,16 @@ class TestDbCostAndLookupMethods(_DbTestCase):
         db.upsert_overs(new_overs_id, 210, None, 14)
         self.assertEqual(db.get_overs(250), 14)
 
-        self.assertEqual(db.get_packout(5, 2, "simple"), 12.0)
-        self.assertEqual(db.get_packout(12, 4, "COMPLEX"), 18.0)
+        self.assertEqual(db.get_packout(5, "simple"), 12.0)
+        self.assertEqual(db.get_packout(12, "COMPLEX"), 18.0)
         self.assertEqual(db.get_all_packout()[0]["_id"], self.ids["packout_id"])
 
-        new_packout_id = db.upsert_packout(None, 20, None, 6, None, "Moderate", 22)
+        new_packout_id = db.upsert_packout(None, 20, None, "Moderate", 22)
         self.assertTrue(new_packout_id.isdigit())
-        self.assertEqual(db.get_packout(20, 6, "moderate"), 22.0)
+        self.assertEqual(db.get_packout(20, "moderate"), 22.0)
 
-        db.upsert_packout(new_packout_id, 30, None, 7, None, "Moderate", 24)
-        self.assertEqual(db.get_packout(30, 7, "moderate"), 24.0)
+        db.upsert_packout(new_packout_id, 30, None, "Moderate", 24)
+        self.assertEqual(db.get_packout(30, "moderate"), 24.0)
 
         with self.assertRaises(ValueError):
             db.delete_overs("bad-id")

@@ -453,8 +453,8 @@ class MidnightOilDB:
 
     def _load_packout_cache(self) -> list[dict[str, Any]]:
         rows = self._fetchall(
-            "SELECT packout_id, standees_lower_bound, standees_upper_bound, forms_lower_bound, "
-            "forms_upper_bound, complexity, packout, last_updated FROM packout"
+            "SELECT packout_id, standees_lower_bound, standees_upper_bound, "
+            "complexity, packout, last_updated FROM packout"
         )
         for row in rows:
             row["_id"] = row.pop("packout_id")
@@ -1625,24 +1625,23 @@ class MidnightOilDB:
     # Packout
     # ------------------------------------------------------------------
 
-    def get_packout(self, standees: int, forms: int, complexity: str) -> float:
-        """Return the packout cost for a given quantity of standees, forms, and complexity."""
+    def get_packout(self, standees: int, complexity: str) -> float:
+        """Return the packout cost for a given quantity of standees and complexity."""
         row = self._fetchone(
             "SELECT TOP 1 packout FROM packout "
             "WHERE standees_lower_bound <= ? AND (standees_upper_bound IS NULL OR standees_upper_bound >= ?) "
-            "AND forms_lower_bound <= ? AND (forms_upper_bound IS NULL OR forms_upper_bound >= ?) "
             "AND UPPER(complexity) = UPPER(?)",
-            (standees, standees, forms, forms, complexity),
+            (standees, standees, complexity),
         )
         if row is not None:
             return float(row["packout"])
         else:
-            raise ValueError(f"Packout not found for standees {standees}, forms {forms}, and complexity {complexity}")
+            raise ValueError(f"Packout not found for standees {standees} and complexity {complexity}")
 
     def get_all_packout(self) -> list[dict]:
         """Return all packout costs sorted by lower_bound."""
         records = []
-        for cached in sorted(self._cache["packout"], key=lambda x: (x["standees_lower_bound"], x["forms_lower_bound"])):
+        for cached in sorted(self._cache["packout"], key=lambda x: x["standees_lower_bound"]):
             r = dict(cached)
             r["_id"] = str(r["_id"])
             if "last_updated" in r and hasattr(r["last_updated"], "isoformat"):
@@ -1651,21 +1650,15 @@ class MidnightOilDB:
         return records
 
     @staticmethod
-    def _packout_label(
-        standees_lower_bound: int, standees_upper_bound: int | None,
-        forms_lower_bound: int, forms_upper_bound: int | None, complexity: str,
-    ) -> str:
+    def _packout_label(standees_lower_bound: int, standees_upper_bound: int | None, complexity: str) -> str:
         standees = f"{standees_lower_bound}-{standees_upper_bound if standees_upper_bound is not None else '∞'}"
-        forms = f"{forms_lower_bound}-{forms_upper_bound if forms_upper_bound is not None else '∞'}"
-        return f"{complexity} · {standees} standees / {forms} forms"
+        return f"{complexity} · {standees} standees"
 
     def upsert_packout(
         self,
         record_id: str | None,
         standees_lower_bound: int,
         standees_upper_bound: int | None,
-        forms_lower_bound: int,
-        forms_upper_bound: int | None,
         complexity: str,
         packout: int,
         changed_by: str,
@@ -1675,14 +1668,10 @@ class MidnightOilDB:
         new_fields = {
             "standees_lower_bound": standees_lower_bound,
             "standees_upper_bound": standees_upper_bound,
-            "forms_lower_bound": forms_lower_bound,
-            "forms_upper_bound": forms_upper_bound,
             "complexity": complexity,
             "packout": packout,
         }
-        label = self._packout_label(
-            standees_lower_bound, standees_upper_bound, forms_lower_bound, forms_upper_bound, complexity
-        )
+        label = self._packout_label(standees_lower_bound, standees_upper_bound, complexity)
         if record_id is not None:
             row_id = _parse_id(record_id)
             if row_id is None:
@@ -1690,13 +1679,10 @@ class MidnightOilDB:
             before = next((r for r in self._cache["packout"] if str(r["_id"]) == str(row_id)), None)
             updated = self._execute(
                 "UPDATE packout SET standees_lower_bound = ?, standees_upper_bound = ?, "
-                "forms_lower_bound = ?, forms_upper_bound = ?, complexity = ?, packout = ?, "
-                "last_updated = ? WHERE packout_id = ?",
+                "complexity = ?, packout = ?, last_updated = ? WHERE packout_id = ?",
                 (
                     standees_lower_bound,
                     standees_upper_bound,
-                    forms_lower_bound,
-                    forms_upper_bound,
                     complexity,
                     packout,
                     now,
@@ -1710,14 +1696,11 @@ class MidnightOilDB:
                 self._log_data_collector_change("packout", str(row_id), label, "update", changed_by, diff)
         else:
             row_id = self._insert_returning_id(
-                "INSERT INTO packout (standees_lower_bound, standees_upper_bound, forms_lower_bound, "
-                "forms_upper_bound, complexity, packout, last_updated) "
-                "OUTPUT INSERTED.packout_id VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO packout (standees_lower_bound, standees_upper_bound, complexity, packout, last_updated) "
+                "OUTPUT INSERTED.packout_id VALUES (?, ?, ?, ?, ?)",
                 (
                     standees_lower_bound,
                     standees_upper_bound,
-                    forms_lower_bound,
-                    forms_upper_bound,
                     complexity,
                     packout,
                     now,
@@ -1738,14 +1721,10 @@ class MidnightOilDB:
         before = next((r for r in self._cache["packout"] if str(r["_id"]) == str(row_id)), None)
         deleted = self._execute("DELETE FROM packout WHERE packout_id = ?", (row_id,))
         if deleted > 0 and before is not None:
-            fields = (
-                "standees_lower_bound", "standees_upper_bound",
-                "forms_lower_bound", "forms_upper_bound", "complexity", "packout",
-            )
+            fields = ("standees_lower_bound", "standees_upper_bound", "complexity", "packout")
             diff = {k: {"old": before.get(k), "new": None} for k in fields}
             label = self._packout_label(
-                before["standees_lower_bound"], before["standees_upper_bound"],
-                before["forms_lower_bound"], before["forms_upper_bound"], before["complexity"],
+                before["standees_lower_bound"], before["standees_upper_bound"], before["complexity"],
             )
             self._log_data_collector_change("packout", str(row_id), label, "delete", changed_by, diff)
         self.conn.commit()

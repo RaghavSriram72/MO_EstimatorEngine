@@ -57,7 +57,7 @@ class Scenario3[T: Scenario3Input](InHouseProject[T]):
         self.pallet_cost = self.pallet_material_cost + self.pallet_labor_cost
         self.freight_cost = input.freight_cost or self.db.get_unit_cost(UnitCostEntries.EXTERNAL_ASSEMBLY)
         self.packout = (
-            self.db.get_packout(self.num_standees, self.print_forms_per_standee, self.standee_key.split()[0])
+            self.db.get_packout(self.num_standees, self.standee_key.split()[0])
             * self.num_standees
         )
 
@@ -89,7 +89,7 @@ class Scenario4[T: Scenario4Input](OutsourceProject[T]):
         self.freight_cost = input.freight_cost or self.db.get_unit_cost(UnitCostEntries.EXTERNAL_MOUNT_ASSEMBLY)
         self.die_cost = input.die_cost or self._get_die_cost()
         self.packout = (
-            self.db.get_packout(self.num_standees, self.print_forms_per_standee, self.standee_key.split()[0])
+            self.db.get_packout(self.num_standees, self.standee_key.split()[0])
             * self.num_standees
         )
 
@@ -125,7 +125,7 @@ class Scenario5[T: Scenario5Input](OutsourceProject[T]):
         self.freight_cost = input.freight_cost or self.db.get_unit_cost(UnitCostEntries.FULL_OUT_SOURCE)
         self.die_cost = input.die_cost or self._get_die_cost()
         self.packout = (
-            self.db.get_packout(self.num_standees, self.print_forms_per_standee, self.standee_key.split()[0])
+            self.db.get_packout(self.num_standees, self.standee_key.split()[0])
             * self.num_standees
         )
 

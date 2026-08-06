@@ -86,8 +86,6 @@ export type PackoutRecord = {
     _id: string;
     standees_lower_bound: number;
     standees_upper_bound: number | null;
-    forms_lower_bound: number;
-    forms_upper_bound: number | null;
     complexity: string;
     packout: number;
     last_updated: string;
@@ -96,18 +94,12 @@ export type PackoutRecord = {
 export type PackoutEditFields = {
     standees_lower_bound: number;
     standees_upper_bound: number | null;
-    forms_lower_bound: number;
-    forms_upper_bound: number | null;
-    complexity: string;
     packout: number;
 };
 
 export type PendingPackoutRow = {
     standees_lower_bound: string;
     standees_upper_bound: string;
-    forms_lower_bound: string;
-    forms_upper_bound: string;
-    complexity: string;
     packout: string;
 };
 

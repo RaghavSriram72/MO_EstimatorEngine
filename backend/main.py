@@ -476,7 +476,7 @@ async def get_overs_history():
 
 @app.get("/packout")
 async def get_packout():
-    """Return all packout tier records sorted by standees then forms lower bound."""
+    """Return all packout tier records sorted by standees lower bound."""
     db = _ensure_db()
     return {"data": db.get_all_packout()}
 
@@ -486,8 +486,6 @@ class UpdatePackoutRequest(BaseModel):
 
     standees_lower_bound: int
     standees_upper_bound: int | None
-    forms_lower_bound: int
-    forms_upper_bound: int | None
     complexity: str
     packout: int
     changed_by: str = Field(..., min_length=1)
@@ -503,8 +501,6 @@ async def add_packout(payload: UpdatePackoutRequest):
         None,
         payload.standees_lower_bound,
         payload.standees_upper_bound,
-        payload.forms_lower_bound,
-        payload.forms_upper_bound,
         payload.complexity,
         payload.packout,
         payload.changed_by,
@@ -536,8 +532,6 @@ async def update_packout(record_id: str, payload: UpdatePackoutRequest):
             record_id,
             payload.standees_lower_bound,
             payload.standees_upper_bound,
-            payload.forms_lower_bound,
-            payload.forms_upper_bound,
             payload.complexity,
             payload.packout,
             payload.changed_by,

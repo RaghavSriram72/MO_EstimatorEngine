@@ -3,87 +3,49 @@ import { useState, useEffect } from "react";
 import ConfirmAlert from "@/components/ConfirmAlert";
 import ModuleFooter from "./ModuleFooter";
 import DataCollectorHistoryModal from "./DataCollectorHistoryModal";
-import { API_BASE, PackoutRecord } from "./shared";
+import {
+    API_BASE, PackoutRecord, PackoutEditFields, PendingPackoutRow,
+    formatDate,
+} from "./shared";
 
 const COMPLEXITIES = ["Simple", "Moderate", "Complex"] as const;
 type Complexity = typeof COMPLEXITIES[number];
 
-// Represents a numeric range with an optional upper bound (null means open-ended / no limit)
-type BoundedRange = {
-    lowerBound: number;
-    upperBound: number | null;
-};
-
-// A new standee row the user is drafting before it has been saved to the database
-type NewRowDraft = {
-    standeesLower: string;
-    standeesUpper: string;
-    // Maps each forms tier's range key to the cost the user typed in that cell
-    costByFormsKey: Record<string, string>;
-};
-
-// Builds a stable string key for a range so it can be used as a map/object key
-function buildRangeKey(lowerBound: number, upperBound: number | null): string {
-    return `${lowerBound}|${upperBound ?? "∞"}`;
-}
-
 export default function PackoutModule() {
-    // All packout tier records fetched from the database
-    const [savedTiers, setSavedTiers]                     = useState<PackoutRecord[]>([]);
+    const [savedTiers, setSavedTiers]           = useState<PackoutRecord[]>([]);
+    // editBuffer maps tier _id → the locally edited values (not yet submitted)
+    const [editBuffer, setEditBuffer]           = useState<Record<string, PackoutEditFields> | null>(null);
+    const [pendingNewRows, setPendingNewRows]   = useState<PendingPackoutRow[]>([]);
+    const [activeComplexity, setActiveComplexity] = useState<Complexity>("Simple");
+    const [tierToDelete, setTierToDelete]       = useState<string | null>(null);
+    const [isLoading, setIsLoading]             = useState(false);
+    const [isSaving, setIsSaving]               = useState(false);
+    const [historyOpen, setHistoryOpen]         = useState(false);
 
-    // Tracks cost edits: maps a record's database ID to the new cost the user typed
-    const [editedCosts, setEditedCosts]                   = useState<Record<string, number>>({});
-
-    // Tracks values typed into cells that have no backing record yet — keyed by
-    // "<standeeKey>::<formsKey>" — so a gap in the matrix can be filled in directly
-    // instead of only being addable via a brand-new "+ ADD ROW" standee range.
-    const [missingCellEdits, setMissingCellEdits]         = useState<Record<string, string>>({});
-
-    // Tracks standee range edits: maps the original range key to the new bounds the user typed
-    const [editedStandeeRanges, setEditedStandeeRanges]   = useState<Record<string, BoundedRange>>({});
-
-    // Tracks forms tier edits: maps the original range key to the new bounds the user typed
-    const [editedFormsRanges, setEditedFormsRanges]       = useState<Record<string, BoundedRange>>({});
-
-    // New rows the user has added locally but not yet saved
-    const [newRowDrafts, setNewRowDrafts]                 = useState<NewRowDraft[]>([]);
-
-    const [activeComplexity, setActiveComplexity]         = useState<Complexity>("Simple");
-
-    // The IDs of records the user has confirmed they want to delete (triggers confirm dialog)
-    const [pendingDeletionIds, setPendingDeletionIds]     = useState<string[] | null>(null);
-
-    const [isLoading, setIsLoading]                       = useState(false);
-    const [isSaving, setIsSaving]                         = useState(false);
-    const [historyOpen, setHistoryOpen]                   = useState(false);
-
-    // Fetch all packout tiers from the API when the module first loads
+    // GET /packout → load all standee tiers when module mounts
     useEffect(() => {
         setIsLoading(true);
         fetch(`${API_BASE}/packout`)
             .then((r) => r.json())
-            .then((data) => setSavedTiers(data.data ?? []))
+            .then((data) => {
+                const tiers: PackoutRecord[] = data.data ?? [];
+                setSavedTiers(tiers);
+                setEditBuffer(buildEditBuffer(tiers));
+            })
             .catch(console.error)
             .finally(() => setIsLoading(false));
     }, []);
 
-    // Re-fetch all tiers from the API and discard all local edits
-    async function fetchAndResetAllEdits() {
-        const data = await fetch(`${API_BASE}/packout`).then((r) => r.json());
-        setSavedTiers(data.data ?? []);
-        setEditedCosts({});
-        setEditedStandeeRanges({});
-        setEditedFormsRanges({});
-        setMissingCellEdits({});
-    }
-
-    function missingCellKey(standeeKey: string, formsKey: string): string {
-        return `${standeeKey}::${formsKey}`;
-    }
-
-    // Stores the user's typed value for a cell that has no backing record yet
-    function updateMissingCellEdit(standeeKey: string, formsKey: string, rawValue: string) {
-        setMissingCellEdits((prev) => ({ ...prev, [missingCellKey(standeeKey, formsKey)]: rawValue }));
+    function buildEditBuffer(tiers: PackoutRecord[]): Record<string, PackoutEditFields> {
+        const buf: Record<string, PackoutEditFields> = {};
+        tiers.forEach((t) => {
+            buf[t._id] = {
+                standees_lower_bound: t.standees_lower_bound,
+                standees_upper_bound: t.standees_upper_bound,
+                packout: t.packout,
+            };
+        });
+        return buf;
     }
 
     // Only the tiers that belong to whichever complexity tab is currently active
@@ -91,265 +53,118 @@ export default function PackoutModule() {
         (tier) => tier.complexity.toLowerCase() === activeComplexity.toLowerCase(),
     );
 
-    // Derive the unique standee ranges from the current complexity's data, sorted by lower bound.
-    // Each entry represents one row in the pricing matrix.
-    const uniqueStandeeRanges: BoundedRange[] = Array.from(
-        new Map(
-            tiersForActiveComplexity.map((tier) => [
-                buildRangeKey(tier.standees_lower_bound, tier.standees_upper_bound),
-                { lowerBound: tier.standees_lower_bound, upperBound: tier.standees_upper_bound },
-            ])
-        ).values()
-    ).sort((a, b) => a.lowerBound - b.lowerBound);
-
-    // Derive the unique forms tier ranges from the current complexity's data, sorted by lower bound.
-    // Each entry represents one column in the pricing matrix.
-    const uniqueFormsTiers: BoundedRange[] = Array.from(
-        new Map(
-            tiersForActiveComplexity.map((tier) => [
-                buildRangeKey(tier.forms_lower_bound, tier.forms_upper_bound),
-                { lowerBound: tier.forms_lower_bound, upperBound: tier.forms_upper_bound },
-            ])
-        ).values()
-    ).sort((a, b) => a.lowerBound - b.lowerBound);
-
-    // A 2D grid for quick cell lookup: standeeKey → formsKey → database record.
-    // This lets us render the table without searching through the flat array for every cell.
-    const recordGrid = new Map<string, Map<string, PackoutRecord>>();
-    tiersForActiveComplexity.forEach((tier) => {
-        const standeeKey = buildRangeKey(tier.standees_lower_bound, tier.standees_upper_bound);
-        const formsKey   = buildRangeKey(tier.forms_lower_bound, tier.forms_upper_bound);
-        if (!recordGrid.has(standeeKey)) recordGrid.set(standeeKey, new Map());
-        recordGrid.get(standeeKey)!.set(formsKey, tier);
-    });
-
-    // Returns the current display bounds for a standee range row,
-    // using the user's edited values if they exist, otherwise the saved values.
-    function getCurrentStandeeBounds(savedRange: BoundedRange): BoundedRange {
-        const key = buildRangeKey(savedRange.lowerBound, savedRange.upperBound);
-        return editedStandeeRanges[key] ?? { lowerBound: savedRange.lowerBound, upperBound: savedRange.upperBound };
-    }
-
-    // Returns the current display bounds for a forms tier column,
-    // using the user's edited values if they exist, otherwise the saved values.
-    function getCurrentFormsBounds(savedRange: BoundedRange): BoundedRange {
-        const key = buildRangeKey(savedRange.lowerBound, savedRange.upperBound);
-        return editedFormsRanges[key] ?? { lowerBound: savedRange.lowerBound, upperBound: savedRange.upperBound };
-    }
-
-    // Updates one bound (lower or upper) for a standee range row header
-    function updateStandeeBound(rangeKey: string, bound: "lowerBound" | "upperBound", rawValue: string) {
-        setEditedStandeeRanges((prev) => {
-            const current = prev[rangeKey] ?? { lowerBound: 0, upperBound: null };
-            const parsedValue = bound === "upperBound" && rawValue === "" ? null : parseInt(rawValue) || 0;
-            return { ...prev, [rangeKey]: { ...current, [bound]: parsedValue } };
+    function updateExistingTier(id: string, field: keyof PackoutEditFields, value: string) {
+        setEditBuffer((prev) => {
+            if (!prev) return null;
+            const current = prev[id];
+            if (field === "standees_upper_bound") {
+                return { ...prev, [id]: { ...current, standees_upper_bound: value === "" ? null : parseInt(value) } };
+            }
+            return { ...prev, [id]: { ...current, [field]: parseInt(value) || 0 } };
         });
     }
 
-    // Updates one bound (lower or upper) for a forms tier column header
-    function updateFormsBound(rangeKey: string, bound: "lowerBound" | "upperBound", rawValue: string) {
-        setEditedFormsRanges((prev) => {
-            const current = prev[rangeKey] ?? { lowerBound: 0, upperBound: null };
-            const parsedValue = bound === "upperBound" && rawValue === "" ? null : parseInt(rawValue) || 0;
-            return { ...prev, [rangeKey]: { ...current, [bound]: parsedValue } };
-        });
+    function addNewRow() {
+        setPendingNewRows((prev) => [...prev, { standees_lower_bound: "", standees_upper_bound: "", packout: "" }]);
     }
 
-    // Returns the cost to display in a cell — the user's edit if one exists, otherwise the saved value
-    function getDisplayCost(record: PackoutRecord): number {
-        return editedCosts[record._id] !== undefined ? editedCosts[record._id] : record.packout;
+    function updateNewRow(index: number, field: keyof PendingPackoutRow, value: string) {
+        setPendingNewRows((prev) => prev.map((row, i) => i === index ? { ...row, [field]: value } : row));
     }
 
-    // Stores the user's cost edit for a specific cell
-    function updateCostEdit(recordId: string, rawValue: string) {
-        setEditedCosts((prev) => ({ ...prev, [recordId]: parseInt(rawValue) || 0 }));
+    function removeNewRow(index: number) {
+        setPendingNewRows((prev) => prev.filter((_, i) => i !== index));
     }
 
-    // Appends a blank new row draft, pre-populated with one empty cost field per forms tier column
-    function addNewRowDraft() {
-        const emptyCostByFormsKey: Record<string, string> = {};
-        uniqueFormsTiers.forEach((formsTier) => {
-            emptyCostByFormsKey[buildRangeKey(formsTier.lowerBound, formsTier.upperBound)] = "";
-        });
-        setNewRowDrafts((prev) => [
-            ...prev,
-            { standeesLower: "", standeesUpper: "", costByFormsKey: emptyCostByFormsKey },
-        ]);
-    }
-
-    // Updates the lower or upper standee bound on an unsaved new row
-    function updateNewRowBound(rowIndex: number, field: "standeesLower" | "standeesUpper", value: string) {
-        setNewRowDrafts((prev) =>
-            prev.map((row, index) => index === rowIndex ? { ...row, [field]: value } : row)
-        );
-    }
-
-    // Updates the cost for one forms tier cell on an unsaved new row
-    function updateNewRowCost(rowIndex: number, formsKey: string, value: string) {
-        setNewRowDrafts((prev) =>
-            prev.map((row, index) =>
-                index === rowIndex
-                    ? { ...row, costByFormsKey: { ...row.costByFormsKey, [formsKey]: value } }
-                    : row
-            )
-        );
-    }
-
-    // Removes an unsaved new row draft without saving it
-    function removeNewRowDraft(rowIndex: number) {
-        setNewRowDrafts((prev) => prev.filter((_, index) => index !== rowIndex));
-    }
-
-    // Builds the full PATCH payload for a saved record by applying any pending
-    // standee range edits, forms range edits, and cost edits on top of the saved values.
-    function buildSavePayload(record: PackoutRecord) {
-        const standeeKey       = buildRangeKey(record.standees_lower_bound, record.standees_upper_bound);
-        const formsKey         = buildRangeKey(record.forms_lower_bound, record.forms_upper_bound);
-        const standeeRangeEdit = editedStandeeRanges[standeeKey];
-        const formsRangeEdit   = editedFormsRanges[formsKey];
-
-        return {
-            standees_lower_bound: standeeRangeEdit?.lowerBound ?? record.standees_lower_bound,
-            standees_upper_bound: standeeRangeEdit !== undefined ? standeeRangeEdit.upperBound : record.standees_upper_bound,
-            forms_lower_bound:    formsRangeEdit?.lowerBound ?? record.forms_lower_bound,
-            forms_upper_bound:    formsRangeEdit !== undefined ? formsRangeEdit.upperBound : record.forms_upper_bound,
-            complexity:           record.complexity,
-            packout:              editedCosts[record._id] !== undefined ? editedCosts[record._id] : record.packout,
-        };
-    }
-
-    // Returns true if a saved record has any pending edits that differ from what's in the database
-    function recordHasUnsavedChanges(record: PackoutRecord): boolean {
-        const payload = buildSavePayload(record);
-        return (
-            payload.standees_lower_bound !== record.standees_lower_bound ||
-            payload.standees_upper_bound !== record.standees_upper_bound ||
-            payload.forms_lower_bound    !== record.forms_lower_bound    ||
-            payload.forms_upper_bound    !== record.forms_upper_bound    ||
-            payload.packout              !== record.packout
-        );
-    }
-
-    const hasFilledMissingCells = Object.values(missingCellEdits).some((v) => v !== "");
-
+    // True if any saved tier has been edited OR there are pending new rows waiting to be submitted
     const hasUnsavedChanges =
-        tiersForActiveComplexity.some(recordHasUnsavedChanges) || newRowDrafts.length > 0 || hasFilledMissingCells;
+        (!!editBuffer && tiersForActiveComplexity.some((t) => {
+            const e = editBuffer[t._id];
+            return e && (
+                e.standees_lower_bound !== t.standees_lower_bound ||
+                e.standees_upper_bound !== t.standees_upper_bound ||
+                e.packout !== t.packout
+            );
+        })) || pendingNewRows.length > 0;
+
+    async function reloadTiers() {
+        const data = await fetch(`${API_BASE}/packout`).then((r) => r.json());
+        const updated: PackoutRecord[] = data.data ?? [];
+        setSavedTiers(updated);
+        setEditBuffer(buildEditBuffer(updated));
+    }
 
     async function saveChanges() {
         if (!hasUnsavedChanges) return;
         setIsSaving(true);
         try {
             const changedBy = localStorage.getItem("username") ?? "";
-            // PATCH every existing record that has at least one change
-            const patchRequests = tiersForActiveComplexity
-                .filter(recordHasUnsavedChanges)
-                .map((record) =>
-                    fetch(`${API_BASE}/packout/${record._id}`, {
-                        method: "PATCH",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ ...buildSavePayload(record), changed_by: changedBy }),
+            // PATCH /packout/:id for each tier whose values changed
+            const patches = editBuffer
+                ? tiersForActiveComplexity
+                    .filter((t) => {
+                        const e = editBuffer[t._id];
+                        return e && (
+                            e.standees_lower_bound !== t.standees_lower_bound ||
+                            e.standees_upper_bound !== t.standees_upper_bound ||
+                            e.packout !== t.packout
+                        );
                     })
-                );
-
-            // POST one new database record for each previously-empty matrix cell the user filled in
-            const missingCellRequests = uniqueStandeeRanges.flatMap((standeeRange) => {
-                const standeeKey = buildRangeKey(standeeRange.lowerBound, standeeRange.upperBound);
-                const currentStandeeBounds = getCurrentStandeeBounds(standeeRange);
-                return uniqueFormsTiers
-                    .filter((formsTier) => {
-                        const formsKey = buildRangeKey(formsTier.lowerBound, formsTier.upperBound);
-                        if (recordGrid.get(standeeKey)?.get(formsKey)) return false;
-                        const raw = missingCellEdits[missingCellKey(standeeKey, formsKey)];
-                        return raw !== undefined && raw !== "";
-                    })
-                    .map((formsTier) => {
-                        const formsKey = buildRangeKey(formsTier.lowerBound, formsTier.upperBound);
-                        const currentFormsBounds = getCurrentFormsBounds(formsTier);
-                        return fetch(`${API_BASE}/packout`, {
-                            method: "POST",
+                    .map((t) =>
+                        fetch(`${API_BASE}/packout/${t._id}`, {
+                            method: "PATCH",
                             headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({
-                                standees_lower_bound: currentStandeeBounds.lowerBound,
-                                standees_upper_bound: currentStandeeBounds.upperBound,
-                                forms_lower_bound:    currentFormsBounds.lowerBound,
-                                forms_upper_bound:    currentFormsBounds.upperBound,
-                                complexity:           activeComplexity,
-                                packout:              parseInt(missingCellEdits[missingCellKey(standeeKey, formsKey)]) || 0,
-                                changed_by:           changedBy,
-                            }),
-                        });
-                    });
-            });
+                            body: JSON.stringify({ ...editBuffer[t._id], complexity: activeComplexity, changed_by: changedBy }),
+                        }),
+                    )
+                : [];
 
-            // POST one new database record per forms tier for each new row draft
-            const postRequests = newRowDrafts
-                .filter((draft) => draft.standeesLower !== "")
-                .flatMap((draft) =>
-                    uniqueFormsTiers
-                        .filter((formsTier) => {
-                            const formsKey = buildRangeKey(formsTier.lowerBound, formsTier.upperBound);
-                            return draft.costByFormsKey[formsKey] !== "";
-                        })
-                        .map((formsTier) => {
-                            const formsKey = buildRangeKey(formsTier.lowerBound, formsTier.upperBound);
-                            return fetch(`${API_BASE}/packout`, {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({
-                                    standees_lower_bound: parseInt(draft.standeesLower),
-                                    standees_upper_bound: draft.standeesUpper === "" ? null : parseInt(draft.standeesUpper),
-                                    forms_lower_bound:    formsTier.lowerBound,
-                                    forms_upper_bound:    formsTier.upperBound,
-                                    complexity:           activeComplexity,
-                                    packout:              parseInt(draft.costByFormsKey[formsKey]) || 0,
-                                    changed_by:           changedBy,
-                                }),
-                            });
-                        })
+            // POST /packout for each fully-filled pending new row
+            const posts = pendingNewRows
+                .filter((row) => row.standees_lower_bound !== "" && row.packout !== "")
+                .map((row) =>
+                    fetch(`${API_BASE}/packout`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            standees_lower_bound: parseInt(row.standees_lower_bound),
+                            standees_upper_bound: row.standees_upper_bound === "" ? null : parseInt(row.standees_upper_bound),
+                            complexity: activeComplexity,
+                            packout: parseInt(row.packout),
+                            changed_by: changedBy,
+                        }),
+                    }),
                 );
 
-            await Promise.all([...patchRequests, ...postRequests, ...missingCellRequests]);
-            await fetchAndResetAllEdits();
-            setNewRowDrafts([]);
-        } catch (error) { console.error(error); }
+            await Promise.all([...patches, ...posts]);
+            await reloadTiers();
+            setPendingNewRows([]);
+        } catch (e) { console.error(e); }
         finally { setIsSaving(false); }
     }
 
-    // Sends DELETE requests for all records in the confirmed standee row, then reloads
-    async function deleteConfirmedRows() {
-        if (!pendingDeletionIds) return;
-        const idsToDelete = pendingDeletionIds;
-        setPendingDeletionIds(null);
+    async function confirmDeleteTier() {
+        if (!tierToDelete) return;
+        const id = tierToDelete;
+        setTierToDelete(null);
         try {
             const changedBy = localStorage.getItem("username") ?? "";
-            await Promise.all(
-                idsToDelete.map((id) =>
-                    fetch(`${API_BASE}/packout/${id}?changed_by=${encodeURIComponent(changedBy)}`, { method: "DELETE" })
-                )
-            );
-            await fetchAndResetAllEdits();
-        } catch (error) { console.error(error); }
+            // DELETE /packout/:id → permanently removes the tier
+            await fetch(`${API_BASE}/packout/${id}?changed_by=${encodeURIComponent(changedBy)}`, { method: "DELETE" });
+            await reloadTiers();
+        } catch (e) { console.error(e); }
     }
-
-    // Tailwind class for the small inline bound inputs in row/column headers.
-    // Transparent background so they blend into the table; yellow underline on focus.
-    const rangeInputClass = [
-        "w-[38px] text-xs text-[#000005] font-bold bg-transparent outline-none",
-        "border-b-2 border-[#EDEAEA] hover:border-[#B1B3B6] focus:border-[#FFB604]",
-        "transition-colors text-center",
-        "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none",
-    ].join(" ");
 
     return (
         <>
             <ConfirmAlert
-                visible={pendingDeletionIds !== null}
-                message={`Delete this standee range? This removes ${pendingDeletionIds?.length ?? 0} tier records and cannot be undone.`}
-                onConfirm={() => void deleteConfirmedRows()}
-                onCancel={() => setPendingDeletionIds(null)}
+                visible={tierToDelete !== null}
+                message="Delete this packout tier? This cannot be undone."
+                onConfirm={() => void confirmDeleteTier()}
+                onCancel={() => setTierToDelete(null)}
             />
 
-            {/* 01 — Complexity filter: determines which subset of tiers is shown in the matrix */}
+            {/* 01 — Complexity filter: determines which subset of tiers is shown below */}
             <div className="flex flex-col justify-center items-start w-full p-5 border-b-2 border-[#EDEAEA]">
                 <div className="text-[10px] m-2">01 — COMPLEXITY FILTER</div>
                 <div className="flex flex-row gap-2 ml-2">
@@ -370,227 +185,143 @@ export default function PackoutModule() {
                 </div>
             </div>
 
-            {/* 02 — Pricing matrix: rows = standee ranges, columns = forms tiers, cells = cost */}
-            <div className="flex flex-col items-start w-full flex-1 p-5 overflow-auto">
-                <div className="flex items-center gap-2 m-2 mb-3">
-                    <span className="text-[10px]">02 — PRICING MATRIX</span>
+            {/* 02 — editable tier rows + new row drafts */}
+            <div className="flex flex-col items-start w-full flex-1 p-5 overflow-y-auto">
+                <div className="flex items-center gap-2 m-2">
+                    <span className="text-[10px]">02 — STANDEE TIERS</span>
                     {hasUnsavedChanges && (
-                        <span className="text-[10px] font-bold text-[#FFB604] tracking-wide">Unsaved Changes</span>
+                        <span className="text-[10px] font-bold text-[#FFB604] px-1.5 py-0.5 tracking-wide">
+                            Unsaved Changes
+                        </span>
                     )}
                 </div>
 
                 {isLoading ? (
                     <div className="text-xs m-2">Loading...</div>
-                ) : (
-                    <table className="border-collapse text-xs w-full">
-                        <thead>
-                            <tr>
-                                {/* Corner label */}
-                                <th className="text-left pb-3 pr-6 align-bottom">
-                                    <span className="text-[9px] font-bold tracking-wider text-[#ABABAB]">STANDEES</span>
-                                </th>
+                ) : (tiersForActiveComplexity.length > 0 && editBuffer) || pendingNewRows.length > 0 ? (
+                    <>
+                        {/* Column headers */}
+                        <div className="flex flex-row gap-3 w-full mb-1 px-1">
+                            <div className="text-[9px] flex-1 font-bold tracking-wider">STANDEES LOWER BOUND</div>
+                            <div className="text-[9px] flex-1 font-bold tracking-wider">STANDEES UPPER BOUND</div>
+                            <div className="text-[9px] flex-1 font-bold tracking-wider">PACKOUT ($)</div>
+                            <div className="text-[9px] w-[120px] shrink-0 font-bold tracking-wider">LAST UPDATED</div>
+                            <div className="w-[34px] shrink-0" />
+                        </div>
 
-                                {/* Column headers — one per forms tier, with editable bound inputs */}
-                                {uniqueFormsTiers.map((formsTier) => {
-                                    const formsKey          = buildRangeKey(formsTier.lowerBound, formsTier.upperBound);
-                                    const currentBounds     = getCurrentFormsBounds(formsTier);
-                                    const formsRangeEdited  = editedFormsRanges[formsKey] !== undefined &&
-                                        (editedFormsRanges[formsKey].lowerBound !== formsTier.lowerBound ||
-                                         editedFormsRanges[formsKey].upperBound !== formsTier.upperBound);
-                                    return (
-                                        <th key={formsKey} className="pb-3 px-2 align-bottom">
-                                            <div className="flex flex-col items-start gap-1">
-                                                <span className={`text-[9px] font-bold tracking-wider ${formsRangeEdited ? "text-[#FFB604]" : "text-[#ABABAB]"}`}>
-                                                    FORMS {formsRangeEdited ? "·" : ""}
-                                                </span>
-                                                <div className="flex items-center gap-1">
-                                                    <input
-                                                        type="number" min={0} step={1}
-                                                        value={currentBounds.lowerBound}
-                                                        onChange={(e) => updateFormsBound(formsKey, "lowerBound", e.target.value)}
-                                                        className={rangeInputClass}
-                                                    />
-                                                    <span className="text-[#B1B3B6] text-[10px]">–</span>
-                                                    <input
-                                                        type="number" min={0} step={1}
-                                                        placeholder="∞"
-                                                        value={currentBounds.upperBound ?? ""}
-                                                        onChange={(e) => updateFormsBound(formsKey, "upperBound", e.target.value)}
-                                                        className={rangeInputClass}
-                                                    />
-                                                </div>
-                                            </div>
-                                        </th>
-                                    );
-                                })}
-                                <th className="w-[34px]" />
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {/* Saved standee rows */}
-                            {uniqueStandeeRanges.map((standeeRange) => {
-                                const standeeKey = buildRangeKey(standeeRange.lowerBound, standeeRange.upperBound);
-
-                                // Collect the IDs for all records in this standee row (one per forms tier)
-                                const recordIdsInRow = uniqueFormsTiers
-                                    .map((formsTier) => recordGrid.get(standeeKey)?.get(buildRangeKey(formsTier.lowerBound, formsTier.upperBound))?._id)
-                                    .filter(Boolean) as string[];
-
-                                const currentStandeeBounds  = getCurrentStandeeBounds(standeeRange);
-                                const standeeRangeEdited    = editedStandeeRanges[standeeKey] !== undefined &&
-                                    (editedStandeeRanges[standeeKey].lowerBound !== standeeRange.lowerBound ||
-                                     editedStandeeRanges[standeeKey].upperBound !== standeeRange.upperBound);
-
+                        <div className="w-full flex flex-col gap-2">
+                            {/* Existing saved tiers */}
+                            {tiersForActiveComplexity.map((tier) => {
+                                const edit = editBuffer?.[tier._id];
+                                if (!edit) return null;
+                                const lbChanged = edit.standees_lower_bound !== tier.standees_lower_bound;
+                                const ubChanged = edit.standees_upper_bound !== tier.standees_upper_bound;
+                                const pkChanged = edit.packout !== tier.packout;
                                 return (
-                                    <tr key={standeeKey} className="group">
-                                        {/* Row header with editable standee range bounds */}
-                                        <td className="pr-6 py-1.5 align-middle">
-                                            <div className="flex flex-col gap-0.5">
-                                                {standeeRangeEdited && (
-                                                    <span className="text-[8px] text-[#FFB604] font-bold leading-none">CHANGED</span>
-                                                )}
-                                                <div className="flex items-center gap-1">
-                                                    <input
-                                                        type="number" min={0} step={1}
-                                                        value={currentStandeeBounds.lowerBound}
-                                                        onChange={(e) => updateStandeeBound(standeeKey, "lowerBound", e.target.value)}
-                                                        className={rangeInputClass}
-                                                    />
-                                                    <span className="text-[#B1B3B6] text-[10px]">–</span>
-                                                    <input
-                                                        type="number" min={0} step={1}
-                                                        placeholder="∞"
-                                                        value={currentStandeeBounds.upperBound ?? ""}
-                                                        onChange={(e) => updateStandeeBound(standeeKey, "upperBound", e.target.value)}
-                                                        className={rangeInputClass}
-                                                    />
-                                                </div>
-                                            </div>
-                                        </td>
-
-                                        {/* One cost cell per forms tier column */}
-                                        {uniqueFormsTiers.map((formsTier) => {
-                                            const formsKey    = buildRangeKey(formsTier.lowerBound, formsTier.upperBound);
-                                            const record      = recordGrid.get(standeeKey)?.get(formsKey);
-                                            const costEdited  = record && editedCosts[record._id] !== undefined && editedCosts[record._id] !== record.packout;
-                                            return (
-                                                <td key={formsKey} className="px-2 py-1.5 align-middle">
-                                                    {record ? (
-                                                        <div className="relative">
-                                                            {costEdited && (
-                                                                <span className="absolute -top-3.5 left-0 text-[8px] text-[#FFB604] font-bold leading-none">CHANGED</span>
-                                                            )}
-                                                            <div className={`flex items-center border-2 rounded-md transition-colors focus-within:border-[#FFB604] ${costEdited ? "border-[#FFE08A]" : "border-[#EDEAEA]"}`}>
-                                                                <span className="pl-2 text-[#B1B3B6] select-none">$</span>
-                                                                <input
-                                                                    type="number" min={0} step={1}
-                                                                    value={getDisplayCost(record)}
-                                                                    onChange={(e) => updateCostEdit(record._id, e.target.value)}
-                                                                    className="w-full p-1.5 outline-none text-black text-xs bg-transparent"
-                                                                />
-                                                            </div>
-                                                        </div>
-                                                    ) : (
-                                                        <div className="relative">
-                                                            {!!missingCellEdits[missingCellKey(standeeKey, formsKey)] && (
-                                                                <span className="absolute -top-3.5 left-0 text-[8px] text-[#FFB604] font-bold leading-none">NEW</span>
-                                                            )}
-                                                            <div className={`flex items-center border-2 rounded-md transition-colors focus-within:border-[#FFB604] ${
-                                                                missingCellEdits[missingCellKey(standeeKey, formsKey)] ? "border-[#FFE08A]" : "border-dashed border-[#EDEAEA]"
-                                                            }`}>
-                                                                <span className="pl-2 text-[#B1B3B6] select-none">$</span>
-                                                                <input
-                                                                    type="number" min={0} step={1}
-                                                                    placeholder="—"
-                                                                    value={missingCellEdits[missingCellKey(standeeKey, formsKey)] ?? ""}
-                                                                    onChange={(e) => updateMissingCellEdit(standeeKey, formsKey, e.target.value)}
-                                                                    className="w-full p-1.5 outline-none text-black text-xs bg-transparent"
-                                                                />
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                </td>
-                                            );
-                                        })}
-
-                                        {/* Delete button — only visible on row hover */}
-                                        <td className="py-1.5 pl-1 align-middle">
-                                            <button
-                                                onClick={() => setPendingDeletionIds(recordIdsInRow)}
-                                                className="h-[32px] w-[32px] text-xs font-bold border-2 border-transparent rounded-md text-[#DEDEDE] hover:border-red-200 hover:text-red-400 transition-colors cursor-pointer opacity-0 group-hover:opacity-100"
-                                            >
-                                                ✕
-                                            </button>
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-
-                            {/* Unsaved new row drafts */}
-                            {newRowDrafts.map((draft, rowIndex) => (
-                                <tr key={`new-row-${rowIndex}`}>
-                                    {/* Standee range inputs for the new row */}
-                                    <td className="pr-6 py-1.5 align-middle">
-                                        <div className="flex flex-col gap-1">
-                                            <span className="text-[8px] text-[#FFB604] font-bold leading-none">NEW</span>
-                                            <div className="flex items-center gap-1">
-                                                <input
-                                                    type="number" min={0} step={1}
-                                                    placeholder="lb"
-                                                    value={draft.standeesLower}
-                                                    onChange={(e) => updateNewRowBound(rowIndex, "standeesLower", e.target.value)}
-                                                    className="border-2 border-[#FFB604] rounded-md w-[44px] p-1.5 outline-none text-black text-xs"
-                                                />
-                                                <span className="text-[#B1B3B6]">–</span>
-                                                <input
-                                                    type="number" min={0} step={1}
-                                                    placeholder="∞"
-                                                    value={draft.standeesUpper}
-                                                    onChange={(e) => updateNewRowBound(rowIndex, "standeesUpper", e.target.value)}
-                                                    className="border-2 border-[#FFB604] rounded-md w-[44px] p-1.5 outline-none text-black text-xs"
-                                                />
-                                            </div>
+                                    <div key={tier._id} className="flex flex-row items-center gap-3">
+                                        <div className="flex flex-col flex-1">
+                                            {lbChanged && <span className="text-[8px] text-[#FFB604] font-bold mb-0.5">CHANGED</span>}
+                                            <input
+                                                type="number" min={0} step={1}
+                                                value={edit.standees_lower_bound}
+                                                onChange={(e) => updateExistingTier(tier._id, "standees_lower_bound", e.target.value)}
+                                                className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
+                                            />
                                         </div>
-                                    </td>
-
-                                    {/* One cost input per forms tier column for the new row */}
-                                    {uniqueFormsTiers.map((formsTier) => {
-                                        const formsKey = buildRangeKey(formsTier.lowerBound, formsTier.upperBound);
-                                        return (
-                                            <td key={formsKey} className="px-2 py-1.5 align-middle">
-                                                <div className="flex items-center border-2 border-[#FFB604] rounded-md">
-                                                    <span className="pl-2 text-[#B1B3B6] select-none">$</span>
-                                                    <input
-                                                        type="number" min={0} step={1}
-                                                        value={draft.costByFormsKey[formsKey]}
-                                                        onChange={(e) => updateNewRowCost(rowIndex, formsKey, e.target.value)}
-                                                        className="w-full p-1.5 outline-none text-black text-xs bg-transparent"
-                                                    />
-                                                </div>
-                                            </td>
-                                        );
-                                    })}
-
-                                    <td className="py-1.5 pl-1 align-middle">
+                                        <div className="flex flex-col flex-1">
+                                            {ubChanged && <span className="text-[8px] text-[#FFB604] font-bold mb-0.5">CHANGED</span>}
+                                            <input
+                                                type="number" min={0} step={1}
+                                                placeholder="∞"
+                                                value={edit.standees_upper_bound ?? ""}
+                                                onChange={(e) => updateExistingTier(tier._id, "standees_upper_bound", e.target.value)}
+                                                className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
+                                            />
+                                        </div>
+                                        <div className="flex flex-col flex-1">
+                                            {pkChanged && <span className="text-[8px] text-[#FFB604] font-bold mb-0.5">CHANGED</span>}
+                                            <input
+                                                type="number" min={0} step={1}
+                                                value={edit.packout}
+                                                onChange={(e) => updateExistingTier(tier._id, "packout", e.target.value)}
+                                                className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
+                                            />
+                                        </div>
+                                        <div className="flex justify-center items-center p-2 border-2 w-[120px] shrink-0 border-[#EDEAEA] rounded-md h-[34px]">
+                                            <div className="text-[0.75em] font-instrument text-black">{formatDate(tier.last_updated)}</div>
+                                        </div>
                                         <button
-                                            onClick={() => removeNewRowDraft(rowIndex)}
-                                            className="h-[32px] w-[32px] text-xs font-bold border-2 border-[#EDEAEA] rounded-md text-[#ABABAB] hover:border-red-300 hover:text-red-400 transition-colors cursor-pointer"
+                                            onClick={() => setTierToDelete(tier._id)}
+                                            className="cursor-pointer shrink-0 h-[34px] w-[34px] text-xs font-bold border-2 border-[#EDEAEA] rounded-md text-[#ABABAB] hover:border-red-300 hover:text-red-400 transition-colors"
                                         >
                                             ✕
                                         </button>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                )}
+                                    </div>
+                                );
+                            })}
 
-                <button
-                    onClick={addNewRowDraft}
-                    className="mt-4 cursor-pointer px-4 h-[34px] text-xs font-bold border-2 border-dashed border-[#EDEAEA] rounded-md text-[#ABABAB] hover:border-[#FFB604] hover:text-[#FFB604] transition-colors"
-                >
-                    + ADD ROW
-                </button>
+                            {/* Draft rows that haven't been submitted yet */}
+                            {pendingNewRows.map((row, idx) => (
+                                <div key={`new-${idx}`} className="flex flex-row items-center gap-3">
+                                    <div className="flex flex-col flex-1">
+                                        <span className="text-[8px] text-[#FFB604] font-bold mb-0.5">NEW</span>
+                                        <input
+                                            type="number" min={0} step={1}
+                                            value={row.standees_lower_bound}
+                                            onChange={(e) => updateNewRow(idx, "standees_lower_bound", e.target.value)}
+                                            className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
+                                        />
+                                    </div>
+                                    <div className="flex flex-col flex-1">
+                                        <span className="text-[8px] text-[#FFB604] font-bold mb-0.5">NEW</span>
+                                        <input
+                                            type="number" min={0} step={1}
+                                            placeholder="∞"
+                                            value={row.standees_upper_bound}
+                                            onChange={(e) => updateNewRow(idx, "standees_upper_bound", e.target.value)}
+                                            className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
+                                        />
+                                    </div>
+                                    <div className="flex flex-col flex-1">
+                                        <span className="text-[8px] text-[#FFB604] font-bold mb-0.5">NEW</span>
+                                        <input
+                                            type="number" min={0} step={1}
+                                            value={row.packout}
+                                            onChange={(e) => updateNewRow(idx, "packout", e.target.value)}
+                                            className="border-2 border-[#EDEAEA] rounded-md w-full p-1.5 outline-none text-black text-xs focus:border-[#FFB604] transition-colors"
+                                        />
+                                    </div>
+                                    <div className="flex justify-center items-center p-2 border-2 w-[120px] shrink-0 border-[#EDEAEA] rounded-md h-[34px]">
+                                        <div className="text-[0.75em] font-instrument text-black">—</div>
+                                    </div>
+                                    <button
+                                        onClick={() => removeNewRow(idx)}
+                                        className="cursor-pointer shrink-0 h-[34px] w-[34px] text-xs font-bold border-2 border-[#EDEAEA] rounded-md text-[#ABABAB] hover:border-red-300 hover:text-red-400 transition-colors"
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+
+                        <button
+                            onClick={addNewRow}
+                            className="mt-2 cursor-pointer px-4 h-[34px] text-xs font-bold border-2 border-dashed border-[#EDEAEA] rounded-md text-[#ABABAB] hover:border-[#FFB604] hover:text-[#FFB604] transition-colors"
+                        >
+                            + ADD ROW
+                        </button>
+                    </>
+                ) : (
+                    <div className="flex flex-col gap-2 m-2">
+                        <div className="text-xs text-[#ABABAB]">No packout records found for this complexity.</div>
+                        <button
+                            onClick={addNewRow}
+                            className="self-start cursor-pointer px-4 h-[34px] text-xs font-bold border-2 border-dashed border-[#EDEAEA] rounded-md text-[#ABABAB] hover:border-[#FFB604] hover:text-[#FFB604] transition-colors"
+                        >
+                            + ADD ROW
+                        </button>
+                    </div>
+                )}
             </div>
 
             <ModuleFooter
