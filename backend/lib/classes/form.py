@@ -20,6 +20,7 @@ class Element:
         linear_inches: float = 0,
         description: str = "",
         complexity: Complexity = Complexity.SIMPLE,
+        linear_inches_provided: bool | None = None,
     ):
         self.name = name
         self.description = description
@@ -27,7 +28,10 @@ class Element:
         self.width = width
         self.complexity = complexity
         self.linear_inches = linear_inches
-        self.linear_inches_provided = linear_inches != 0
+        # Explicit `linear_inches_provided` lets a caller preserve "this is a fallback estimate,
+        # not real data" through a transformation (e.g. splitting one element into several) even
+        # though the derived number itself is non-zero. Defaults to inferring from the value.
+        self.linear_inches_provided = (linear_inches != 0) if linear_inches_provided is None else linear_inches_provided
 
     def get_linear_inches(self, modifier: float = 1.0) -> float:
         """Calculate linear inches for the element, using either the provided linear inches or the perimeter.

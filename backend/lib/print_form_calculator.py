@@ -107,6 +107,10 @@ def _split_element(element: Element, form_width: float, form_length: float) -> l
             width=split_width,
             linear_inches=split_linear_inches,
             complexity=element.complexity,
+            # Preserve provenance from the source element — a split piece of an element with no
+            # real linear inches is still a fallback estimate, even though split_linear_inches
+            # itself is a non-zero number.
+            linear_inches_provided=element.linear_inches_provided,
         )
         for i in range(num_splits)
     ]
