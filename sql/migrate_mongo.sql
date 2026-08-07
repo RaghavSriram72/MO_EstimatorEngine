@@ -431,29 +431,40 @@ WHERE NOT EXISTS (
 -- ────────────────────────────── packout ────────────────────────────
 EXEC #read_json_file @MongoDir, N'packout.json', @json OUTPUT;
 
-INSERT dbo.packout (standees_lower_bound, standees_upper_bound, forms_lower_bound,
-                    forms_upper_bound, complexity, packout, last_updated)
-SELECT d.standees_lower_bound, d.standees_upper_bound, d.forms_lower_bound,
-       d.forms_upper_bound, d.complexity, d.packout,
-       ISNULL(TRY_CONVERT(DATETIME2(3), d.last_updated, 127), SYSUTCDATETIME())
-FROM OPENJSON(@json) WITH (
-        standees_lower_bound INT          N'$.standees_lower_bound',
-        standees_upper_bound INT          N'$.standees_upper_bound',
-        forms_lower_bound    INT          N'$.forms_lower_bound',
-        forms_upper_bound    INT          N'$.forms_upper_bound',
-        complexity           NVARCHAR(32) N'$.complexity',
-        packout              FLOAT        N'$.packout',
-        last_updated         NVARCHAR(64) N'$.last_updated'  -- absent on most rows
-     ) AS d
-WHERE NOT EXISTS (
+-- packout used to also vary by a forms range; that dimension was dropped (see
+-- create_tables.sql), so several legacy tiers now share the same (standees
+-- range, complexity) key. Keep the lowest forms_lower_bound tier per group.
+;WITH parsed AS (
+    SELECT d.standees_lower_bound, d.standees_upper_bound, d.forms_lower_bound,
+           d.complexity, d.packout,
+           ISNULL(TRY_CONVERT(DATETIME2(3), d.last_updated, 127), SYSUTCDATETIME()) AS last_updated
+    FROM OPENJSON(@json) WITH (
+            standees_lower_bound INT          N'$.standees_lower_bound',
+            standees_upper_bound INT          N'$.standees_upper_bound',
+            forms_lower_bound    INT          N'$.forms_lower_bound',
+            complexity           NVARCHAR(32) N'$.complexity',
+            packout              FLOAT        N'$.packout',
+            last_updated         NVARCHAR(64) N'$.last_updated'  -- absent on most rows
+         ) AS d
+),
+deduped AS (
+    SELECT *,
+           ROW_NUMBER() OVER (
+               PARTITION BY standees_lower_bound, standees_upper_bound, complexity
+               ORDER BY forms_lower_bound ASC
+           ) AS rn
+    FROM parsed
+)
+INSERT dbo.packout (standees_lower_bound, standees_upper_bound, complexity, packout, last_updated)
+SELECT d.standees_lower_bound, d.standees_upper_bound, d.complexity, d.packout, d.last_updated
+FROM deduped d
+WHERE d.rn = 1
+  AND NOT EXISTS (
         SELECT 1 FROM dbo.packout p
         WHERE p.complexity = d.complexity
           AND p.standees_lower_bound = d.standees_lower_bound
-          AND p.forms_lower_bound = d.forms_lower_bound
           AND (p.standees_upper_bound = d.standees_upper_bound
-               OR (p.standees_upper_bound IS NULL AND d.standees_upper_bound IS NULL))
-          AND (p.forms_upper_bound = d.forms_upper_bound
-               OR (p.forms_upper_bound IS NULL AND d.forms_upper_bound IS NULL)));
+               OR (p.standees_upper_bound IS NULL AND d.standees_upper_bound IS NULL)));
 
 -- ─────────────── supplier_materials + supplier_price_breaks ────────
 EXEC #read_json_file @MongoDir, N'suppliers.json', @json OUTPUT;
