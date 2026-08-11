@@ -1097,6 +1097,27 @@ async def update_user_role(
     return {"message": "Role updated", "username": username, "role": payload.role}
 
 
+class ResetPasswordRequest(BaseModel):
+    password: str = Field(..., description="New password for the account")
+
+
+@app.patch("/users/{username}/password")
+async def reset_user_password(
+    username: str,
+    payload: ResetPasswordRequest,
+    requester: str = Query(..., description="Username of the admin making this change"),
+):
+    """Admin-only: reset another account's password (or the admin's own)."""
+    db = _ensure_db()
+    if err := _require_admin(db, requester):
+        return err
+    if not payload.password:
+        return JSONResponse(status_code=400, content={"error": "Password must not be empty"})
+    if not db.set_user_password(username, payload.password):
+        return JSONResponse(status_code=404, content={"error": "Unknown user"})
+    return {"message": "Password reset successfully", "username": username}
+
+
 _MAX_HIGHLIGHT_WIDTH = 800
 
 

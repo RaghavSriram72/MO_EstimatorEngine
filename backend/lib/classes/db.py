@@ -551,6 +551,16 @@ class MidnightOilDB:
             self.conn.commit()
         return updated > 0
 
+    def set_user_password(self, username: str, new_password: str) -> bool:
+        """Reset a user's password. Returns False if the username doesn't exist."""
+        updated = self._execute(
+            "UPDATE users SET password_hash = ? WHERE username = ?",
+            (_hash_password(new_password), username),
+        )
+        if updated > 0:
+            self.conn.commit()
+        return updated > 0
+
     # ------------------------------------------------------------------
     # History
     # ------------------------------------------------------------------
