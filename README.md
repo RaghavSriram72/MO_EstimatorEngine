@@ -88,10 +88,13 @@ Create the database and tables (SSMS or `sqlcmd`):
 
 ```bash
 sqlcmd -S <server> -i sql\create_database.sql
+sqlcmd -S localhost -C -i sql\create_database.sql
 ```
 
 ```bash
 sqlcmd -S <server> -d MidnightOilEstimator -i sql\create_tables.sql
+sqlcmd -S localhost -d MidnightOilEstimator -C -i sql\create_tables.sql
+
 ```
 
 Both scripts are idempotent — re-running them is safe and will add anything missing.
@@ -101,6 +104,7 @@ tables) from the MongoDB exports in `MONGO_database\`. Pick one of the two varia
 
 ```bash
 sqlcmd -S <server> -d MidnightOilEstimator -i sql\migrate_mongo.sql
+sqlcmd -S localhost -d MidnightOilEstimator -C -i sql\migrate_mongo.sql
 ```
 
 reads the `.json` files off disk — edit `@MongoDir` near the top of the script first, and
@@ -109,6 +113,7 @@ folder (or you lack `ADMINISTER BULK OPERATIONS`), use the self-contained varian
 
 ```bash
 sqlcmd -S <server> -d MidnightOilEstimator -i sql\migrate_mongo_data.sql
+sqlcmd -S localhost -d MidnightOilEstimator -C -i sql\migrate_mongo_data.sql
 ```
 
 which embeds the same export as literals and needs no filesystem access. Both are idempotent
