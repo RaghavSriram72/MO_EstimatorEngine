@@ -431,35 +431,19 @@ WHERE NOT EXISTS (
 -- ────────────────────────────── packout ────────────────────────────
 EXEC #read_json_file @MongoDir, N'packout.json', @json OUTPUT;
 
--- packout used to also vary by a forms range; that dimension was dropped (see
--- create_tables.sql), so several legacy tiers now share the same (standees
--- range, complexity) key. Keep the lowest forms_lower_bound tier per group.
-;WITH parsed AS (
-    SELECT d.standees_lower_bound, d.standees_upper_bound, d.forms_lower_bound,
-           d.complexity, d.packout,
-           ISNULL(TRY_CONVERT(DATETIME2(3), d.last_updated, 127), SYSUTCDATETIME()) AS last_updated
-    FROM OPENJSON(@json) WITH (
-            standees_lower_bound INT          N'$.standees_lower_bound',
-            standees_upper_bound INT          N'$.standees_upper_bound',
-            forms_lower_bound    INT          N'$.forms_lower_bound',
-            complexity           NVARCHAR(32) N'$.complexity',
-            packout              FLOAT        N'$.packout',
-            last_updated         NVARCHAR(64) N'$.last_updated'  -- absent on most rows
-         ) AS d
-),
-deduped AS (
-    SELECT *,
-           ROW_NUMBER() OVER (
-               PARTITION BY standees_lower_bound, standees_upper_bound, complexity
-               ORDER BY forms_lower_bound ASC
-           ) AS rn
-    FROM parsed
-)
+-- One row per (standees range, complexity) — packout no longer varies by a
+-- forms range (see create_tables.sql).
 INSERT dbo.packout (standees_lower_bound, standees_upper_bound, complexity, packout, last_updated)
-SELECT d.standees_lower_bound, d.standees_upper_bound, d.complexity, d.packout, d.last_updated
-FROM deduped d
-WHERE d.rn = 1
-  AND NOT EXISTS (
+SELECT d.standees_lower_bound, d.standees_upper_bound, d.complexity, d.packout,
+       ISNULL(TRY_CONVERT(DATETIME2(3), d.last_updated, 127), SYSUTCDATETIME())
+FROM OPENJSON(@json) WITH (
+        standees_lower_bound INT          N'$.standees_lower_bound',
+        standees_upper_bound INT          N'$.standees_upper_bound',
+        complexity           NVARCHAR(32) N'$.complexity',
+        packout               FLOAT        N'$.packout',
+        last_updated          NVARCHAR(64) N'$.last_updated'  -- absent on most rows
+     ) AS d
+WHERE NOT EXISTS (
         SELECT 1 FROM dbo.packout p
         WHERE p.complexity = d.complexity
           AND p.standees_lower_bound = d.standees_lower_bound
