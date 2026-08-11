@@ -30,7 +30,7 @@ from lib.globals import (
     FORM_95_WIDTH,
     PADDING,
 )
-from lib.classes.form import Complexity, Element
+from lib.classes.form import Complexity, Element, Form
 from lib.cost_debug import maybe_attach_cost_explanations
 from lib.persisted_project import (
     PersistedProjectCreate,
@@ -200,6 +200,13 @@ def _compute_quote_scenarios(db: MidnightOilDB, elements: list[Element], payload
     busmark_forms = list(busmark_bins.values())
     form_95_forms = list(form_95_bins.values())
 
+    if payload.include_print_sides:
+        # Accounts for double-sided printing: one extra form, carrying no elements of its
+        # own, at the standee type's overall complexity rather than any one element's.
+        side_complexity = Complexity(payload.standee_type)
+        busmark_forms.append(Form(id="print-sides", elements=[], complexity=side_complexity))
+        form_95_forms.append(Form(id="print-sides", elements=[], complexity=side_complexity))
+
     # Scenario 2 disabled — no longer offered as a quote scenario. Tabs now go 1, 3, 4, 5.
     scenarios_to_run = [payload.scenario] if payload.scenario is not None else [1, 3, 4, 5]
     out: dict[str, Any] = {}
@@ -237,6 +244,9 @@ class QuoteRequest(BaseModel):
     num_standees: float
     scenario: int | None = None
     standee_type: int = 1
+    # When True, an extra print form (complexity = standee_type) is added to the print-form
+    # count to account for double-sided printing.
+    include_print_sides: bool = False
     owner: str | None = None
     project_name: str | None = None
     project_id: str | None = None
@@ -294,11 +304,12 @@ async def generate_quote(payload: QuoteRequest):
                 num_standees=int(payload.num_standees),
                 standee_type=complexity_to_str(Complexity(payload.standee_type)),
                 elements=elements_to_persisted(elements),
+                include_print_sides=payload.include_print_sides,
             )
             full_doc = persisted_create_to_document(persisted)
 
             persisted_project_id = (payload.project_id or "").strip()
-            updatable_keys = ("project_name", "num_standees", "standee_type", "elements")
+            updatable_keys = ("project_name", "num_standees", "standee_type", "elements", "include_print_sides")
 
             if persisted_project_id:
                 update_fields = {}
@@ -927,6 +938,7 @@ async def duplicate_project(
         "num_standees": source["num_standees"],
         "standee_type": source["standee_type"],
         "elements": source["elements"],
+        "include_print_sides": source.get("include_print_sides", False),
     }
     new_project_id, short_id = db.insert_persisted_project(new_project_doc)
 

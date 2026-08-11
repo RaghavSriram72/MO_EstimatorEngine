@@ -32,6 +32,7 @@ type ScenarioParams = {
     printFormsPerStandee: number;
     structureFormsPerStandee: number;
     overs: number;
+    includePrintSides: boolean;
 };
 
 
@@ -232,6 +233,7 @@ function buildScenarioState(
     sources: Record<ScenarioId, Record<string, number>>,
     initialStandees: number,
     initialScenario: ScenarioId,
+    includePrintSides: boolean,
 ): {
     params: ScenarioParams;
     universalLines: CostLine[];
@@ -245,6 +247,7 @@ function buildScenarioState(
         printFormsPerStandee: Math.ceil(seedSource.print_forms_per_standee ?? 1),
         structureFormsPerStandee: Math.ceil(seedSource.structure_forms_per_standee ?? 0),
         overs: seedSource.overs ?? 0,
+        includePrintSides,
     };
     const universalLines = seedLines(
         buildLines(Object.keys(UNIVERSAL_LINE_DEFS), UNIVERSAL_LINE_DEFS),
@@ -356,6 +359,7 @@ function toSpecParams(p: ScenarioParams): PersistedSpecParams {
         print_forms_per_standee: p.printFormsPerStandee,
         structure_forms_per_standee: p.structureFormsPerStandee,
         overs: p.overs,
+        include_print_sides: p.includePrintSides,
     };
 }
 
@@ -365,6 +369,7 @@ function fromSpecParams(p: PersistedSpecParams): ScenarioParams {
         printFormsPerStandee: Math.ceil(p.print_forms_per_standee),
         structureFormsPerStandee: Math.ceil(p.structure_forms_per_standee),
         overs: p.overs,
+        includePrintSides: p.include_print_sides,
     };
 }
 
@@ -817,6 +822,7 @@ export default function QuoteBreakdown({
         initialSources as Record<ScenarioId, Record<string, number>>,
         initialStandees,
         resolveInitialActiveScenario(quoteData, initialActiveScenario),
+        requestPayload.include_print_sides ?? false,
     );
     const persistedBreakdownUi = breakdownUiFromQuoteData(quoteData);
     const initialLineState = applyCostLineOverrides(
