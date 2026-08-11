@@ -177,6 +177,28 @@ BEGIN
 END;
 GO
 
+-- ───────────────────────────── quote_notes ─────────────────────────
+-- Append-only notes attached to a quote. Author and timestamp are stored as
+-- first-class columns so ordinary quote snapshot saves cannot overwrite them.
+IF OBJECT_ID(N'dbo.quote_notes', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.quote_notes (
+        note_id    BIGINT IDENTITY(1, 1) NOT NULL CONSTRAINT PK_quote_notes PRIMARY KEY,
+        quote_id   BIGINT                NOT NULL,
+        author     NVARCHAR(256)         NOT NULL,
+        body       NVARCHAR(2000)        NOT NULL,
+        created_at DATETIME2(3)          NOT NULL CONSTRAINT DF_quote_notes_created_at DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT FK_quote_notes_quote FOREIGN KEY (quote_id)
+            REFERENCES dbo.quotes (quote_id) ON DELETE CASCADE,
+        CONSTRAINT FK_quote_notes_author FOREIGN KEY (author) REFERENCES dbo.users (username),
+        CONSTRAINT CK_quote_notes_body CHECK (LEN(LTRIM(RTRIM(body))) > 0)
+    );
+
+    CREATE INDEX IX_quote_notes_quote
+        ON dbo.quote_notes (quote_id, created_at ASC, note_id ASC);
+END;
+GO
+
 -- ────────────────────────────── history ────────────────────────────
 -- Append-only audit trail of project/quote edits. ``snapshot`` is the full
 -- point-in-time copy of the editable fields (including elements) and is what

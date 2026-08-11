@@ -47,6 +47,8 @@ type Props = {
     /** Saved quote state (five scenario children) used to rehydrate edits + defaults. */
     persistedState?: PersistedQuoteState | null;
     quoteOwner?: string | null;
+    /** Signed-in user who will be attributed as the author of newly added notes. */
+    noteAuthor?: string | null;
     onBack: () => void;
     /** Keeps parent sidebar / payload in sync when standee count is edited. */
     onNumStandeesChange?: (numStandees: number) => void;
@@ -634,6 +636,143 @@ export function QuoteBreakdownLayoutPlaceholder({
     );
 }
 
+type QuoteNote = {
+    note_id: string;
+    author: string;
+    body: string;
+    created_at: string;
+};
+
+function formatNoteTimestamp(value: string): string {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        year: date.getFullYear() === new Date().getFullYear() ? undefined : "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+    });
+}
+
+function QuoteNotes({
+    quoteId,
+    owner,
+    author,
+}: {
+    quoteId: string | null;
+    owner: string | null;
+    author: string | null;
+}) {
+    const [notes, setNotes] = useState<QuoteNote[]>([]);
+    const [draft, setDraft] = useState("");
+    const [isLoading, setIsLoading] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!quoteId?.trim() || !owner?.trim()) return;
+        const controller = new AbortController();
+        void (async () => {
+            // Defer state updates out of the effect body; the request itself owns loading state.
+            await Promise.resolve();
+            if (controller.signal.aborted) return;
+            setIsLoading(true);
+            setError(null);
+            try {
+                const res = await fetch(
+                    `${API_BASE}/quotes/${encodeURIComponent(quoteId)}/notes?owner=${encodeURIComponent(owner)}`,
+                    { signal: controller.signal },
+                );
+                const data = (await res.json().catch(() => ({}))) as { notes?: QuoteNote[]; error?: string };
+                if (!res.ok) throw new Error(data.error || "Could not load notes");
+                setNotes(Array.isArray(data.notes) ? data.notes : []);
+            } catch (err) {
+                if (err instanceof DOMException && err.name === "AbortError") return;
+                setError(err instanceof Error ? err.message : "Could not load notes");
+            } finally {
+                if (!controller.signal.aborted) setIsLoading(false);
+            }
+        })();
+        return () => controller.abort();
+    }, [quoteId, owner]);
+
+    async function submitNote() {
+        const body = draft.trim();
+        if (!body || !quoteId?.trim() || !owner?.trim() || !author?.trim() || isSubmitting) return;
+        setIsSubmitting(true);
+        setError(null);
+        try {
+            const res = await fetch(
+                `${API_BASE}/quotes/${encodeURIComponent(quoteId)}/notes?owner=${encodeURIComponent(owner)}`,
+                {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ author, body }),
+                },
+            );
+            const data = (await res.json().catch(() => ({}))) as QuoteNote & { error?: string };
+            if (!res.ok) throw new Error(data.error || "Could not add note");
+            setNotes((prev) => [...prev, data]);
+            setDraft("");
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Could not add note");
+        } finally {
+            setIsSubmitting(false);
+        }
+    }
+
+    const canAdd = Boolean(quoteId?.trim() && owner?.trim() && author?.trim());
+
+    return (
+        <section className="flex flex-col min-h-0 gap-1.5 pt-2 border-t-2 border-[#F0F0F0]">
+            <span className="text-[10px] font-black text-[#B1B3B6] uppercase tracking-widest">Notes</span>
+            {canAdd ? (
+                <textarea
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                            e.preventDefault();
+                            void submitNote();
+                        }
+                    }}
+                    maxLength={2000}
+                    rows={2}
+                    disabled={isSubmitting}
+                    aria-label="Add a quote note"
+                    placeholder="Type a note and press Enter…"
+                    className="w-full resize-none rounded-sm border-2 border-[#E0E0E0] bg-white px-2 py-1.5 text-[11px] font-semibold text-[#000005] placeholder:text-[#B1B3B6] outline-none focus:border-[#FFC843] disabled:opacity-50"
+                />
+            ) : (
+                <p className="text-[10px] font-semibold leading-snug text-[#B1B3B6]">
+                    Notes are available once this quote is saved.
+                </p>
+            )}
+            {isSubmitting && <span className="text-[9px] font-semibold text-[#B1B3B6]">Adding note…</span>}
+            {error && (
+                <span role="alert" className="text-[9px] font-semibold leading-snug text-red-600">{error}</span>
+            )}
+            <div className="flex max-h-52 min-h-0 flex-col gap-1.5 overflow-y-auto" aria-live="polite">
+                {isLoading && <span className="text-[10px] font-semibold text-[#B1B3B6]">Loading notes…</span>}
+                {!isLoading && notes.length === 0 && canAdd && !error && (
+                    <span className="text-[10px] font-semibold text-[#B1B3B6]">No notes yet.</span>
+                )}
+                {notes.map((note) => (
+                    <article key={note.note_id} className="rounded-sm border border-[#E0E0E0] bg-[#F8F8F8] px-2 py-1.5">
+                        <p className="whitespace-pre-wrap break-words text-[10px] font-semibold leading-snug text-[#000005]">
+                            {note.body}
+                        </p>
+                        <p className="mt-1 text-[8px] font-bold uppercase tracking-wide text-[#B1B3B6]">
+                            {note.author} · {formatNoteTimestamp(note.created_at)}
+                        </p>
+                    </article>
+                ))}
+            </div>
+        </section>
+    );
+}
+
 export default function QuoteBreakdown({
     quoteData,
     numStandees: initialStandees,
@@ -644,6 +783,7 @@ export default function QuoteBreakdown({
     persistedQuoteId = null,
     persistedState = null,
     quoteOwner = null,
+    noteAuthor = null,
     costsStale = false,
     onBack,
     onNumStandeesChange,
@@ -1223,6 +1363,11 @@ export default function QuoteBreakdown({
                             );
                         })}
                     </div>
+                    <QuoteNotes
+                        quoteId={persistedQuoteId}
+                        owner={quoteOwner}
+                        author={noteAuthor}
+                    />
                 </div>
 
                 <button

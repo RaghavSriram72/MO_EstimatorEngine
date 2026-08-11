@@ -149,16 +149,21 @@ def _seed_db(db: MidnightOilDB) -> dict[str, str]:
 
     # suppliers
     db.upsert_supplier_material(
-        "Acme", "vinyl", "Vinyl", "sqft", [{"amount": 5, "cost": 10.0}, {"amount": 10, "cost": 7.5}]
+        "Acme",
+        "vinyl",
+        "Vinyl",
+        "sqft",
+        [{"amount": 5, "cost": 10.0}, {"amount": 10, "cost": 7.5}],
+        changed_by="alice",
     )
 
     # overs tiers
-    overs_id = db.upsert_overs(None, 0, 49, 4)
-    db.upsert_overs(None, 50, 199, 8)
+    overs_id = db.upsert_overs(None, 0, 49, 4, changed_by="alice")
+    db.upsert_overs(None, 50, 199, 8, changed_by="alice")
 
     # packout tiers
-    packout_id = db.upsert_packout(None, 0, 9, "simple", 12)
-    db.upsert_packout(None, 10, None, "COMPLEX", 18)
+    packout_id = db.upsert_packout(None, 0, 9, "simple", 12, changed_by="alice")
+    db.upsert_packout(None, 10, None, "COMPLEX", 18, changed_by="alice")
 
     db._load_cache()
     return {"project_id": project_id, "quote_id": quote_id, "overs_id": overs_id, "packout_id": packout_id}
@@ -451,6 +456,41 @@ class TestDbQuoteMethods(_DbTestCase):
         self.assertEqual(db.delete_quotes_for_project(project_id, "alice"), 1)
         self.assertEqual(db.delete_quotes_for_project("bad-id", "alice"), 0)
 
+    def test_quote_notes_are_ordered_owned_and_deleted_with_quote(self):
+        """Verify append-only note persistence, attribution, ownership checks, and cascading deletes."""
+        db: Any = self.db
+        quote_id = db.insert_persisted_quote(
+            {
+                "owner": "alice",
+                "project_id": self.ids["project_id"],
+                "quote_name": "Notes quote",
+                "scenario": 1,
+                "num_standees": 2,
+                "contribution_margin": 0,
+                "standee_type": "Complex",
+                "elements": [ELEMENT],
+            }
+        )
+
+        first = db.insert_quote_note(quote_id, "alice", "alice", "First note")
+        second = db.insert_quote_note(quote_id, "alice", "existing", "Second note")
+
+        self.assertIsNotNone(first)
+        self.assertIsNotNone(second)
+        self.assertEqual(first["author"], "alice")
+        self.assertEqual(first["body"], "First note")
+        self.assertIn("+00:00", first["created_at"])
+        self.assertEqual(
+            [(note["author"], note["body"]) for note in db.list_quote_notes(quote_id, "alice")],
+            [("alice", "First note"), ("existing", "Second note")],
+        )
+        self.assertIsNone(db.list_quote_notes(quote_id, "existing"))
+        self.assertIsNone(db.insert_quote_note("bad-id", "alice", "alice", "Missing quote"))
+
+        self.assertTrue(db.delete_persisted_quote(quote_id, "alice"))
+        remaining = db._fetchone("SELECT COUNT(*) AS n FROM quote_notes WHERE quote_id = ?", (int(quote_id),))
+        self.assertEqual(remaining["n"], 0)
+
 
 class TestDbCostAndLookupMethods(_DbTestCase):
     """Tests for cost lookups, supplier pricing, overs, and packout helpers."""
@@ -523,6 +563,7 @@ class TestDbCostAndLookupMethods(_DbTestCase):
             "Paper",
             "sqft",
             [{"amount": 20, "cost": 5.0}, {"amount": 10, "cost": 6.0}],
+            changed_by="alice",
         )
         new_record = db.get_supplier_material_records("Acme", "paper")
         self.assertEqual(new_record["material_display_name"], "Paper")
@@ -539,22 +580,22 @@ class TestDbCostAndLookupMethods(_DbTestCase):
         self.assertEqual(db.get_overs(100), 8)
         self.assertEqual(db.get_all_overs()[0]["_id"], self.ids["overs_id"])
 
-        new_overs_id = db.upsert_overs(None, 200, None, 12)
+        new_overs_id = db.upsert_overs(None, 200, None, 12, changed_by="alice")
         self.assertTrue(new_overs_id.isdigit())
         self.assertEqual(db.get_overs(250), 12)
 
-        db.upsert_overs(new_overs_id, 210, None, 14)
+        db.upsert_overs(new_overs_id, 210, None, 14, changed_by="alice")
         self.assertEqual(db.get_overs(250), 14)
 
         self.assertEqual(db.get_packout(5, "simple"), 12.0)
         self.assertEqual(db.get_packout(12, "COMPLEX"), 18.0)
         self.assertEqual(db.get_all_packout()[0]["_id"], self.ids["packout_id"])
 
-        new_packout_id = db.upsert_packout(None, 20, None, "Moderate", 22)
+        new_packout_id = db.upsert_packout(None, 20, None, "Moderate", 22, changed_by="alice")
         self.assertTrue(new_packout_id.isdigit())
         self.assertEqual(db.get_packout(20, "moderate"), 22.0)
 
-        db.upsert_packout(new_packout_id, 30, None, "Moderate", 24)
+        db.upsert_packout(new_packout_id, 30, None, "Moderate", 24, changed_by="alice")
         self.assertEqual(db.get_packout(30, "moderate"), 24.0)
 
         with self.assertRaises(ValueError):

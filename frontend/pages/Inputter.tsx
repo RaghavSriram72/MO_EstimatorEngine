@@ -1124,6 +1124,7 @@ export default function Inputter() {
                     persistedQuoteId={activePersistedQuoteId}
                     persistedState={activePersistedQuoteState}
                     quoteOwner={activeProjectOwner ?? authUsername}
+                    noteAuthor={authUsername}
                     onBack={clearActiveQuote}
                     onNumStandeesChange={handleActiveQuoteNumStandeesChange}
                     onNumStandeesCommitted={(n) => void handleActiveQuoteNumStandeesCommitted(n)}

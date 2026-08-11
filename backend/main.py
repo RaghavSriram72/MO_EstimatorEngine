@@ -729,6 +729,52 @@ async def get_quote(
     return row
 
 
+class CreateQuoteNoteBody(BaseModel):
+    """Request body for appending an attributed note to a quote."""
+
+    author: str = Field(..., min_length=1, max_length=256)
+    body: str = Field(..., min_length=1, max_length=2000)
+
+
+@app.get("/quotes/{quote_id}/notes")
+async def list_quote_notes(
+    quote_id: str,
+    owner: str = Query(..., description="Must match the quote's owner field"),
+):
+    """List a quote's notes in chronological order."""
+    db = _ensure_db()
+    if not db.check_username_exists(owner):
+        return JSONResponse(status_code=404, content={"error": "Unknown owner"})
+    notes = db.list_quote_notes(quote_id, owner)
+    if notes is None:
+        return JSONResponse(status_code=404, content={"error": "Quote not found"})
+    return {"notes": notes}
+
+
+@app.post("/quotes/{quote_id}/notes")
+async def create_quote_note(
+    quote_id: str,
+    payload: CreateQuoteNoteBody,
+    owner: str = Query(..., description="Must match the quote's owner field"),
+):
+    """Append a note to a quote; author and timestamp are immutable after creation."""
+    db = _ensure_db()
+    author = payload.author.strip()
+    body = payload.body.strip()
+    if not author:
+        return JSONResponse(status_code=400, content={"error": "Author cannot be blank"})
+    if not body:
+        return JSONResponse(status_code=400, content={"error": "Note cannot be blank"})
+    if not db.check_username_exists(owner):
+        return JSONResponse(status_code=404, content={"error": "Unknown owner"})
+    if not db.check_username_exists(author):
+        return JSONResponse(status_code=404, content={"error": "Unknown author"})
+    note = db.insert_quote_note(quote_id, owner, author, body)
+    if note is None:
+        return JSONResponse(status_code=404, content={"error": "Quote not found"})
+    return JSONResponse(status_code=201, content=note)
+
+
 @app.patch("/quotes/{quote_id}")
 async def update_quote(
     quote_id: str,

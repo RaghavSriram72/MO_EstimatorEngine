@@ -955,6 +955,58 @@ class MidnightOilDB:
         rows = self._fetchall(f"{self._QUOTE_SELECT} ORDER BY quote_id DESC")
         return self._quote_rows_to_docs(rows)
 
+    def list_quote_notes(self, quote_id: str, owner: str) -> list[dict[str, Any]] | None:
+        """Return a quote's notes oldest-first, or ``None`` when the owned quote does not exist."""
+        row_id = _parse_id(quote_id)
+        if row_id is None:
+            return None
+        exists = self._fetchone(
+            "SELECT 1 AS present FROM quotes WHERE quote_id = ? AND owner = ?", (row_id, owner)
+        )
+        if exists is None:
+            return None
+        rows = self._fetchall(
+            "SELECT note_id, author, body, created_at FROM quote_notes "
+            "WHERE quote_id = ? ORDER BY created_at ASC, note_id ASC",
+            (row_id,),
+        )
+        notes: list[dict[str, Any]] = []
+        for row in rows:
+            created_at = _from_db_datetime(row["created_at"])
+            notes.append(
+                {
+                    "note_id": str(row["note_id"]),
+                    "author": row["author"],
+                    "body": row["body"],
+                    "created_at": created_at.isoformat() if isinstance(created_at, datetime) else created_at,
+                }
+            )
+        return notes
+
+    def insert_quote_note(self, quote_id: str, owner: str, author: str, body: str) -> dict[str, Any] | None:
+        """Append a note to an owned quote, returning it or ``None`` when the quote is absent."""
+        row_id = _parse_id(quote_id)
+        if row_id is None:
+            return None
+        exists = self._fetchone(
+            "SELECT 1 AS present FROM quotes WHERE quote_id = ? AND owner = ?", (row_id, owner)
+        )
+        if exists is None:
+            return None
+        created_at = datetime.now(UTC)
+        note_id = self._insert_returning_id(
+            "INSERT INTO quote_notes (quote_id, author, body, created_at) "
+            "OUTPUT INSERTED.note_id VALUES (?, ?, ?, ?)",
+            (row_id, author, body, _to_db_datetime(created_at)),
+        )
+        self.conn.commit()
+        return {
+            "note_id": str(note_id),
+            "author": author,
+            "body": body,
+            "created_at": created_at.isoformat(),
+        }
+
     def _apply_quote_fields(self, row_id: int, fields: dict[str, Any], updated_at: datetime) -> None:
         """Write allowed quote fields (scalars + JSON blobs + elements) without recording history."""
         assignments: list[str] = []
