@@ -52,7 +52,7 @@ export type QuoteData = {
 export type PersistedLineEdit = { qty: number; unit_cost: number };
 
 /** A user-added, freely-titled cost line in the Universal Costs section (e.g. a one-off specialty item). */
-export type PersistedCustomLine = { id: string; title: string; cost: number };
+export type PersistedCustomLine = { id: string; title: string; cost: number; quantity: number };
 
 export type PersistedScenarioChild = {
     /** Raw engine-computed scenario blob — values before any manual edits. */
@@ -178,7 +178,11 @@ function persistedStateFromQuoteDoc(doc: Record<string, unknown>): PersistedQuot
         universal: {
             line_edits: universalRaw?.line_edits ?? {},
             subtotal_override: universalRaw?.subtotal_override ?? "",
-            custom_lines: universalRaw?.custom_lines ?? [],
+            // Older saved quotes predate the quantity field — default to 1.
+            custom_lines: (universalRaw?.custom_lines ?? []).map((l) => ({
+                ...l,
+                quantity: Number.isFinite(l.quantity) && l.quantity > 0 ? l.quantity : 1,
+            })),
         },
         params: {
             current: paramsRaw?.current ?? { ...fallbackSpec },

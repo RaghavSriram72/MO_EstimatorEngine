@@ -96,8 +96,8 @@ export type LineDef = { label: string; unit: string; readonlyQty?: boolean };
 
 export const UNIVERSAL_LINE_DEFS: Record<string, LineDef> = {
     imposition_cost:         { label: "Imposition Labor",     unit: "hrs"      },
-    blank_comp_cost:         { label: "Blank Comp",           unit: "units"    },
-    color_comp_cost:         { label: "Color Comp",           unit: "units"    },
+    blank_comp_cost:         { label: "Blank Comp",           unit: "qty"      },
+    color_comp_cost:         { label: "Color Comp",           unit: "qty"      },
     engineering_design_cost: { label: "Engineering & Design", unit: "flat"     },
     hardware_cost:           { label: "Hardware",             unit: "standees" },
 };
@@ -158,6 +158,12 @@ const SCENARIO_SYNC_GROUPS: Partial<Record<string, ScenarioId[]>> = {
 export function lineTotal(l: CostLine) {
     if (l.rawTotal !== undefined) return l.rawTotal;
     return l.unit === "flat" ? l.unitCost : l.qty * l.unitCost;
+}
+
+// Older saved quotes predate the quantity field — treat a missing/invalid value as 1.
+export function customLineTotal(l: PersistedCustomLine) {
+    const qty = Number.isFinite(l.quantity) && l.quantity > 0 ? l.quantity : 1;
+    return (Number.isFinite(l.cost) ? l.cost : 0) * qty;
 }
 
 export function fmt(value: number): string {
@@ -1086,11 +1092,11 @@ export default function QuoteBreakdown({
         setManualDirty(true);
         setCustomLines((prev) => [
             ...prev,
-            { id: `custom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, title: "", cost: 0 },
+            { id: `custom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, title: "", cost: 0, quantity: 1 },
         ]);
     }
 
-    function updateCustomLine(id: string, field: "title" | "cost", value: string | number) {
+    function updateCustomLine(id: string, field: "title" | "cost" | "quantity", value: string | number) {
         setManualDirty(true);
         setCustomLines((prev) => prev.map((l) => (l.id === id ? { ...l, [field]: value } : l)));
     }
@@ -1239,7 +1245,7 @@ export default function QuoteBreakdown({
         }
     }
 
-    const customLinesSum = customLines.reduce((s, l) => s + (Number.isFinite(l.cost) ? l.cost : 0), 0);
+    const customLinesSum = customLines.reduce((s, l) => s + customLineTotal(l), 0);
     const universalLinesSum = universalLines.reduce((s, l) => s + lineTotal(l), 0) + customLinesSum;
     const scenarioLinesSum  = scenarioLines[activeScenario].reduce((s, l) => s + lineTotal(l), 0);
     const parsedUniversalOv = parseFloat(universalSubtotalOverride);
@@ -1601,7 +1607,19 @@ export default function QuoteBreakdown({
 
                                         <div className="flex items-center gap-3">
                                             <div className="flex flex-col items-end gap-0.5">
-                                                <span className="text-[9px] text-[#B1B3B6] uppercase font-bold tracking-wider">cost ($)</span>
+                                                <span className="text-[9px] text-[#B1B3B6] uppercase font-bold tracking-wider">qty</span>
+                                                <input
+                                                    type="number"
+                                                    min={1}
+                                                    step={1}
+                                                    value={line.quantity}
+                                                    onChange={(e) => updateCustomLine(line.id, "quantity", parseFloat(e.target.value) || 1)}
+                                                    className="border border-[#E0E0E0] rounded-sm px-2 py-1 text-xs text-[#000005] outline-none bg-[#F8F8F8] focus:border-[#FFC843] focus:bg-white w-[68px] text-right transition-colors font-semibold"
+                                                />
+                                            </div>
+
+                                            <div className="flex flex-col items-end gap-0.5">
+                                                <span className="text-[9px] text-[#B1B3B6] uppercase font-bold tracking-wider">unit cost ($)</span>
                                                 <input
                                                     type="number"
                                                     min={0}
@@ -1614,7 +1632,7 @@ export default function QuoteBreakdown({
 
                                             <div className="flex flex-col items-end gap-0.5 w-[80px]">
                                                 <span className="text-[9px] text-[#B1B3B6] uppercase font-bold tracking-wider">total</span>
-                                                <span className="text-xs font-black text-[#000005]">${fmt(line.cost)}</span>
+                                                <span className="text-xs font-black text-[#000005]">${fmt(customLineTotal(line))}</span>
                                             </div>
                                         </div>
                                     </div>

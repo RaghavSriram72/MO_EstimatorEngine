@@ -3,15 +3,21 @@
 import { UNIVERSAL_LINE_DEFS, SCENARIO_LINE_DEFS, SCENARIO_KEYS, lineTotal, type ScenarioId } from "@/components/QuoteBreakdown";
 
 type LineEdit = { qty?: unknown; unit_cost?: unknown };
-type CustomLine = { cost?: unknown };
+type CustomLine = { cost?: unknown; quantity?: unknown };
 
 function isFiniteNumber(v: unknown): v is number {
     return typeof v === "number" && Number.isFinite(v);
 }
 
+// Older saved quotes predate the quantity field — treat a missing/invalid value as 1.
+export function customLineTotal(l: CustomLine): number {
+    const qty = isFiniteNumber(l?.quantity) && l.quantity > 0 ? l.quantity : 1;
+    return (isFiniteNumber(l?.cost) ? l.cost : 0) * qty;
+}
+
 function customLinesSum(customLines: CustomLine[] | undefined): number {
     if (!Array.isArray(customLines)) return 0;
-    return customLines.reduce((s, l) => s + (isFiniteNumber(l?.cost) ? l.cost : 0), 0);
+    return customLines.reduce((s, l) => s + customLineTotal(l), 0);
 }
 
 /** A line's engine-computed dollar total is `defaults[key]` directly (that's what the backend's
