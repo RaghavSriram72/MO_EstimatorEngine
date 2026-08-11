@@ -41,6 +41,7 @@ export default function UserManagement() {
     const [confirmPassword, setConfirmPassword] = useState("");
     const [resetError, setResetError] = useState<string | null>(null);
     const [isResetting, setIsResetting] = useState(false);
+    const [search, setSearch] = useState("");
 
     async function loadUsers() {
         if (!requester) return;
@@ -100,6 +101,10 @@ export default function UserManagement() {
         setResetError(null);
     }
 
+    const filteredUsers = users.filter((u) =>
+        u.username.toLowerCase().includes(search.trim().toLowerCase())
+    );
+
     async function submitReset(username: string) {
         if (!requester) return;
         if (!newPassword || newPassword !== confirmPassword) {
@@ -142,6 +147,18 @@ export default function UserManagement() {
                 <div className="mb-4 text-[12px] text-red-500 font-semibold">{error}</div>
             )}
 
+            <div className="mb-4">
+                <input
+                    id="user-management-search"
+                    type="search"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search by username…"
+                    autoComplete="off"
+                    className="w-full text-[11px] font-semibold text-[#000005] placeholder:text-[#B1B3B6] border-2 border-[#E0E0E0] rounded-sm px-3 py-2.5 outline-none focus-visible:border-[#FFC843] focus-visible:ring-2 focus-visible:ring-[#FFC843] transition-colors"
+                />
+            </div>
+
             {isLoading ? (
                 <div className="text-[12px] text-[#B1B3B6] font-semibold">Loading…</div>
             ) : (
@@ -155,7 +172,14 @@ export default function UserManagement() {
                             </tr>
                         </thead>
                         <tbody>
-                            {users.map((u) => {
+                            {filteredUsers.length === 0 && (
+                                <tr>
+                                    <td colSpan={3} className="px-4 py-6 text-center text-[12px] text-[#B1B3B6] font-semibold">
+                                        {search.trim() ? <>No users match &ldquo;{search.trim()}&rdquo;</> : "No users found"}
+                                    </td>
+                                </tr>
+                            )}
+                            {filteredUsers.map((u) => {
                                 const isSelf = u.username === requester;
                                 const isUpdating = updatingUsername === u.username;
                                 const isResettingThisRow = resettingUsername === u.username;
