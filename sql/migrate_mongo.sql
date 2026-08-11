@@ -105,11 +105,12 @@ BEGIN TRANSACTION;
 -- ────────────────────────────── users ──────────────────────────────
 EXEC #read_json_file @MongoDir, N'users.json', @json OUTPUT;
 
-INSERT dbo.users (username, password_hash)
-SELECT d.username, d.password_hash
+INSERT dbo.users (username, password_hash, role)
+SELECT d.username, d.password_hash, ISNULL(d.role, N'user')
 FROM OPENJSON(@json) WITH (
         username      NVARCHAR(256) N'$.username',
-        password_hash NVARCHAR(512) N'$.password_hash'
+        password_hash NVARCHAR(512) N'$.password_hash',
+        role          NVARCHAR(20)  N'$.role'  -- absent on legacy exports; defaults to 'user'
      ) AS d
 WHERE NOT EXISTS (SELECT 1 FROM dbo.users u WHERE u.username = d.username);
 
