@@ -52,7 +52,7 @@ export type QuoteData = {
 export type PersistedLineEdit = { qty: number; unit_cost: number };
 
 /** A user-added, freely-titled cost line in the Universal Costs section (e.g. a one-off specialty item). */
-export type PersistedCustomLine = { id: string; title: string; cost: number };
+export type PersistedCustomLine = { id: string; title: string; cost: number; quantity: number };
 
 export type PersistedScenarioChild = {
     /** Raw engine-computed scenario blob — values before any manual edits. */
@@ -68,6 +68,8 @@ export type PersistedSpecParams = {
     print_forms_per_standee: number;
     structure_forms_per_standee: number;
     overs: number;
+    /** Adds one extra print form (standee-type complexity) to account for double-sided printing. */
+    include_print_sides: boolean;
 };
 
 export type PersistedQuoteState = {
@@ -92,6 +94,7 @@ export type RequestPayload = {
     elements: { name: string; height: number; width: number; complexity: string; linear_inches: number | null; description: string | null }[];
     num_standees: number;
     standee_type: number;
+    include_print_sides?: boolean;
     scenario?: number;
 };
 
@@ -128,7 +131,11 @@ function numericFields(blob: Record<string, unknown>): Record<string, number> {
 
 // Builds a pristine persisted-quote state (five scenario children, no edits) from a
 // /generate_quote response — the engine outputs become the stored "defaults".
-function freshPersistedQuoteState(quoteResult: Record<string, unknown>, numStandees: number): PersistedQuoteState {
+function freshPersistedQuoteState(
+    quoteResult: Record<string, unknown>,
+    numStandees: number,
+    includePrintSides: boolean,
+): PersistedQuoteState {
     const scenarios: Record<string, PersistedScenarioChild> = {};
     let seed: Record<string, number> | null = null;
     for (const sid of [1, 2, 3, 4, 5]) {
@@ -143,6 +150,7 @@ function freshPersistedQuoteState(quoteResult: Record<string, unknown>, numStand
         print_forms_per_standee: seed?.print_forms_per_standee ?? 1,
         structure_forms_per_standee: seed?.structure_forms_per_standee ?? 0,
         overs: seed?.overs ?? 0,
+        include_print_sides: includePrintSides,
     };
     return {
         scenarios,
@@ -176,17 +184,25 @@ function persistedStateFromQuoteDoc(doc: Record<string, unknown>): PersistedQuot
         print_forms_per_standee: seed.print_forms_per_standee ?? 1,
         structure_forms_per_standee: seed.structure_forms_per_standee ?? 0,
         overs: seed.overs ?? 0,
+        include_print_sides: false,
     };
+    const paramsCurrent = paramsRaw?.current ?? { ...fallbackSpec };
+    const paramsDefaults = paramsRaw?.defaults ?? { ...fallbackSpec };
     return {
         scenarios,
         universal: {
             line_edits: universalRaw?.line_edits ?? {},
             subtotal_override: universalRaw?.subtotal_override ?? "",
-            custom_lines: universalRaw?.custom_lines ?? [],
+            // Older saved quotes predate the quantity field — default to 1.
+            custom_lines: (universalRaw?.custom_lines ?? []).map((l) => ({
+                ...l,
+                quantity: Number.isFinite(l.quantity) && l.quantity > 0 ? l.quantity : 1,
+            })),
         },
         params: {
-            current: paramsRaw?.current ?? { ...fallbackSpec },
-            defaults: paramsRaw?.defaults ?? { ...fallbackSpec },
+            // Older saved quotes predate the include_print_sides field — default to false.
+            current: { ...paramsCurrent, include_print_sides: Boolean(paramsCurrent.include_print_sides) },
+            defaults: { ...paramsDefaults, include_print_sides: Boolean(paramsDefaults.include_print_sides) },
         },
     };
 }
@@ -235,6 +251,7 @@ function payloadFromQuoteDoc(doc: Record<string, unknown>, state: PersistedQuote
         })),
         num_standees: state.params.current.num_standees,
         standee_type: standeeTypeMap[String(doc.standee_type)] ?? 1,
+        include_print_sides: state.params.current.include_print_sides,
     };
 }
 
@@ -362,6 +379,9 @@ export default function Inputter() {
     // ── Estimator form state ───────────────────────────────────────────────
     const [standeeCounts, setStandeeCounts] = useState<Array<number | "">>([...DEFAULT_STANDEE_COUNTS]);
     const [standeeType, setStandeeType]     = useState<StandeeType>("Simple");
+    const [includePrintSides, setIncludePrintSides] = useState(false);
+    // Last persisted value — a toggle that lands back on this doesn't dirty the project.
+    const [savedIncludePrintSides, setSavedIncludePrintSides] = useState(false);
     const [elements, setElements]           = useState<Element[]>([]);
     const [elementListKey, setElementListKey] = useState(0); // bumped to force ElementsManager reset
     const [projectName, setProjectName]     = useState("Untitled project");
@@ -557,6 +577,8 @@ export default function Inputter() {
     function resetEstimatorForm() {
         setStandeeCounts([...DEFAULT_STANDEE_COUNTS]);
         setStandeeType("Simple");
+        setIncludePrintSides(false);
+        setSavedIncludePrintSides(false);
         setElements([]);
         setElementListKey((k) => k + 1);
         setProjectName("Untitled project");
@@ -606,6 +628,7 @@ export default function Inputter() {
                             standee_counts: counts,
                             standee_type: standeeType,
                             elements: apiElems,
+                            include_print_sides: includePrintSides,
                         }),
                     },
                 );
@@ -624,6 +647,7 @@ export default function Inputter() {
                         setActiveProjectShortId(doc.short_id);
                     }
                 }
+                setSavedIncludePrintSides(includePrintSides);
                 return { success: true, projectId: activeProjectId, shortId };
             }
             // POST /create-project → create a new project
@@ -638,6 +662,7 @@ export default function Inputter() {
                     standee_counts: counts,
                     standee_type: standeeType,
                     elements: apiElems,
+                    include_print_sides: includePrintSides,
                 }),
             });
             const data = await res.json().catch(() => ({}));
@@ -647,6 +672,7 @@ export default function Inputter() {
             setActiveProjectId(data.project_id);
             setActiveProjectShortId(shortId ?? null);
             setActiveProjectOwner(owner.trim());
+            setSavedIncludePrintSides(includePrintSides);
             return { success: true, projectId: data.project_id, shortId };
         } catch (e) {
             console.error("Save failed:", e);
@@ -674,13 +700,16 @@ export default function Inputter() {
             setActiveProjectOwner(typeof doc.owner === "string" ? doc.owner : owner);
             setProjectName(typeof doc.project_name === "string" ? doc.project_name : "Untitled project");
             setStandeeType((doc.standee_type as StandeeType) || "Simple");
-            const savedCounts =
-                Array.isArray(doc.standee_counts) && doc.standee_counts.length > 0
-                    ? doc.standee_counts.filter((count: unknown) => typeof count === "number" && count > 0).slice(0, 5)
-                    : typeof doc.num_standees === "number"
-                      ? [doc.num_standees]
-                      : [];
-            setStandeeCounts(Array.from({ length: 5 }, (_, index) => savedCounts[index] ?? ""));
+setIncludePrintSides(Boolean(doc.include_print_sides));
+setSavedIncludePrintSides(Boolean(doc.include_print_sides));
+const savedCounts =
+    Array.isArray(doc.standee_counts) && doc.standee_counts.length > 0
+        ? doc.standee_counts.filter((count: unknown) => typeof count === "number" && count > 0).slice(0, 5)
+        : typeof doc.num_standees === "number"
+          ? [doc.num_standees]
+          : [];
+setStandeeCounts(Array.from({ length: 5 }, (_, index) => savedCounts[index] ?? ""));
+setStandeeCount(typeof doc.num_standees === "number" ? doc.num_standees : "");
             const rows = Array.isArray(doc.elements) ? doc.elements : [];
             setElements(
                 rows.map((row: ApiPersistedElement & { description?: string | null }, i: number) => ({
@@ -762,6 +791,7 @@ export default function Inputter() {
         const standeeTypeMap: Record<StandeeType, number> = { Simple: 1, Moderate: 2, Complex: 3 };
         return {
             standee_type: standeeTypeMap[standeeType],
+            include_print_sides: includePrintSides,
             elements: elements.map(({ height, width, complexity, linear_inches, description }) => ({
                 name: "",
                 height: height === "" ? 0 : height,
@@ -843,27 +873,27 @@ export default function Inputter() {
                 return;
             }
 
-            const generated = await Promise.all(
-                quantities.map(async (quantity) => {
-                    const payload = buildQuotePayload(quantity);
-                    const res = await fetch(`${API_BASE}/generate_quote`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ ...payload, persist_project: false }),
-                    });
-                    const data = await res.json().catch(() => ({}));
-                    if (!res.ok) throw new Error(apiErrorMessage(data) ?? `Could not calculate quantity ${quantity}`);
-                    return { quantity, payload, result: data as Record<string, unknown> };
-                }),
-            );
-            const quantityVariants: PersistedQuantityVariants = {};
-            for (const item of generated) {
-                quantityVariants[String(item.quantity)] = freshPersistedQuoteState(item.result, item.quantity);
-            }
-            const primary = generated[0]!;
-            const quoteResult = primary.result;
-            const quoteData = quoteDataFromGenerateResponse(quoteResult);
-            const persistedState = quantityVariants[String(num)]!;
+const generated = await Promise.all(
+    quantities.map(async (quantity) => {
+        const payload = buildQuotePayload(quantity);
+        const res = await fetch(`${API_BASE}/generate_quote`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...payload, persist_project: false }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(apiErrorMessage(data) ?? `Could not calculate quantity ${quantity}`);
+        return { quantity, payload, result: data as Record<string, unknown> };
+    }),
+);
+const quantityVariants: PersistedQuantityVariants = {};
+for (const item of generated) {
+    quantityVariants[String(item.quantity)] = freshPersistedQuoteState(item.result, item.quantity, includePrintSides);
+}
+const primary = generated[0]!;
+const quoteResult = primary.result;
+const quoteData = quoteDataFromGenerateResponse(quoteResult);
+const persistedState = quantityVariants[String(num)]!;
             setActiveQuotePayload(corePayload);
             setActiveQuoteName(quoteName);
             setActiveQuoteContributionMargin(0);
@@ -1102,9 +1132,42 @@ export default function Inputter() {
         setActiveQuotePayload((prev) => (prev ? { ...prev, num_standees: quantity } : prev));
     }
 
-    function handleQuantityVariantSaved(quantity: number, state: PersistedQuoteState) {
-        setActiveQuantityVariants((prev) => ({ ...prev, [String(quantity)]: state }));
-        if (activeQuoteQuantity === quantity) setActivePersistedQuoteState(state);
+// Fired after a successful recalculate changed the standee count — sync the
+// estimator form and persist it to the project so the sidebar stays accurate.
+async function handleActiveQuoteNumStandeesCommitted(numStandees: number) {
+    setStandeeCount(numStandees);
+    const owner = activeProjectOwner ?? authUsername;
+    if (!owner?.trim() || !authUsername?.trim() || !activeProjectId) return;
+    try {
+        const res = await fetch(
+            `${API_BASE}/projects/${encodeURIComponent(activeProjectId)}?owner=${encodeURIComponent(owner)}&changed_by=${encodeURIComponent(authUsername)}`,
+            {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    project_name: projectName.trim() || "Untitled project",
+                    num_standees: numStandees,
+                    standee_type: standeeType,
+                    elements: elementsForApi(elements),
+                    include_print_sides: includePrintSides,
+                }),
+            },
+        );
+        if (res.ok) {
+            setSavedIncludePrintSides(includePrintSides);
+            setProjectListRefreshKey((v) => v + 1);
+        } else {
+            console.error("Could not sync standee count to project:", await res.json().catch(() => ({})));
+        }
+    } catch (e) {
+        console.error("Could not sync standee count to project:", e);
+    }
+}
+
+function handleQuantityVariantSaved(quantity: number, state: PersistedQuoteState) {
+    setActiveQuantityVariants((prev) => ({ ...prev, [String(quantity)]: state }));
+    if (activeQuoteQuantity === quantity) setActivePersistedQuoteState(state);
+}
     }
 
     // Called when vision processing completes and returns detected elements
@@ -1257,7 +1320,7 @@ export default function Inputter() {
                     {/* 01 — project config */}
                     <div className="flex flex-col justify-center items-start w-full p-5 border-b-2 border-[#E0E0E0] shrink-0">
                         <div className="text-[10px] font-black mb-3 uppercase tracking-widest text-[#000005]">
-                            <span className="text-[#FFC843]">// </span>01 — COUNTS
+                            <span className="text-[#FFC843]">// </span>01 — PROJECT DETAILS
                         </div>
                         <div className="flex flex-col gap-4 w-full">
                         <div className="flex flex-row gap-4 w-full">
@@ -1324,6 +1387,35 @@ export default function Inputter() {
                         <div className="w-full flex flex-col flex-1 min-h-0 overflow-hidden">
                             <ElementsManager key={elementListKey} elements={elements} setElements={dirtySetElements} />
                         </div>
+                    </div>
+
+                    {/* Include Print Sides */}
+                    <div className="flex w-full flex-row items-center px-4 py-3 border-b-2 border-[#E0E0E0] shrink-0">
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                            <button
+                                type="button"
+                                role="checkbox"
+                                aria-checked={includePrintSides}
+                                onClick={() => {
+                                    setIncludePrintSides((v) => {
+                                        const next = !v;
+                                        // Toggling back to the last-saved value shouldn't dirty the project.
+                                        if (activeProjectId && next !== savedIncludePrintSides) setIsDirty(true);
+                                        return next;
+                                    });
+                                }}
+                                className={`flex items-center justify-center w-5 h-5 rounded-sm border-2 transition-colors ${
+                                    includePrintSides ? "bg-[#FFC843] border-[#FFC843]" : "bg-white border-[#E0E0E0]"
+                                }`}
+                            >
+                                {includePrintSides && (
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#000005" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                        <polyline points="20 6 9 17 4 12" />
+                                    </svg>
+                                )}
+                            </button>
+                            <span className="text-xs font-bold text-[#000005]">Include Print Sides</span>
+                        </label>
                     </div>
 
                     {/* Action buttons */}

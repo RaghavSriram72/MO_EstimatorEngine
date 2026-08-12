@@ -55,6 +55,7 @@ BEGIN
         standee_counts JSON                  NOT NULL CONSTRAINT DF_projects_standee_counts DEFAULT N'[]',
         standee_type   NVARCHAR(16)          NOT NULL,
         short_id       NVARCHAR(16)          NULL,  -- sequential estimate ID shown in the UI (10100, 10101, …); backfilled on read if NULL
+        include_print_sides BIT             NOT NULL CONSTRAINT DF_projects_include_print_sides DEFAULT 0,
         created_at     DATETIME2(3)          NOT NULL CONSTRAINT DF_projects_created_at DEFAULT SYSUTCDATETIME(),
         CONSTRAINT FK_projects_owner FOREIGN KEY (owner) REFERENCES dbo.users (username),
         CONSTRAINT CK_projects_standee_type CHECK (standee_type IN (N'Simple', N'Moderate', N'Complex'))
@@ -82,6 +83,13 @@ IF EXISTS (
 )
 BEGIN
     ALTER TABLE dbo.projects ALTER COLUMN short_id NVARCHAR(16) NULL;
+END;
+GO
+
+-- Upgrade path: adds an extra print form (standee-type complexity) to account for double-sided printing.
+IF COL_LENGTH(N'dbo.projects', N'include_print_sides') IS NULL
+BEGIN
+    ALTER TABLE dbo.projects ADD include_print_sides BIT NOT NULL CONSTRAINT DF_projects_include_print_sides DEFAULT 0 WITH VALUES;
 END;
 GO
 

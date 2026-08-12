@@ -249,6 +249,11 @@ class TestDbUserAndProjectMethods(_DbTestCase):
         self.assertEqual(created["password_hash"], "hashed")
         self.assertFalse(db.create_user("existing", "pw"))
 
+        with patch("lib.classes.db._hash_password", return_value="rehashed"):
+            self.assertTrue(db.set_user_password("existing", "new-pw"))
+        self.assertEqual(db.get_user("existing")["password_hash"], "rehashed")
+        self.assertFalse(db.set_user_password("missing", "new-pw"))
+
     def test_project_helpers_cover_insert_list_get_update_and_delete(self):
         """Verify project CRUD helpers and owner scoping."""
         db: Any = self.db

@@ -16,7 +16,7 @@ from lib.globals import PROJECT_SHORT_ID_START
 
 # Fields a caller may set via update_persisted_project / update_persisted_quote — also
 # the field set snapshotted into a history entry's "snapshot" and restored on revert.
-_PROJECT_UPDATE_ALLOWED_FIELDS = {"project_name", "num_standees", "standee_counts", "standee_type", "elements"}
+_PROJECT_UPDATE_ALLOWED_FIELDS = {"project_name", "num_standees", "standee_counts", "standee_type", "elements", "include_print_sides"}
 _QUOTE_UPDATE_ALLOWED_FIELDS = {
     "quote_name",
     "breakdown",
@@ -39,7 +39,7 @@ _QUOTE_HISTORY_SIGNIFICANT_FIELDS = _QUOTE_UPDATE_ALLOWED_FIELDS - {"scenario", 
 
 # Scalar (single-column) subsets of the allowed fields; "elements" lives in its own
 # child table and the quote JSON blobs are serialized before hitting their columns.
-_PROJECT_SCALAR_FIELDS = ("project_name", "num_standees", "standee_type")
+_PROJECT_SCALAR_FIELDS = ("project_name", "num_standees", "standee_type", "include_print_sides")
 _PROJECT_JSON_FIELDS = ("standee_counts",)
 _QUOTE_SCALAR_FIELDS = (
     "quote_name",
@@ -552,6 +552,16 @@ class MidnightOilDB:
             self.conn.commit()
         return updated > 0
 
+    def set_user_password(self, username: str, new_password: str) -> bool:
+        """Reset a user's password. Returns False if the username doesn't exist."""
+        updated = self._execute(
+            "UPDATE users SET password_hash = ? WHERE username = ?",
+            (_hash_password(new_password), username),
+        )
+        if updated > 0:
+            self.conn.commit()
+        return updated > 0
+
     # ------------------------------------------------------------------
     # History
     # ------------------------------------------------------------------
@@ -691,6 +701,7 @@ class MidnightOilDB:
                     "standee_counts": json.loads(row["standee_counts"]) if row.get("standee_counts") else [],
                     "standee_type": row["standee_type"],
                     "short_id": row["short_id"].strip() if isinstance(row["short_id"], str) else row["short_id"],
+                    "include_print_sides": bool(row["include_print_sides"]),
                     "elements": elements.get(project_id, []),
                 }
             )
@@ -705,9 +716,8 @@ class MidnightOilDB:
         """
         short_id = self._allocate_project_short_id()
         new_id = self._insert_returning_id(
-            "INSERT INTO projects "
-            "(owner, schema_version, project_name, num_standees, standee_counts, standee_type, short_id) "
-            "OUTPUT INSERTED.project_id VALUES (?, ?, ?, ?, CAST(? AS NVARCHAR(MAX)), ?, ?)",
+"INSERT INTO projects (owner, schema_version, project_name, num_standees, standee_counts, standee_type, short_id, include_print_sides) "
+"OUTPUT INSERTED.project_id VALUES (?, ?, ?, ?, CAST(? AS NVARCHAR(MAX)), ?, ?, ?)",
             (
                 doc["owner"],
                 doc.get("schema_version", 1),
@@ -716,6 +726,7 @@ class MidnightOilDB:
                 json.dumps(doc.get("standee_counts") or []),
                 doc["standee_type"],
                 short_id,
+                bool(doc.get("include_print_sides", False)),
             ),
         )
         project_id = str(new_id)
@@ -750,8 +761,8 @@ class MidnightOilDB:
     def list_projects_by_owner(self, owner: str) -> list[dict[str, Any]]:
         """Return all project rows for an owner, newest ``_id`` first."""
         rows = self._fetchall(
-            "SELECT project_id, owner, schema_version, project_name, num_standees, "
-            "CAST(standee_counts AS NVARCHAR(MAX)) AS standee_counts, standee_type, short_id "
+"SELECT project_id, owner, schema_version, project_name, num_standees, "
+"CAST(standee_counts AS NVARCHAR(MAX)) AS standee_counts, standee_type, short_id, include_print_sides "
             "FROM projects WHERE owner = ? ORDER BY project_id DESC",
             (owner,),
         )
@@ -760,8 +771,8 @@ class MidnightOilDB:
     def list_all_projects(self) -> list[dict[str, Any]]:
         """Return every project row across all owners, newest ``_id`` first."""
         rows = self._fetchall(
-            "SELECT project_id, owner, schema_version, project_name, num_standees, "
-            "CAST(standee_counts AS NVARCHAR(MAX)) AS standee_counts, standee_type, short_id "
+"SELECT project_id, owner, schema_version, project_name, num_standees, "
+"CAST(standee_counts AS NVARCHAR(MAX)) AS standee_counts, standee_type, short_id, include_print_sides "
             "FROM projects ORDER BY project_id DESC"
         )
         return [self._ensure_project_short_id(doc) for doc in self._project_rows_to_docs(rows)]
@@ -772,8 +783,8 @@ class MidnightOilDB:
         if row_id is None:
             return None
         row = self._fetchone(
-            "SELECT project_id, owner, schema_version, project_name, num_standees, "
-            "CAST(standee_counts AS NVARCHAR(MAX)) AS standee_counts, standee_type, short_id "
+"SELECT project_id, owner, schema_version, project_name, num_standees, "
+"CAST(standee_counts AS NVARCHAR(MAX)) AS standee_counts, standee_type, short_id, include_print_sides "
             "FROM projects WHERE project_id = ? AND owner = ?",
             (row_id, owner),
         )

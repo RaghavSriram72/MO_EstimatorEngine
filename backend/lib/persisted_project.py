@@ -9,6 +9,8 @@
  7. elements list
  8. short_id — sequential estimate ID shown in the UI (starts at 10100);
     allocated on insert and lazily backfilled on read.
+ 8. include_print_sides — when true, an extra print form (complexity = standee_type) is
+    added to the print-form count to account for double-sided printing.
 **Notes**  
 - ``length`` / ``width``: inches; same as ``Element.length`` / ``Element.width``.  
 - ``schema_version``: currently ``2``; v1 rows contain only ``num_standees``.
@@ -76,6 +78,7 @@ class PersistedProjectCreate(BaseModel):
     standee_counts: list[int] = Field(default_factory=list, max_length=5)
     standee_type: ComplexityStr
     elements: list[PersistedElement] = Field(..., min_length=1)
+    include_print_sides: bool = False
 
     @field_validator("standee_counts")
     @classmethod
@@ -104,6 +107,7 @@ class PersistedProjectUpdateBody(BaseModel):
     standee_counts: list[int] | None = Field(default=None, max_length=5)
     standee_type: ComplexityStr
     elements: list[PersistedElement] = Field(..., min_length=1)
+    include_print_sides: bool = False
 
     @field_validator("standee_counts")
     @classmethod

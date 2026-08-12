@@ -27,12 +27,16 @@
   - ``line_edits`` — same shape as scenario ``line_edits`` for universal cost rows.
   - ``subtotal_override`` — str.
   - ``custom_lines`` — user-added, freely-titled specialty cost items (e.g. a one-off item
-    with no fixed cost key): ``[{"id": str, "title": str, "cost": float}, ...]``. Frontend-owned
-    like the rest of this column — the backend never reads or validates these fields.
+    with no fixed cost key): ``[{"id": str, "title": str, "cost": float, "quantity": float}, ...]``.
+    A line's total is ``cost * quantity`` (``quantity`` defaults to 1 when absent, for lines
+    saved before this field existed). Frontend-owned like the rest of this column — the backend
+    never reads or validates these fields.
 
 - ``params`` — JSON column: the spec fields above the breakdown table:
 
-  - ``current`` — ``{num_standees, print_forms_per_standee, structure_forms_per_standee, overs}``
+  - ``current`` — ``{num_standees, print_forms_per_standee, structure_forms_per_standee, overs,
+    include_print_sides}``. ``include_print_sides`` is a snapshot of the project-level flag at
+    generation time (absent on quotes saved before this field existed — treat as ``False``).
   - ``defaults`` — same keys; engine-computed values from the last recalculate, so the UI can
     display what a manually-edited field "was before".
 

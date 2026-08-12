@@ -30,7 +30,7 @@
 --   * Everything runs in one transaction; any error rolls the whole load back.
 --
 -- Embedded snapshot (taken from MONGO_database\):
---     users.json            8 document(s)
+--     users.json            9 document(s)
 --     projects.json        13 document(s)
 --     quotes.json          25 document(s)
 --     history.json         25 document(s)
@@ -38,7 +38,7 @@
 --     standee.json          3 document(s)
 --     print_blank.json     10 document(s)
 --     overs.json            4 document(s)
---     packout.json         25 document(s)
+--     packout.json         21 document(s)
 --     suppliers.json        5 document(s)
 --
 -- GENERATED FILE — do not hand-edit the data blocks. Regenerate from the JSON
@@ -80,16 +80,18 @@ BEGIN TRY
 BEGIN TRANSACTION;
 
 -- ────────────────────────────── users ──────────────────────────────
--- users.json — 8 document(s), 1590 chars of JSON
+-- users.json — 9 document(s), 1913 chars of JSON
 SET @json = N'';
-SET @json += N'[{"_id":"6a3dabe1887ac7c5f2598716","username":"TestUser","password_hash":"pbkdf2_sha256$120000$0ff4023c83a954df67fd498377fdf77d$126f4e006b3c7b6941ac5ec1dcc7d24ffbe8e105814e46e0bc27fe864ff7b869"},{"_id":"6a3eaa0ec5352c453a382695","username":"RaghavSriram","password_hash":"pbkdf2_sha256$120000$b4c7d1f272fbf336ef26feb28014bf5b$b85f07ce23dc5beae3e4b4bde45ce448b6e67332c7382adc219a486bf6b5129f"},{"_id":"6a42e0917cea28909a382f5d","username":"Ragi","password_hash":"pbkdf2_sha256$120000$04bc82335545e2510b2097561a8aa47d$557108b594ed7574210220649314944bee78864f29685d693796f080f3a65f0a"},{"_id":"6a43f771e4ebbfcb491fd587","username":"SBUCK","password_hash":"pbkdf2_sha256$120000$fdfded7e84142a8dcc8902516efb61d8$802a42fa6fc543f7eb385bfdeaf50598cdbc08ba177f1df476ffcb3e64812925"},{"_id":"6a43f7a6e4ebbfcb491fd588","username":"hfonseca","password_hash":"pbkdf2_sha256$120000$ee089fbcd0ffcc47a21d6d4d38d08cac$57260f1df3c8e042c3a4ff549d16a2f1928fb53775a7074f96193dea093d2969"},{"_id":"6a57d82691c500138db3c345","username":"_history_test_user_519","password_hash":"pbkdf2_sha256$120000$7f7c7217f3824a33150ce9d5f1dc3a4d$f635f56b80acd31f908bc6197900af719320cfc20bb7dd30c1799f703e35e1ab"},{"_id":"6a57dae291c500138db3c352","username":"_history_diff_test_641","password_hash":"pbkdf2_sha256$120000$9b281bf27ee40a57c159b77cd21b0315$54168d64553a2b85686c4c5890df8a08b99cc9db06485e7185099616f0bdeb6a"},{"_id":"6a591a300c4fe4f89f5c4629","username":"andrew_xiong_testing","password_hash":"pbkdf2_sha256$120000$2a48dc49fac59e7a645c9474012643de$e97ce6a53cf3eba3710ed062729e00944978e7f2a7118b89b5d30d75b0257c02"}]';
+SET @json += N'[{"_id":"6a3dabe1887ac7c5f2598716","username":"TestUser","password_hash":"pbkdf2_sha256$120000$0a33b61608a845ad294bbf38f3ebbd64$c98d353c88d5966da472e23af822d02545764ff81baceb7e09618213cb5b5fa1","role":"admin"},{"_id":"6a3eaa0ec5352c453a382695","username":"RaghavSriram","password_hash":"pbkdf2_sha256$120000$b4c7d1f272fbf336ef26feb28014bf5b$b85f07ce23dc5beae3e4b4bde45ce448b6e67332c7382adc219a486bf6b5129f","role":"user"},{"_id":"6a42e0917cea28909a382f5d","username":"Ragi","password_hash":"pbkdf2_sha256$120000$04bc82335545e2510b2097561a8aa47d$557108b594ed7574210220649314944bee78864f29685d693796f080f3a65f0a","role":"user"},{"_id":"6a43f771e4ebbfcb491fd587","username":"SBUCK","password_hash":"pbkdf2_sha256$120000$fdfded7e84142a8dcc8902516efb61d8$802a42fa6fc543f7eb385bfdeaf50598cdbc08ba177f1df476ffcb3e64812925","role":"user"},{"_id":"6a43f7a6e4ebbfcb491fd588","username":"hfonseca","password_hash":"pbkdf2_sha256$120000$ee089fbcd0ffcc47a21d6d4d38d08cac$57260f1df3c8e042c3a4ff549d16a2f1928fb53775a7074f96193dea093d2969","role":"admin"}';
+SET @json += N',{"_id":"6a57d82691c500138db3c345","username":"_history_test_user_519","password_hash":"pbkdf2_sha256$120000$7f7c7217f3824a33150ce9d5f1dc3a4d$f635f56b80acd31f908bc6197900af719320cfc20bb7dd30c1799f703e35e1ab","role":"user"},{"_id":"6a57dae291c500138db3c352","username":"_history_diff_test_641","password_hash":"pbkdf2_sha256$120000$9b281bf27ee40a57c159b77cd21b0315$54168d64553a2b85686c4c5890df8a08b99cc9db06485e7185099616f0bdeb6a","role":"user"},{"_id":"6a591a300c4fe4f89f5c4629","username":"andrew_xiong_testing","password_hash":"pbkdf2_sha256$120000$2a48dc49fac59e7a645c9474012643de$e97ce6a53cf3eba3710ed062729e00944978e7f2a7118b89b5d30d75b0257c02","role":"user"},{"_id":"6a5b201f2c4fe4f89f5c4630","username":"TestUser2","password_hash":"pbkdf2_sha256$120000$053f8bf697df5d5987e8a3a90e829c79$878824cf1a8da4c9b4c0ce0f39841c7d3f8299bbc0a05720573a3e0da7521f7a","role":"user"}]';
 IF ISJSON(@json) <> 1 THROW 50002, N'Embedded JSON for users.json is corrupt — the script was edited or truncated.', 1;
 
-INSERT dbo.users (username, password_hash)
-SELECT d.username, d.password_hash
+INSERT dbo.users (username, password_hash, role)
+SELECT d.username, d.password_hash, ISNULL(d.role, N'user')
 FROM OPENJSON(@json) WITH (
         username      NVARCHAR(256) N'$.username',
-        password_hash NVARCHAR(512) N'$.password_hash'
+        password_hash NVARCHAR(512) N'$.password_hash',
+        role          NVARCHAR(20)  N'$.role'  -- absent on legacy exports; defaults to 'user'
      ) AS d
 WHERE NOT EXISTS (SELECT 1 FROM dbo.users u WHERE u.username = d.username);
 
@@ -1214,41 +1216,25 @@ WHERE NOT EXISTS (
                OR (o.upper_bound IS NULL AND d.upper_bound IS NULL)));
 
 -- ────────────────────────────── packout ────────────────────────────
--- packout.json — 25 document(s), 4320 chars of JSON
+-- packout.json — 21 document(s), 1921 chars of JSON
 SET @json = N'';
-SET @json += N'[{"_id":"6a3da5ea5307f8e3d6344918","standees_lower_bound":1,"standees_upper_bound":10,"forms_lower_bound":1,"forms_upper_bound":10,"complexity":"Simple","packout":125,"last_updated":"2026-06-30T07:11:07.337Z"},{"_id":"6a3da5ea5307f8e3d634491f","standees_lower_bound":1,"standees_upper_bound":10,"forms_lower_bound":11,"forms_upper_bound":null,"complexity":"Simple","packout":180},{"_id":"6a3da5ea5307f8e3d6344935","standees_lower_bound":11,"standees_upper_bound":25,"forms_lower_bound":1,"forms_upper_bound":15,"complexity":"Complex","packout":475},{"_id":"6a3da5ea5307f8e3d6344927","standees_lower_bound":11,"standees_upper_bound":25,"forms_lower_bound":1,"forms_upper_bound":10,"complexity":"Moderate","packout":325},{"_id":"6a3da5ea5307f8e3d6344919","standees_lower_bound":11,"standees_upper_bound":25,"forms_lower_bound":1,"forms_upper_bound":10,"complexity":"Simple","packout":105},{"_id":"6a3da5ea5307f8e3d634492e","standees_lower_bound":11,"standees_upper_bound":25,"forms_lower_bound":11,"forms_upper_bound":null,"complexity":"Moderate","packout":390},{"_id":"6a3da5ea5307f8e3d634493c","standees_lower_bound":11,"standees_upper_bound":25,"forms_lower_bound":16,"forms_upper_bound":null,"complexity":"Complex","packout":575},{"_id":"6a3da5ea5307f8e3d6344936","standees_lower_bound":26,"standees_upper_bound":50,"forms_lower_bound":1,"forms_upper_bound":15,"complexity":"Complex","packout":425},{"_id":"6a3da5ea5307f8e3d6344928","standees_lower_bound":26,"standees_upper_bound":50,"forms_lower_bound":1,"forms_upper_bound":10,"complexity":"Moderate","packout":275},{"_id":"6a3da5ea5307f8e3d634491a","standees_lower_bound":26,"standees_upper_bound":50,"forms_lower_bound":1,"forms_upper_bound":10,"complexity":"Simple","packout":85},{"_id":"6a3da5ea5307f8e3d634492f","standees_lower_bound":26,"standees_upper_bound":50,"forms_lower_bound":11,"forms_upper_bound":null,"complexity":"Moderate","packout":340},{"_id":"6a3da5ea5307f8e3d6344921","standees_lower_bound":26,"standees_upper_bound":50,"forms_lower_bound":11,"forms_upper_bound":null,"complexity":"Simple","packout":135},{"_id":"6a3da5ea5307f8e3d634493d","standees_lower_bound":26,"standees_upper_bound":50,"forms_lower_bound":16,"forms_upper_bound":null,"complexity":"Complex","packout":525},{"_id":"6a3da5ea5307f8e3d6344929","standees_lower_bound":51,"standees_upper_bound":100,"forms_lower_bound":1,"forms_upper_bound":10,"complexity":"Moderate","packout":225},{"_id":"6a3da5ea5307f8e3d634492a","standees_lower_bound":101,"standees_upper_bound":250,"forms_lower_bound":1,"forms_upper_bound":10,"complexity":"Moderate","packout":185},{"_id":"6a3da5ea5307f8e3d634491c","standees_lower_bound":101,"standees_upper_bound":250,"forms_lower_bound":1,"forms_upper_bound":10,"complexity":"Simple","packout":58},{"_id":"6a3da5ea5307f8e3d6344931","standees_lower_bound":101,"standees_upper_bound":250,"forms_lower_bound":11,"forms_upper_bound":null,"complexity":"Moderate","packout":235},{"_id":"6a3da5ea5307f8e3d634493f","standees_lower_bound":101,"standees_upper_bound":250,"forms_lower_bound":16,"forms_upper_bound":null,"complexity":"Complex","packout":340},{"_id":"6a3da5ea5307f8e3d6344939","standees_lower_bound":251,"standees_upper_bound":500,"forms_lower_bound":1,"forms_upper_bound":15,"complexity":"Complex","packout":210},{"_id":"6a3da5ea5307f8e3d634491d","standees_lower_bound":251,"standees_upper_bound":500,"forms_lower_bound":1,"forms_upper_bound":10,"complexity":"Simple","packout":50},{"_id":"6a3da5ea5307f8e3d6344932","standees_lower_bound":251,"standees_upper_bound":500,"forms_lower_bound":11,"forms_upper_bound":null,"complexity":"Moderate","packout":195},{"_id":"6a3da5ea5307f8e3d634493a","standees_lower_bound":501,"standees_upper_bound":null,"forms_lower_bound":1,"forms_upper_bound":15,"complexity":"Complex","packout":190';
-SET @json += N'},{"_id":"6a3da5ea5307f8e3d634491e","standees_lower_bound":501,"standees_upper_bound":null,"forms_lower_bound":1,"forms_upper_bound":10,"complexity":"Simple","packout":45},{"_id":"6a3da5ea5307f8e3d6344925","standees_lower_bound":501,"standees_upper_bound":null,"forms_lower_bound":11,"forms_upper_bound":null,"complexity":"Simple","packout":70},{"_id":"6a3da5ea5307f8e3d6344941","standees_lower_bound":501,"standees_upper_bound":null,"forms_lower_bound":16,"forms_upper_bound":null,"complexity":"Complex","packout":240}]';
+SET @json += N'[{"standees_lower_bound":1,"standees_upper_bound":10,"complexity":"Simple","packout":75},{"standees_lower_bound":1,"standees_upper_bound":10,"complexity":"Moderate","packout":150},{"standees_lower_bound":1,"standees_upper_bound":10,"complexity":"Complex","packout":250},{"standees_lower_bound":11,"standees_upper_bound":25,"complexity":"Simple","packout":65},{"standees_lower_bound":11,"standees_upper_bound":25,"complexity":"Moderate","packout":135},{"standees_lower_bound":11,"standees_upper_bound":25,"complexity":"Complex","packout":225},{"standees_lower_bound":26,"standees_upper_bound":50,"complexity":"Simple","packout":55},{"standees_lower_bound":26,"standees_upper_bound":50,"complexity":"Moderate","packout":115},{"standees_lower_bound":26,"standees_upper_bound":50,"complexity":"Complex","packout":190},{"standees_lower_bound":51,"standees_upper_bound":100,"complexity":"Simple","packout":45},{"standees_lower_bound":51,"standees_upper_bound":100,"complexity":"Moderate","packout":95},{"standees_lower_bound":51,"standees_upper_bound":100,"complexity":"Complex","packout":155}';
+SET @json += N',{"standees_lower_bound":101,"standees_upper_bound":250,"complexity":"Simple","packout":35},{"standees_lower_bound":101,"standees_upper_bound":250,"complexity":"Moderate","packout":75},{"standees_lower_bound":101,"standees_upper_bound":250,"complexity":"Complex","packout":120},{"standees_lower_bound":251,"standees_upper_bound":500,"complexity":"Simple","packout":30},{"standees_lower_bound":251,"standees_upper_bound":500,"complexity":"Moderate","packout":65},{"standees_lower_bound":251,"standees_upper_bound":500,"complexity":"Complex","packout":100},{"standees_lower_bound":501,"standees_upper_bound":null,"complexity":"Simple","packout":25},{"standees_lower_bound":501,"standees_upper_bound":null,"complexity":"Moderate","packout":55},{"standees_lower_bound":501,"standees_upper_bound":null,"complexity":"Complex","packout":85}]';
 IF ISJSON(@json) <> 1 THROW 50002, N'Embedded JSON for packout.json is corrupt — the script was edited or truncated.', 1;
 
--- packout used to also vary by a forms range; that dimension was dropped (see
--- create_tables.sql), so several legacy tiers now share the same (standees
--- range, complexity) key. Keep the lowest forms_lower_bound tier per group.
-;WITH parsed AS (
-    SELECT d.standees_lower_bound, d.standees_upper_bound, d.forms_lower_bound,
-           d.complexity, d.packout,
-           ISNULL(TRY_CONVERT(DATETIME2(3), d.last_updated, 127), SYSUTCDATETIME()) AS last_updated
-    FROM OPENJSON(@json) WITH (
-            standees_lower_bound INT          N'$.standees_lower_bound',
-            standees_upper_bound INT          N'$.standees_upper_bound',
-            forms_lower_bound    INT          N'$.forms_lower_bound',
-            complexity           NVARCHAR(32) N'$.complexity',
-            packout              FLOAT        N'$.packout',
-            last_updated         NVARCHAR(64) N'$.last_updated'  -- absent on most rows
-         ) AS d
-),
-deduped AS (
-    SELECT *,
-           ROW_NUMBER() OVER (
-               PARTITION BY standees_lower_bound, standees_upper_bound, complexity
-               ORDER BY forms_lower_bound ASC
-           ) AS rn
-    FROM parsed
-)
+-- One row per (standees range, complexity) — packout no longer varies by a
+-- forms range (see create_tables.sql).
 INSERT dbo.packout (standees_lower_bound, standees_upper_bound, complexity, packout, last_updated)
-SELECT d.standees_lower_bound, d.standees_upper_bound, d.complexity, d.packout, d.last_updated
-FROM deduped d
-WHERE d.rn = 1
-  AND NOT EXISTS (
+SELECT d.standees_lower_bound, d.standees_upper_bound, d.complexity, d.packout,
+       ISNULL(TRY_CONVERT(DATETIME2(3), d.last_updated, 127), SYSUTCDATETIME())
+FROM OPENJSON(@json) WITH (
+        standees_lower_bound INT          N'$.standees_lower_bound',
+        standees_upper_bound INT          N'$.standees_upper_bound',
+        complexity           NVARCHAR(32) N'$.complexity',
+        packout               FLOAT        N'$.packout',
+        last_updated          NVARCHAR(64) N'$.last_updated'  -- absent on most rows
+     ) AS d
+WHERE NOT EXISTS (
         SELECT 1 FROM dbo.packout p
         WHERE p.complexity = d.complexity
           AND p.standees_lower_bound = d.standees_lower_bound

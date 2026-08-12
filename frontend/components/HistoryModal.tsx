@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE } from "@/lib/config";
 import { type ScenarioId, displayScenarioNumber } from "@/components/QuoteBreakdown";
-import { computeUniversalTotal, computeScenarioLinesTotal, computeLineValue, formatCurrency } from "@/lib/quoteCostTotals";
+import { computeUniversalTotal, computeScenarioLinesTotal, computeLineValue, customLineTotal, formatCurrency } from "@/lib/quoteCostTotals";
 
 type ChangeType = "create" | "update" | "rename" | "revert";
 type EntityType = "project" | "quote";
@@ -89,10 +89,6 @@ function entityKey(entry: HistoryEntry): string {
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
     return typeof v === "object" && v !== null && !Array.isArray(v);
-}
-
-function isFiniteNumber(v: unknown): v is number {
-    return typeof v === "number" && Number.isFinite(v);
 }
 
 function deepEqual(a: unknown, b: unknown): boolean {
@@ -220,7 +216,7 @@ function computeProjectChangeRows(before: Record<string, unknown>, after: Record
 }
 
 type LineEdit = { qty?: unknown; unit_cost?: unknown };
-type CustomLineSnapshot = { id?: unknown; title?: unknown; cost?: unknown };
+type CustomLineSnapshot = { id?: unknown; title?: unknown; cost?: unknown; quantity?: unknown };
 type ScenarioChild = {
     defaults?: Record<string, unknown>;
     line_edits?: Record<string, LineEdit>;
@@ -353,8 +349,8 @@ function computeQuoteChangeRows(before: Record<string, unknown>, after: Record<s
         const b = beforeCustomLines.find((l) => String(l.id) === id);
         const a = afterCustomLines.find((l) => String(l.id) === id);
         if (deepEqual(b, a)) continue;
-        const bCost = isFiniteNumber(b?.cost) ? b.cost : 0;
-        const aCost = isFiniteNumber(a?.cost) ? a.cost : 0;
+        const bCost = b ? customLineTotal(b) : 0;
+        const aCost = a ? customLineTotal(a) : 0;
         if (!b) {
             rows.push({ kind: "scalar", label: `Specialty Cost Added — ${String(a?.title || "Untitled")}`, before: "—", after: formatCurrency(aCost) });
         } else if (!a) {
