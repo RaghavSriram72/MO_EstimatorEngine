@@ -921,10 +921,11 @@ async def duplicate_project(
         return JSONResponse(status_code=404, content={"error": "Project not found"})
 
     new_project_doc = {
-        "schema_version": source.get("schema_version", 1),
+        "schema_version": source.get("schema_version", 2),
         "owner": payload.new_owner,
         "project_name": payload.project_name or f"{source.get('project_name', 'Untitled project')} (Copy)",
         "num_standees": source["num_standees"],
+        "standee_counts": source.get("standee_counts", []),
         "standee_type": source["standee_type"],
         "elements": source["elements"],
     }
@@ -942,6 +943,7 @@ async def duplicate_project(
             "contribution_margin": quote.get("contribution_margin", 0),
             "standee_type": quote["standee_type"],
             "elements": quote["elements"],
+            "quantity_variants": quote.get("quantity_variants", {}),
             "scenarios": quote.get("scenarios", {}),
             "universal": quote.get("universal", {}),
             "params": quote.get("params", {}),

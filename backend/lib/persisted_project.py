@@ -3,14 +3,15 @@
  1. schema_version
  2. owner
  3. project_name
- 4. num_standees
- 5. standee_type
- 6. elements list
- 7. short_id — sequential estimate ID shown in the UI (starts at 10100);
+ 4. num_standees — first/primary quantity, retained for backward compatibility
+ 5. standee_counts — the five quantities quoted for this project
+ 6. standee_type
+ 7. elements list
+ 8. short_id — sequential estimate ID shown in the UI (starts at 10100);
     allocated on insert and lazily backfilled on read.
 **Notes**  
 - ``length`` / ``width``: inches; same as ``Element.length`` / ``Element.width``.  
-- ``schema_version``: currently ``1``; bump when the shape changes and migrate loaders.
+- ``schema_version``: currently ``2``; v1 rows contain only ``num_standees``.
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from lib.classes import Complexity, Element
 
-PROJECT_SCHEMA_VERSION = 1
+PROJECT_SCHEMA_VERSION = 2
 
 ComplexityStr = Literal["Simple", "Moderate", "Complex"]
 
@@ -72,8 +73,23 @@ class PersistedProjectCreate(BaseModel):
     owner: str = Field(..., min_length=1, max_length=256, description="Username of the account that owns this project")
     project_name: str = Field(..., min_length=1, max_length=512)
     num_standees: int = Field(..., ge=1)
+    standee_counts: list[int] = Field(default_factory=list, max_length=5)
     standee_type: ComplexityStr
     elements: list[PersistedElement] = Field(..., min_length=1)
+
+    @field_validator("standee_counts")
+    @classmethod
+    def validate_standee_counts(cls, counts: list[int]) -> list[int]:
+        """Accept legacy empty lists or exactly five unique positive quote quantities."""
+        if not counts:
+            return counts
+        if len(counts) != 5:
+            raise ValueError("standee_counts must contain exactly five quantities")
+        if any(count < 1 for count in counts):
+            raise ValueError("standee_counts quantities must be positive")
+        if len(set(counts)) != len(counts):
+            raise ValueError("standee_counts quantities must be unique")
+        return counts
 
 
 def persisted_create_to_document(data: PersistedProjectCreate) -> dict[str, Any]:
@@ -85,12 +101,19 @@ class PersistedProjectUpdateBody(BaseModel):
 
     project_name: str = Field(..., min_length=1, max_length=512)
     num_standees: int = Field(..., ge=1)
+    standee_counts: list[int] | None = Field(default=None, max_length=5)
     standee_type: ComplexityStr
     elements: list[PersistedElement] = Field(..., min_length=1)
 
+    @field_validator("standee_counts")
+    @classmethod
+    def validate_standee_counts(cls, counts: list[int] | None) -> list[int] | None:
+        """Accept legacy empty lists or exactly five unique positive quote quantities."""
+        return None if counts is None else PersistedProjectCreate.validate_standee_counts(counts)
+
 
 def persisted_update_to_set(data: PersistedProjectUpdateBody) -> dict[str, Any]:
-    return data.model_dump()
+    return data.model_dump(exclude_none=True)
 
 
 def elements_from_persisted_project(rows: list[PersistedElement]) -> list[Element]:
@@ -116,6 +139,7 @@ EXAMPLE_PROJECT_DOCUMENT: dict[str, Any] = {
     "owner": "jdoe",
     "project_name": "DA-3 Primate retail standee",
     "num_standees": 18,
+    "standee_counts": [10, 20, 100, 250, 500],
     "standee_type": "Moderate",
     "elements": [
         {

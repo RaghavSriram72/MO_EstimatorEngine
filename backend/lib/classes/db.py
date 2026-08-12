@@ -16,7 +16,7 @@ from lib.globals import PROJECT_SHORT_ID_START
 
 # Fields a caller may set via update_persisted_project / update_persisted_quote — also
 # the field set snapshotted into a history entry's "snapshot" and restored on revert.
-_PROJECT_UPDATE_ALLOWED_FIELDS = {"project_name", "num_standees", "standee_type", "elements"}
+_PROJECT_UPDATE_ALLOWED_FIELDS = {"project_name", "num_standees", "standee_counts", "standee_type", "elements"}
 _QUOTE_UPDATE_ALLOWED_FIELDS = {
     "quote_name",
     "breakdown",
@@ -40,6 +40,7 @@ _QUOTE_HISTORY_SIGNIFICANT_FIELDS = _QUOTE_UPDATE_ALLOWED_FIELDS - {"scenario", 
 # Scalar (single-column) subsets of the allowed fields; "elements" lives in its own
 # child table and the quote JSON blobs are serialized before hitting their columns.
 _PROJECT_SCALAR_FIELDS = ("project_name", "num_standees", "standee_type")
+_PROJECT_JSON_FIELDS = ("standee_counts",)
 _QUOTE_SCALAR_FIELDS = (
     "quote_name",
     "num_standees",
@@ -48,7 +49,7 @@ _QUOTE_SCALAR_FIELDS = (
     "contribution_margin",
     "cost_tables_version",
 )
-_QUOTE_JSON_FIELDS = ("scenarios", "universal", "params", "breakdown")
+_QUOTE_JSON_FIELDS = ("quantity_variants", "scenarios", "universal", "params", "breakdown")
 
 _ELEMENT_COLUMNS = ("name", "length", "width", "linear_inches", "complexity", "description", "mask_b64")
 
@@ -687,6 +688,7 @@ class MidnightOilDB:
                     "owner": row["owner"],
                     "project_name": row["project_name"],
                     "num_standees": row["num_standees"],
+                    "standee_counts": json.loads(row["standee_counts"]) if row.get("standee_counts") else [],
                     "standee_type": row["standee_type"],
                     "short_id": row["short_id"].strip() if isinstance(row["short_id"], str) else row["short_id"],
                     "elements": elements.get(project_id, []),
@@ -703,13 +705,15 @@ class MidnightOilDB:
         """
         short_id = self._allocate_project_short_id()
         new_id = self._insert_returning_id(
-            "INSERT INTO projects (owner, schema_version, project_name, num_standees, standee_type, short_id) "
-            "OUTPUT INSERTED.project_id VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO projects "
+            "(owner, schema_version, project_name, num_standees, standee_counts, standee_type, short_id) "
+            "OUTPUT INSERTED.project_id VALUES (?, ?, ?, ?, CAST(? AS NVARCHAR(MAX)), ?, ?)",
             (
                 doc["owner"],
                 doc.get("schema_version", 1),
                 doc.get("project_name", "Untitled project"),
                 doc["num_standees"],
+                json.dumps(doc.get("standee_counts") or []),
                 doc["standee_type"],
                 short_id,
             ),
@@ -746,7 +750,8 @@ class MidnightOilDB:
     def list_projects_by_owner(self, owner: str) -> list[dict[str, Any]]:
         """Return all project rows for an owner, newest ``_id`` first."""
         rows = self._fetchall(
-            "SELECT project_id, owner, schema_version, project_name, num_standees, standee_type, short_id "
+            "SELECT project_id, owner, schema_version, project_name, num_standees, "
+            "CAST(standee_counts AS NVARCHAR(MAX)) AS standee_counts, standee_type, short_id "
             "FROM projects WHERE owner = ? ORDER BY project_id DESC",
             (owner,),
         )
@@ -755,7 +760,8 @@ class MidnightOilDB:
     def list_all_projects(self) -> list[dict[str, Any]]:
         """Return every project row across all owners, newest ``_id`` first."""
         rows = self._fetchall(
-            "SELECT project_id, owner, schema_version, project_name, num_standees, standee_type, short_id "
+            "SELECT project_id, owner, schema_version, project_name, num_standees, "
+            "CAST(standee_counts AS NVARCHAR(MAX)) AS standee_counts, standee_type, short_id "
             "FROM projects ORDER BY project_id DESC"
         )
         return [self._ensure_project_short_id(doc) for doc in self._project_rows_to_docs(rows)]
@@ -766,7 +772,8 @@ class MidnightOilDB:
         if row_id is None:
             return None
         row = self._fetchone(
-            "SELECT project_id, owner, schema_version, project_name, num_standees, standee_type, short_id "
+            "SELECT project_id, owner, schema_version, project_name, num_standees, "
+            "CAST(standee_counts AS NVARCHAR(MAX)) AS standee_counts, standee_type, short_id "
             "FROM projects WHERE project_id = ? AND owner = ?",
             (row_id, owner),
         )
@@ -782,6 +789,12 @@ class MidnightOilDB:
             self._execute(
                 f"UPDATE projects SET {set_clause} WHERE project_id = ?", (*scalars.values(), row_id)
             )
+        for col in _PROJECT_JSON_FIELDS:
+            if col in fields:
+                self._execute(
+                    f"UPDATE projects SET {col} = CAST(? AS NVARCHAR(MAX)) WHERE project_id = ?",
+                    (json.dumps(fields[col] or []), row_id),
+                )
         if "elements" in fields:
             self._replace_elements("project_elements", "project_id", row_id, fields["elements"])
 
@@ -839,6 +852,7 @@ class MidnightOilDB:
     _QUOTE_SELECT = (
         "SELECT quote_id, project_id, owner, schema_version, quote_name, scenario, num_standees, "
         "contribution_margin, standee_type, cost_tables_version, "
+        "CAST(quantity_variants AS NVARCHAR(MAX)) AS quantity_variants, "
         "CAST(scenarios AS NVARCHAR(MAX)) AS scenarios, "
         "CAST(universal AS NVARCHAR(MAX)) AS universal, CAST(params AS NVARCHAR(MAX)) AS params, "
         "CAST(breakdown AS NVARCHAR(MAX)) AS breakdown, created_at, updated_at FROM quotes"
@@ -885,10 +899,11 @@ class MidnightOilDB:
         updated_at = _to_db_datetime(doc.get("updated_at") or datetime.now(UTC))
         new_id = self._insert_returning_id(
             "INSERT INTO quotes (project_id, owner, schema_version, quote_name, scenario, num_standees, "
-            "contribution_margin, standee_type, cost_tables_version, scenarios, universal, params, "
+            "contribution_margin, standee_type, cost_tables_version, quantity_variants, scenarios, universal, params, "
             "breakdown, created_at, updated_at) "
             "OUTPUT INSERTED.quote_id VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, "
-            "CAST(? AS NVARCHAR(MAX)), CAST(? AS NVARCHAR(MAX)), CAST(? AS NVARCHAR(MAX)), CAST(? AS NVARCHAR(MAX)), ?, ?)",
+            "CAST(? AS NVARCHAR(MAX)), CAST(? AS NVARCHAR(MAX)), CAST(? AS NVARCHAR(MAX)), "
+            "CAST(? AS NVARCHAR(MAX)), CAST(? AS NVARCHAR(MAX)), ?, ?)",
             (
                 int(doc["project_id"]),
                 doc["owner"],
@@ -899,6 +914,7 @@ class MidnightOilDB:
                 doc.get("contribution_margin", 0),
                 doc["standee_type"],
                 doc.get("cost_tables_version"),
+                json.dumps(doc.get("quantity_variants") or {}),
                 json.dumps(doc.get("scenarios") or {}),
                 json.dumps(doc.get("universal") or {}),
                 json.dumps(doc.get("params") or {}),
@@ -1678,17 +1694,29 @@ class MidnightOilDB:
     # ------------------------------------------------------------------
 
     def get_packout(self, standees: int, complexity: str) -> float:
-        """Return the packout cost for a given quantity of standees and complexity."""
+        """Return the exact packout tier, or the nearest tier across a quantity gap."""
         row = self._fetchone(
             "SELECT TOP 1 packout FROM packout "
             "WHERE standees_lower_bound <= ? AND (standees_upper_bound IS NULL OR standees_upper_bound >= ?) "
             "AND UPPER(complexity) = UPPER(?)",
             (standees, standees, complexity),
         )
-        if row is not None:
-            return float(row["packout"])
-        else:
+        if row is None:
+            # The migrated reference data has quantity gaps for some complexities
+            # (for example, Moderate starts at 11). Use the tier whose range edge
+            # is closest instead of making otherwise valid quote quantities fail.
+            row = self._fetchone(
+                "SELECT TOP 1 packout FROM packout "
+                "WHERE UPPER(complexity) = UPPER(?) "
+                "ORDER BY CASE "
+                "WHEN ? < standees_lower_bound THEN standees_lower_bound - ? "
+                "WHEN standees_upper_bound IS NOT NULL AND ? > standees_upper_bound THEN ? - standees_upper_bound "
+                "ELSE 0 END, standees_lower_bound",
+                (complexity, standees, standees, standees, standees),
+            )
+        if row is None:
             raise ValueError(f"Packout not found for standees {standees} and complexity {complexity}")
+        return float(row["packout"])
 
     def get_all_packout(self) -> list[dict]:
         """Return all packout costs sorted by lower_bound."""

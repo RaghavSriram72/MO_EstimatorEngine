@@ -52,6 +52,7 @@ BEGIN
         schema_version INT                   NOT NULL CONSTRAINT DF_projects_schema_version DEFAULT 1,
         project_name   NVARCHAR(512)         NOT NULL,
         num_standees   INT                   NOT NULL,
+        standee_counts JSON                  NOT NULL CONSTRAINT DF_projects_standee_counts DEFAULT N'[]',
         standee_type   NVARCHAR(16)          NOT NULL,
         short_id       NVARCHAR(16)          NULL,  -- sequential estimate ID shown in the UI (10100, 10101, …); backfilled on read if NULL
         created_at     DATETIME2(3)          NOT NULL CONSTRAINT DF_projects_created_at DEFAULT SYSUTCDATETIME(),
@@ -60,6 +61,16 @@ BEGIN
     );
 
     CREATE INDEX IX_projects_owner ON dbo.projects (owner, project_id DESC);
+END;
+GO
+
+-- Upgrade path: projects originally stored one quote quantity in num_standees.
+-- Keep that scalar as the primary/legacy quantity and store the new five-value
+-- quote quantity set separately.
+IF COL_LENGTH(N'dbo.projects', N'standee_counts') IS NULL
+BEGIN
+    ALTER TABLE dbo.projects ADD standee_counts JSON NOT NULL
+        CONSTRAINT DF_projects_standee_counts DEFAULT N'[]' WITH VALUES;
 END;
 GO
 
@@ -116,6 +127,7 @@ BEGIN
         -- refreshed; NULL until stamped. Used for stale-estimate detection in the UI.
         cost_tables_version NVARCHAR(64)          NULL,
         -- Frontend-owned nested state; see backend/lib/persisted_quote.py for shapes.
+        quantity_variants   JSON                  NOT NULL CONSTRAINT DF_quotes_quantity_variants DEFAULT N'{}',
         scenarios           JSON                  NOT NULL CONSTRAINT DF_quotes_scenarios DEFAULT N'{}',
         universal           JSON                  NOT NULL CONSTRAINT DF_quotes_universal DEFAULT N'{}',
         params              JSON                  NOT NULL CONSTRAINT DF_quotes_params DEFAULT N'{}',
@@ -131,6 +143,15 @@ BEGIN
 
     CREATE INDEX IX_quotes_project ON dbo.quotes (project_id, quote_id DESC);
     CREATE INDEX IX_quotes_owner ON dbo.quotes (owner, quote_id DESC);
+END;
+GO
+
+-- Upgrade path: each quantity variant owns an independent scenarios/universal/params
+-- snapshot. Legacy quote columns remain as a fallback for old rows and clients.
+IF COL_LENGTH(N'dbo.quotes', N'quantity_variants') IS NULL
+BEGIN
+    ALTER TABLE dbo.quotes ADD quantity_variants JSON NOT NULL
+        CONSTRAINT DF_quotes_quantity_variants DEFAULT N'{}' WITH VALUES;
 END;
 GO
 

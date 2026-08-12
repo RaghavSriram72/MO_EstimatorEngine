@@ -7,13 +7,14 @@ import { useAuth } from "@/contexts/AuthContext";
 
 export default function UserManagementPage() {
     const router = useRouter();
-    const { isAuthenticated, isAdmin } = useAuth();
+    const { isAuthenticated, isAdmin, isReady } = useAuth();
     useEffect(() => {
+        if (!isReady) return;
         if (!isAuthenticated) { router.replace("/sign-in"); return; }
         if (!isAdmin) router.replace("/quoteEngine");
-    }, [isAuthenticated, isAdmin, router]);
+    }, [isAuthenticated, isAdmin, isReady, router]);
 
-    if (!isAuthenticated || !isAdmin) return null;
+    if (!isReady || !isAuthenticated || !isAdmin) return null;
 
     return (
         <div className="flex flex-col h-screen w-full bg-white" style={{ fontFamily: "'Proxima Nova', sans-serif" }}>

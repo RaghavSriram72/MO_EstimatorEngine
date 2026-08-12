@@ -12,7 +12,9 @@
 - ``standee_type`` — ``Simple`` / ``Moderate`` / ``Complex`` (same as projects)
 - ``elements`` — list of persisted elements (one ``quote_elements`` row each; see
   ``PersistedElement`` in ``persisted_project``)
-- ``scenarios`` — JSON column: the five scenario children, keyed ``"1"`` … ``"5"``. Each child holds:
+- ``quantity_variants`` — JSON column keyed by standee quantity. Each value contains
+  ``scenarios``, ``universal``, and ``params`` in the shapes documented below.
+- ``scenarios`` — legacy/current-quantity JSON column: the five scenario children, keyed ``"1"`` … ``"5"``. Each child holds:
 
   - ``defaults`` — the raw backend ``to_serializable_dict()`` blob for that scenario, i.e. the
     engine-computed values *before* any manual edits. Used to show "default: X" hints in the UI.
@@ -54,7 +56,7 @@ from pydantic import BaseModel, Field
 
 from lib.persisted_project import ComplexityStr, PersistedElement
 
-QUOTE_SCHEMA_VERSION = 2
+QUOTE_SCHEMA_VERSION = 3
 
 
 class PersistedQuoteCreate(BaseModel):
@@ -73,6 +75,10 @@ class PersistedQuoteCreate(BaseModel):
     contribution_margin: float = Field(..., ge=0, le=99.99)
     standee_type: ComplexityStr
     elements: list[PersistedElement] = Field(..., min_length=1)
+    quantity_variants: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Independent scenarios/universal/params snapshots keyed by standee quantity",
+    )
     scenarios: dict[str, Any] = Field(default_factory=dict, description='Five scenario children keyed "1"…"5"')
     universal: dict[str, Any] = Field(default_factory=dict, description="Shared cost-line edits + subtotal override")
     params: dict[str, Any] = Field(default_factory=dict, description="Spec fields: current + defaults")
@@ -104,6 +110,10 @@ class PersistedQuoteCreateBody(BaseModel):
     contribution_margin: float = Field(..., ge=0, le=99.99)
     standee_type: ComplexityStr
     elements: list[PersistedElement] = Field(..., min_length=1)
+    quantity_variants: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Independent scenarios/universal/params snapshots keyed by standee quantity",
+    )
     scenarios: dict[str, Any] = Field(default_factory=dict, description='Five scenario children keyed "1"…"5"')
     universal: dict[str, Any] = Field(default_factory=dict, description="Shared cost-line edits + subtotal override")
     params: dict[str, Any] = Field(default_factory=dict, description="Spec fields: current + defaults")
@@ -135,6 +145,10 @@ class PersistedQuoteUpdateBody(BaseModel):
     scenario: int = Field(..., ge=1, le=5)
     standee_type: ComplexityStr
     elements: list[PersistedElement] = Field(..., min_length=1)
+    quantity_variants: dict[str, Any] | None = Field(
+        default=None,
+        description="Independent scenarios/universal/params snapshots keyed by standee quantity",
+    )
     scenarios: dict[str, Any] = Field(default_factory=dict, description='Five scenario children keyed "1"…"5"')
     universal: dict[str, Any] = Field(default_factory=dict, description="Shared cost-line edits + subtotal override")
     params: dict[str, Any] = Field(default_factory=dict, description="Spec fields: current + defaults")

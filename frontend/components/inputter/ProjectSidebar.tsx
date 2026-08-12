@@ -8,6 +8,7 @@ export type ProjectSummary = {
     owner?: string;
     project_name: string;
     num_standees: number;
+    standee_counts?: number[];
     standee_type: "Simple" | "Moderate" | "Complex";
     /** True when saved quote costs may be out of date vs data-collector tables. */
     costsStale?: boolean;
@@ -213,7 +214,12 @@ export default function ProjectSidebar({
                                             #{p.short_id}
                                         </span>
                                     )}
-                                    <span className="shrink-0 text-[9px] text-[#B1B3B6] font-semibold">{p.num_standees} standees</span>
+                                    <span
+                                        title={`${p.standee_counts?.length ? p.standee_counts.join(", ") : p.num_standees} standees`}
+                                        className="shrink-0 text-[9px] text-[#B1B3B6] font-semibold"
+                                    >
+                                        {p.standee_counts?.length === 5 ? "5 quantities" : `${p.num_standees} standees`}
+                                    </span>
                                     <span className={`shrink-0 text-[8.5px] font-bold px-1.5 py-0.5 rounded-full ${STANDEE_BADGE[p.standee_type] ?? "bg-[#F0F0F0] text-[#888]"}`}>
                                         {p.standee_type}
                                     </span>

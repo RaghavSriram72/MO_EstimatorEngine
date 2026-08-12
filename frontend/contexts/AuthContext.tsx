@@ -1,5 +1,5 @@
 "use client";
-import { createContext, useCallback, useContext, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 
 export type Role = "admin" | "user";
 
@@ -8,6 +8,7 @@ type AuthState = {
     role: Role | null;
     isAdmin: boolean;
     isAuthenticated: boolean;
+    isReady: boolean;
     signIn: (username: string, role: Role) => void;
     signOut: () => void;
 };
@@ -25,16 +26,27 @@ function readStoredRole(): Role | null {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-    // Lazy initializers run synchronously on the client's first render, so there's
-    // no post-mount flash where a signed-in user briefly reads as signed-out.
-    const [username, setUsername] = useState<string | null>(readStoredUsername);
-    const [role, setRole] = useState<Role | null>(readStoredRole);
+    // Server output and the client's first render must match. Restore browser-only
+    // auth state after hydration, then let protected pages render.
+    const [username, setUsername] = useState<string | null>(null);
+    const [role, setRole] = useState<Role | null>(null);
+    const [isReady, setIsReady] = useState(false);
+
+    useEffect(() => {
+        const id = window.setTimeout(() => {
+            setUsername(readStoredUsername());
+            setRole(readStoredRole());
+            setIsReady(true);
+        }, 0);
+        return () => window.clearTimeout(id);
+    }, []);
 
     const signIn = useCallback((newUsername: string, newRole: Role) => {
         localStorage.setItem("username", newUsername);
         localStorage.setItem("role", newRole);
         setUsername(newUsername);
         setRole(newRole);
+        setIsReady(true);
     }, []);
 
     const signOut = useCallback(() => {
@@ -42,11 +54,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         localStorage.removeItem("role");
         setUsername(null);
         setRole(null);
+        setIsReady(true);
     }, []);
 
     return (
         <AuthContext.Provider
-            value={{ username, role, isAdmin: role === "admin", isAuthenticated: !!username, signIn, signOut }}
+            value={{ username, role, isAdmin: role === "admin", isAuthenticated: !!username, isReady, signIn, signOut }}
         >
             {children}
         </AuthContext.Provider>

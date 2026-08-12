@@ -10,6 +10,7 @@ import {
     type PersistedLineEdit,
     type PersistedSpecParams,
     type PersistedCustomLine,
+    type PersistedQuantityVariants,
 } from "@/pages/Inputter";
 import { API_BASE } from "@/lib/config";
 import { COST_LINE_TOOLTIPS } from "@/lib/costLineTooltips";
@@ -50,13 +51,13 @@ type Props = {
     /** Signed-in user who will be attributed as the author of newly added notes. */
     noteAuthor?: string | null;
     onBack: () => void;
-    /** Keeps parent sidebar / payload in sync when standee count is edited. */
-    onNumStandeesChange?: (numStandees: number) => void;
+    availableQuantities: number[];
+    activeQuantity: number;
+    quantityVariants: PersistedQuantityVariants;
+    onQuantityChange: (quantity: number) => void;
+    onQuantityVariantSaved: (quantity: number, state: PersistedQuoteState) => void;
     /** True when saved engine defaults are behind the current data-collector cost tables. */
     costsStale?: boolean;
-    /** Fires after a successful recalculate with a new standee count, so the
-     * parent can persist it back to the project. */
-    onNumStandeesCommitted?: (numStandees: number) => void;
     /** Fires after engine defaults are recalculated and saved (clears stale cost highlight). */
     onCostsSynced?: () => void;
 };
@@ -786,8 +787,11 @@ export default function QuoteBreakdown({
     noteAuthor = null,
     costsStale = false,
     onBack,
-    onNumStandeesChange,
-    onNumStandeesCommitted,
+    availableQuantities,
+    activeQuantity,
+    quantityVariants,
+    onQuantityChange,
+    onQuantityVariantSaved,
     onCostsSynced,
 }: Props) {
     const [activeScenario, setActiveScenario] = useState<ScenarioId>(() =>
@@ -991,6 +995,18 @@ export default function QuoteBreakdown({
         const parsedMargin = parseFloat(contributionMargin);
         const contribution_margin =
             Number.isFinite(parsedMargin) && parsedMargin >= 0 && parsedMargin < 100 ? parsedMargin : 0;
+        const variant: PersistedQuoteState = {
+            scenarios,
+            universal: {
+                line_edits: lineEditsFor(snapshot.universalLines, snapshot.universalEdited),
+                subtotal_override: snapshot.universalSubtotalOverride.trim(),
+                custom_lines: snapshot.customLines,
+            },
+            params: {
+                current: toSpecParams(snapshot.params),
+                defaults: toSpecParams(snapshot.paramDefaults),
+            },
+        };
         const body = {
             quote_name: (quoteName ?? "").trim() || "Untitled quote",
             num_standees: snapshot.params.numStandees,
@@ -1004,16 +1020,13 @@ export default function QuoteBreakdown({
                 linear_inches: e.linear_inches,
                 complexity: e.complexity,
             })),
+            quantity_variants: {
+                ...quantityVariants,
+                [String(activeQuantity)]: variant,
+            },
             scenarios,
-            universal: {
-                line_edits: lineEditsFor(snapshot.universalLines, snapshot.universalEdited),
-                subtotal_override: snapshot.universalSubtotalOverride.trim(),
-                custom_lines: snapshot.customLines,
-            },
-            params: {
-                current: toSpecParams(snapshot.params),
-                defaults: toSpecParams(snapshot.paramDefaults),
-            },
+            universal: variant.universal,
+            params: variant.params,
             ...(typeof snapshot.costTablesVersion === "string"
                 ? { cost_tables_version: snapshot.costTablesVersion }
                 : {}),
@@ -1028,6 +1041,7 @@ export default function QuoteBreakdown({
             console.error("PATCH quote:", errBody);
             return false;
         }
+        onQuantityVariantSaved(activeQuantity, variant);
         return true;
     }
 
@@ -1201,10 +1215,6 @@ export default function QuoteBreakdown({
             setEditedScenarioKeys({ 1: new Set(), 2: new Set(), 3: new Set(), 4: new Set(), 5: new Set() });
             origUniversalLines.current = newUniversalLines;
             origScenarioLines.current  = newSl;
-            // Standee count is now committed to the quote — sync it back to the project.
-            if (newParams.numStandees !== baseline.numStandees) {
-                onNumStandeesCommitted?.(newParams.numStandees);
-            }
             if (canPersistQuote) {
                 setIsSavingQuote(true);
                 try {
@@ -1420,24 +1430,21 @@ export default function QuoteBreakdown({
                 {/* Parameters card */}
                 <div className="shrink-0 flex items-center gap-6 bg-white border-2 border-[#E0E0E0] rounded-sm px-5 py-4 flex-wrap">
                     <div className="flex flex-col gap-1">
-                        <span className="text-[10px] font-black text-[#B1B3B6] uppercase tracking-widest">Number of Standees</span>
-                        <input
-                            type="number"
-                            min={0}
-                            step={1}
-                            value={numStandees}
-                            onChange={(e) => {
-                                const n = parseInt(e.target.value) || 0;
-                                setOversPinned(false);
-                                patchParams({ numStandees: n });
-                                onNumStandeesChange?.(n);
-                            }}
-                            disabled={isRecalculating}
-                            className={`border-2 border-[#E0E0E0] rounded-sm px-3 py-1.5 text-sm font-black text-[#000005] outline-none focus:border-[#FFC843] w-[140px] text-right transition-colors disabled:opacity-50 ${numStandees !== baseline.numStandees ? "bg-[#FFC843]/20" : "bg-[#F8F8F8]"}`}
-                        />
-                        {numStandees !== paramDefaults.numStandees && (
-                            <span className="text-[9px] text-red-600 font-bold">previous: {paramDefaults.numStandees}</span>
-                        )}
+                        <label htmlFor="quote-quantity" className="text-[10px] font-black text-[#B1B3B6] uppercase tracking-widest">
+                            Quote Quantity
+                        </label>
+                        <select
+                            id="quote-quantity"
+                            value={activeQuantity}
+                            onChange={(e) => onQuantityChange(Number(e.target.value))}
+                            disabled={isRecalculating || isSavingQuote || isDirty || needsSave}
+                            title={isDirty || needsSave ? "Save or recalculate changes before switching quantities" : undefined}
+                            className="border-2 border-[#E0E0E0] rounded-sm px-3 py-1.5 text-sm font-black text-[#000005] outline-none focus:border-[#FFC843] w-[140px] bg-[#F8F8F8] transition-colors disabled:opacity-50"
+                        >
+                            {availableQuantities.map((quantity) => (
+                                <option key={quantity} value={quantity}>{quantity.toLocaleString()}</option>
+                            ))}
+                        </select>
                     </div>
                     <div className="h-10 w-px bg-[#E0E0E0]" />
                     <div className="flex flex-col gap-1">

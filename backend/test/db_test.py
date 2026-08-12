@@ -258,6 +258,7 @@ class TestDbUserAndProjectMethods(_DbTestCase):
                 "owner": "alice",
                 "project_name": "New project",
                 "num_standees": 2,
+                "standee_counts": [10, 20, 100, 250, 500],
                 "standee_type": "Complex",
                 "elements": [ELEMENT, {**ELEMENT, "name": "banana"}],
             }
@@ -276,6 +277,7 @@ class TestDbUserAndProjectMethods(_DbTestCase):
         fetched = db.get_project_by_owner(project_id, "alice")
         self.assertEqual(fetched["project_name"], "New project")
         self.assertEqual(fetched["_id"], project_id)
+        self.assertEqual(fetched["standee_counts"], [10, 20, 100, 250, 500])
         self.assertEqual([el["name"] for el in fetched["elements"]], ["monkey", "banana"])
         self.assertEqual(fetched["short_id"], short_id)
         self.assertIsNone(db.get_project_by_owner("bad-id", "alice"))
@@ -287,11 +289,17 @@ class TestDbUserAndProjectMethods(_DbTestCase):
             db.update_persisted_project(
                 project_id,
                 "alice",
-                {"project_name": "Updated project", "elements": [ELEMENT], "ignored": True},
+                {
+                    "project_name": "Updated project",
+                    "standee_counts": [25, 50, 100, 250, 1000],
+                    "elements": [ELEMENT],
+                    "ignored": True,
+                },
             )
         )
         updated = db.get_project_by_owner(project_id, "alice")
         self.assertEqual(updated["project_name"], "Updated project")
+        self.assertEqual(updated["standee_counts"], [25, 50, 100, 250, 1000])
         self.assertEqual(len(updated["elements"]), 1)
 
         # Deleting the project cascades to its quotes.
@@ -411,6 +419,18 @@ class TestDbQuoteMethods(_DbTestCase):
                 "contribution_margin": 20.0,
                 "standee_type": "Complex",
                 "elements": [ELEMENT],
+                "quantity_variants": {
+                    "10": {
+                        "scenarios": {"1": {"defaults": {"total": 90}}},
+                        "universal": {"line_edits": {}},
+                        "params": {"current": {"num_standees": 10}},
+                    },
+                    "100": {
+                        "scenarios": {"1": {"defaults": {"total": 700}}},
+                        "universal": {"line_edits": {}},
+                        "params": {"current": {"num_standees": 100}},
+                    },
+                },
                 "scenarios": {"2": {"line_edits": {"die_cost": {"qty": 1, "unit_cost": 4}}}},
                 "universal": {"subtotal_override": ""},
                 "params": {"current": {"num_standees": 3}},
@@ -431,6 +451,7 @@ class TestDbQuoteMethods(_DbTestCase):
         self.assertEqual(fetched["updated_at"], "2026-01-09T13:00:00+00:00")
         self.assertEqual(fetched["scenarios"]["2"]["line_edits"]["die_cost"], {"qty": 1, "unit_cost": 4})
         self.assertEqual(fetched["breakdown"], {"subtotal": 200})
+        self.assertEqual(fetched["quantity_variants"]["100"]["params"]["current"]["num_standees"], 100)
         self.assertEqual([el["name"] for el in fetched["elements"]], ["monkey"])
         self.assertIsNone(db.get_quote_by_owner("bad-id", "alice"))
         self.assertIsNone(db.get_quote_by_owner(quote_id, "bob"))
@@ -589,6 +610,8 @@ class TestDbCostAndLookupMethods(_DbTestCase):
 
         self.assertEqual(db.get_packout(5, "simple"), 12.0)
         self.assertEqual(db.get_packout(12, "COMPLEX"), 18.0)
+        # Quantities outside a complexity's seeded ranges use its nearest tier.
+        self.assertEqual(db.get_packout(5, "COMPLEX"), 18.0)
         self.assertEqual(db.get_all_packout()[0]["_id"], self.ids["packout_id"])
 
         new_packout_id = db.upsert_packout(None, 20, None, "Moderate", 22, changed_by="alice")

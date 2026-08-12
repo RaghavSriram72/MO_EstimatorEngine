@@ -83,6 +83,10 @@ export type PersistedQuoteState = {
     params: { current: PersistedSpecParams; defaults: PersistedSpecParams };
 };
 
+export type PersistedQuantityVariants = Record<string, PersistedQuoteState>;
+
+const DEFAULT_STANDEE_COUNTS = [10, 20, 100, 250, 500] as const;
+
 // Body shape sent to POST /generate_quote
 export type RequestPayload = {
     elements: { name: string; height: number; width: number; complexity: string; linear_inches: number | null; description: string | null }[];
@@ -185,6 +189,26 @@ function persistedStateFromQuoteDoc(doc: Record<string, unknown>): PersistedQuot
             defaults: paramsRaw?.defaults ?? { ...fallbackSpec },
         },
     };
+}
+
+function quantityVariantsFromQuoteDoc(doc: Record<string, unknown>): PersistedQuantityVariants {
+    const raw = doc.quantity_variants;
+    const variants: PersistedQuantityVariants = {};
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+        for (const [quantity, value] of Object.entries(raw as Record<string, unknown>)) {
+            if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+            const state = persistedStateFromQuoteDoc(value as Record<string, unknown>);
+            if (state && Number.isInteger(Number(quantity)) && Number(quantity) > 0) {
+                variants[String(Number(quantity))] = state;
+            }
+        }
+    }
+    if (Object.keys(variants).length === 0) {
+        const legacy = persistedStateFromQuoteDoc(doc);
+        const quantity = typeof doc.num_standees === "number" ? doc.num_standees : null;
+        if (legacy && quantity && quantity > 0) variants[String(quantity)] = legacy;
+    }
+    return variants;
 }
 
 // The scenario children's defaults are the breakdown's scenario blobs
@@ -294,7 +318,7 @@ function searchMatches(query: string, text: string): boolean {
 
 /** Searchable text for a project row in the sidebar. */
 function projectSearchBlob(p: ProjectSummary): string {
-    return `${p.project_name || ""} ${p.num_standees} ${p.standee_type} ${p._id} ${p.short_id ?? ""} #${p.short_id ?? ""} ${p.owner ?? ""}`;
+    return `${p.project_name || ""} ${(p.standee_counts ?? [p.num_standees]).join(" ")} ${p.standee_type} ${p._id} ${p.short_id ?? ""} #${p.short_id ?? ""} ${p.owner ?? ""}`;
 }
 
 type QuoteSearchSummary = {
@@ -336,7 +360,7 @@ function apiErrorMessage(data: unknown): string | null {
 
 export default function Inputter() {
     // ── Estimator form state ───────────────────────────────────────────────
-    const [standeeCount, setStandeeCount]   = useState<number | "">("");
+    const [standeeCounts, setStandeeCounts] = useState<Array<number | "">>([...DEFAULT_STANDEE_COUNTS]);
     const [standeeType, setStandeeType]     = useState<StandeeType>("Simple");
     const [elements, setElements]           = useState<Element[]>([]);
     const [elementListKey, setElementListKey] = useState(0); // bumped to force ElementsManager reset
@@ -360,6 +384,8 @@ export default function Inputter() {
     const [activeQuoteContributionMargin, setActiveQuoteContributionMargin] = useState<number | null>(null);
     const [activePersistedQuoteId, setActivePersistedQuoteId] = useState<string | null>(null);
     const [activePersistedQuoteState, setActivePersistedQuoteState] = useState<PersistedQuoteState | null>(null);
+    const [activeQuantityVariants, setActiveQuantityVariants] = useState<PersistedQuantityVariants>({});
+    const [activeQuoteQuantity, setActiveQuoteQuantity] = useState<number | null>(null);
     const [isQuoteGenerating, setIsQuoteGenerating]           = useState(false);
 
     // ── Saved quotes list (inside workspace) — commented, restore with QuotesSidebar ──
@@ -529,7 +555,7 @@ export default function Inputter() {
     // ── Project actions ────────────────────────────────────────────────────
 
     function resetEstimatorForm() {
-        setStandeeCount("");
+        setStandeeCounts([...DEFAULT_STANDEE_COUNTS]);
         setStandeeType("Simple");
         setElements([]);
         setElementListKey((k) => k + 1);
@@ -550,14 +576,19 @@ export default function Inputter() {
         // setQuoteSearchQuery("");
         setActivePersistedQuoteId(null);
         setActivePersistedQuoteState(null);
+        setActiveQuantityVariants({});
+        setActiveQuoteQuantity(null);
     }
 
     // POST /create-project  or  PATCH /projects/:id  → save current form to the database
     async function saveCurrentProject(): Promise<{ success: boolean; projectId?: string; shortId?: string; errorMessage?: string }> {
         const owner = authUsername;
         if (!owner?.trim()) return { success: false, errorMessage: "Not signed in" };
-        if (!canCalculate)  return { success: false, errorMessage: "Add standees and at least one element" };
-        const num        = standeeCount as number;
+        if (!canCalculate) {
+            return { success: false, errorMessage: "Enter five unique standee quantities and add at least one element" };
+        }
+        const counts = standeeCounts.filter((count): count is number => typeof count === "number" && count > 0);
+        const num = counts[0]!;
         const apiElems   = elementsForApi(elements);
         try {
             if (activeProjectId) {
@@ -572,6 +603,7 @@ export default function Inputter() {
                         body: JSON.stringify({
                             project_name: projectName.trim() || "Untitled project",
                             num_standees: num,
+                            standee_counts: counts,
                             standee_type: standeeType,
                             elements: apiElems,
                         }),
@@ -599,10 +631,11 @@ export default function Inputter() {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    schema_version: 1,
+                    schema_version: 2,
                     owner: owner.trim(),
                     project_name: projectName.trim() || "Untitled project",
                     num_standees: num,
+                    standee_counts: counts,
                     standee_type: standeeType,
                     elements: apiElems,
                 }),
@@ -641,7 +674,13 @@ export default function Inputter() {
             setActiveProjectOwner(typeof doc.owner === "string" ? doc.owner : owner);
             setProjectName(typeof doc.project_name === "string" ? doc.project_name : "Untitled project");
             setStandeeType((doc.standee_type as StandeeType) || "Simple");
-            setStandeeCount(typeof doc.num_standees === "number" ? doc.num_standees : "");
+            const savedCounts =
+                Array.isArray(doc.standee_counts) && doc.standee_counts.length > 0
+                    ? doc.standee_counts.filter((count: unknown) => typeof count === "number" && count > 0).slice(0, 5)
+                    : typeof doc.num_standees === "number"
+                      ? [doc.num_standees]
+                      : [];
+            setStandeeCounts(Array.from({ length: 5 }, (_, index) => savedCounts[index] ?? ""));
             const rows = Array.isArray(doc.elements) ? doc.elements : [];
             setElements(
                 rows.map((row: ApiPersistedElement & { description?: string | null }, i: number) => ({
@@ -661,6 +700,8 @@ export default function Inputter() {
             // setSavedQuoteList([]);
             setActivePersistedQuoteId(null);
             setActivePersistedQuoteState(null);
+            setActiveQuantityVariants({});
+            setActiveQuoteQuantity(null);
             setIsDirty(false);
             setNeedsRecalc(false);
         } catch {
@@ -700,7 +741,12 @@ export default function Inputter() {
 
     // ── Quote actions ──────────────────────────────────────────────────────
 
-    const canCalculate = (standeeCount !== "" && standeeCount > 0) && elements.length > 0;
+    const validStandeeCounts = standeeCounts.filter(
+        (count): count is number => typeof count === "number" && Number.isInteger(count) && count > 0,
+    );
+    const hasFiveUniqueStandeeCounts =
+        validStandeeCounts.length === 5 && new Set(validStandeeCounts).size === 5;
+    const canCalculate = hasFiveUniqueStandeeCounts && elements.length > 0;
 
     // Wrap setElements for ElementsManager so any user-driven element change marks the project dirty
     const dirtySetElements = useCallback(
@@ -738,14 +784,19 @@ export default function Inputter() {
             const data = await res.json().catch(() => ({}));
             if (!res.ok || !Array.isArray(data.quotes) || data.quotes.length === 0) return false;
             const doc = data.quotes[0] as Record<string, unknown>; // list is newest-first
-            const state = persistedStateFromQuoteDoc(doc);
-            if (!state) return false; // legacy doc without scenario children — regenerate instead
+            const variants = quantityVariantsFromQuoteDoc(doc);
+            const preferredQuantity = validStandeeCounts.find((quantity) => variants[String(quantity)]);
+            const quantity = preferredQuantity ?? Number(Object.keys(variants)[0]);
+            const state = variants[String(quantity)];
+            if (!state || !Number.isFinite(quantity)) return false;
             setActiveQuotePayload(payloadFromQuoteDoc(doc, state));
             setActiveQuoteName(typeof doc.quote_name === "string" ? doc.quote_name : "Quote");
             setActiveQuoteContributionMargin(typeof doc.contribution_margin === "number" ? doc.contribution_margin : 0);
             setActiveQuoteData(quoteDataFromPersistedState(state));
             setActivePersistedQuoteId(typeof doc._id === "string" ? doc._id : null);
             setActivePersistedQuoteState(state);
+            setActiveQuantityVariants(variants);
+            setActiveQuoteQuantity(quantity);
             return true;
         } catch {
             return false;
@@ -756,6 +807,7 @@ export default function Inputter() {
     // project, fires all 5 scenarios, and auto-saves a new quote.
     async function handleContinue() {
         if (!canCalculate || isSavingBeforeContinue) return;
+        const shouldRegenerate = needsRecalc || isDirty;
         const owner = authUsername?.trim() ?? null;
         // Quotes are scoped to the project's owner, which can differ from the signed-in user.
         const projectOwner = activeProjectOwner ?? owner;
@@ -769,6 +821,7 @@ export default function Inputter() {
                 const r = await saveCurrentProject();
                 if (!r.success) { setProjectListError(r.errorMessage ?? "Could not save project"); return; }
                 if (r.projectId) projectId = r.projectId;
+                setIsDirty(false);
                 setProjectListRefreshKey((v) => v + 1);
             } finally {
                 setIsSavingBeforeContinue(false);
@@ -776,7 +829,8 @@ export default function Inputter() {
         }
 
         setIsQuoteGenerating(true);
-        const num         = standeeCount as number;
+        const quantities  = [...validStandeeCounts];
+        const num         = quantities[0]!;
         const corePayload = buildQuotePayload(num);
         const quoteName   = projectName.trim() || "Untitled quote";
         const pid         = projectId;
@@ -785,27 +839,39 @@ export default function Inputter() {
             // A saved quote already exists → view it instead of regenerating, so manual
             // edits are preserved. Skip only when needsRecalc (specs changed since last save).
             // Outdated cost tables still open View Quote — user updates via the red button inside.
-            if (!needsRecalc && projectOwner && pid && (await openLatestSavedQuote(pid, projectOwner))) {
+            if (!shouldRegenerate && projectOwner && pid && (await openLatestSavedQuote(pid, projectOwner))) {
                 return;
             }
 
-            const res  = await fetch(`${API_BASE}/generate_quote`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ ...corePayload, persist_project: false }),
-            });
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok) { console.error("Quote error:", data); return; }
-
-            const quoteResult = data as Record<string, unknown>;
-            const quoteData   = quoteDataFromGenerateResponse(quoteResult);
-            const persistedState = freshPersistedQuoteState(quoteResult, num);
+            const generated = await Promise.all(
+                quantities.map(async (quantity) => {
+                    const payload = buildQuotePayload(quantity);
+                    const res = await fetch(`${API_BASE}/generate_quote`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ ...payload, persist_project: false }),
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) throw new Error(apiErrorMessage(data) ?? `Could not calculate quantity ${quantity}`);
+                    return { quantity, payload, result: data as Record<string, unknown> };
+                }),
+            );
+            const quantityVariants: PersistedQuantityVariants = {};
+            for (const item of generated) {
+                quantityVariants[String(item.quantity)] = freshPersistedQuoteState(item.result, item.quantity);
+            }
+            const primary = generated[0]!;
+            const quoteResult = primary.result;
+            const quoteData = quoteDataFromGenerateResponse(quoteResult);
+            const persistedState = quantityVariants[String(num)]!;
             setActiveQuotePayload(corePayload);
             setActiveQuoteName(quoteName);
             setActiveQuoteContributionMargin(0);
             setActiveQuoteData(quoteData);
             setActivePersistedQuoteId(null);
             setActivePersistedQuoteState(persistedState);
+            setActiveQuantityVariants(quantityVariants);
+            setActiveQuoteQuantity(num);
             setNeedsRecalc(false);
 
             // Auto-save the quote to the project if signed in — quote object + five scenario
@@ -834,6 +900,7 @@ export default function Inputter() {
                     contribution_margin: 0,
                     standee_type: standeeType,
                     elements: elementsForApi(elements),
+                    quantity_variants: quantityVariants,
                     scenarios: persistedState.scenarios,
                     universal: persistedState.universal,
                     params: persistedState.params,
@@ -1022,39 +1089,22 @@ export default function Inputter() {
         setActiveQuoteName(null);
         setActivePersistedQuoteId(null);
         setActivePersistedQuoteState(null);
+        setActiveQuantityVariants({});
+        setActiveQuoteQuantity(null);
     }
 
-    function handleActiveQuoteNumStandeesChange(numStandees: number) {
-        setActiveQuotePayload((prev) => (prev ? { ...prev, num_standees: numStandees } : prev));
-        // const activeId = activePersistedQuoteId;
-        // if (activeId) setSavedQuoteList((prev) => prev.map((q) => (q._id === activeId ? { ...q, num_standees: numStandees } : q)));
+    function selectActiveQuoteQuantity(quantity: number) {
+        const state = activeQuantityVariants[String(quantity)];
+        if (!state) return;
+        setActiveQuoteQuantity(quantity);
+        setActivePersistedQuoteState(state);
+        setActiveQuoteData(quoteDataFromPersistedState(state));
+        setActiveQuotePayload((prev) => (prev ? { ...prev, num_standees: quantity } : prev));
     }
 
-    // Fired after a successful recalculate changed the standee count — sync the
-    // estimator form and persist it to the project so the sidebar stays accurate.
-    async function handleActiveQuoteNumStandeesCommitted(numStandees: number) {
-        setStandeeCount(numStandees);
-        const owner = activeProjectOwner ?? authUsername;
-        if (!owner?.trim() || !authUsername?.trim() || !activeProjectId) return;
-        try {
-            const res = await fetch(
-                `${API_BASE}/projects/${encodeURIComponent(activeProjectId)}?owner=${encodeURIComponent(owner)}&changed_by=${encodeURIComponent(authUsername)}`,
-                {
-                    method: "PATCH",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        project_name: projectName.trim() || "Untitled project",
-                        num_standees: numStandees,
-                        standee_type: standeeType,
-                        elements: elementsForApi(elements),
-                    }),
-                },
-            );
-            if (res.ok) setProjectListRefreshKey((v) => v + 1);
-            else console.error("Could not sync standee count to project:", await res.json().catch(() => ({})));
-        } catch (e) {
-            console.error("Could not sync standee count to project:", e);
-        }
+    function handleQuantityVariantSaved(quantity: number, state: PersistedQuoteState) {
+        setActiveQuantityVariants((prev) => ({ ...prev, [String(quantity)]: state }));
+        if (activeQuoteQuantity === quantity) setActivePersistedQuoteState(state);
     }
 
     // Called when vision processing completes and returns detected elements
@@ -1110,11 +1160,11 @@ export default function Inputter() {
     }
 
     // ── Quote breakdown view (shown after generating or loading a saved quote) ─
-    if (activeQuoteData && activeQuotePayload) {
+    if (activeQuoteData && activeQuotePayload && activeQuoteQuantity !== null) {
         return (
             <>
                 <QuoteBreakdown
-                    key={activePersistedQuoteId ?? "draft"}
+                    key={`${activePersistedQuoteId ?? "draft"}:${activeQuoteQuantity}`}
                     quoteData={activeQuoteData}
                     numStandees={activeQuotePayload.num_standees}
                     requestPayload={activeQuotePayload}
@@ -1126,8 +1176,13 @@ export default function Inputter() {
                     quoteOwner={activeProjectOwner ?? authUsername}
                     noteAuthor={authUsername}
                     onBack={clearActiveQuote}
-                    onNumStandeesChange={handleActiveQuoteNumStandeesChange}
-                    onNumStandeesCommitted={(n) => void handleActiveQuoteNumStandeesCommitted(n)}
+                    availableQuantities={validStandeeCounts.filter(
+                        (quantity) => activeQuantityVariants[String(quantity)] !== undefined,
+                    )}
+                    activeQuantity={activeQuoteQuantity}
+                    quantityVariants={activeQuantityVariants}
+                    onQuantityChange={selectActiveQuoteQuantity}
+                    onQuantityVariantSaved={handleQuantityVariantSaved}
                     costsStale={activeProjectCostsStale}
                     onCostsSynced={() => setProjectListRefreshKey((v) => v + 1)}
                 />
@@ -1204,6 +1259,7 @@ export default function Inputter() {
                         <div className="text-[10px] font-black mb-3 uppercase tracking-widest text-[#000005]">
                             <span className="text-[#FFC843]">// </span>01 — COUNTS
                         </div>
+                        <div className="flex flex-col gap-4 w-full">
                         <div className="flex flex-row gap-4 w-full">
                             <div className="flex-1 min-w-0">
                                 <div className="text-[10px] font-bold mb-2 uppercase tracking-wider text-[#B1B3B6]">Project name</div>
@@ -1225,17 +1281,37 @@ export default function Inputter() {
                                     width="w-full"
                                 />
                             </div>
-                            <div className="flex-1 min-w-0">
-                                <div className="text-[10px] font-bold mb-2 uppercase tracking-wider text-[#B1B3B6]">Standee Count</div>
+                        </div>
+                        <div>
+                            <div className="flex items-center justify-between gap-3 mb-2">
+                                <div className="text-[10px] font-bold uppercase tracking-wider text-[#B1B3B6]">Quote Quantities</div>
+                                {!hasFiveUniqueStandeeCounts && (
+                                    <span className="text-[9px] font-bold text-red-600">Enter five unique positive quantities</span>
+                                )}
+                            </div>
+                            <div className="grid grid-cols-5 gap-3">
+                                {standeeCounts.map((count, index) => (
+                                    <label key={index} className="flex flex-col gap-1">
+                                        <span className="text-[9px] font-bold uppercase tracking-wider text-[#B1B3B6]">
+                                            Quantity {index + 1}
+                                        </span>
                                 <input
                                     type="number"
-                                    min={0}
-                                    value={standeeCount}
-                                    onChange={(e) => { setStandeeCount(e.target.value === "" ? "" : Number(e.target.value)); if (activeProjectId) setIsDirty(true); }}
-                                    placeholder="0"
+                                            min={1}
+                                            step={1}
+                                            value={count}
+                                            onChange={(e) => {
+                                                const value = e.target.value === "" ? "" : Number(e.target.value);
+                                                setStandeeCounts((prev) => prev.map((item, i) => (i === index ? value : item)));
+                                                if (activeProjectId) setIsDirty(true);
+                                            }}
+                                            placeholder={String(DEFAULT_STANDEE_COUNTS[index])}
                                     className="border-2 bg-white border-[#E0E0E0] rounded-sm p-1.5 outline-none text-[#000005] text-xs w-full bg-[#F8F8F8] focus:border-[#FFC843] font-semibold transition-colors"
                                 />
+                                    </label>
+                                ))}
                             </div>
+                        </div>
                         </div>
                     </div>
 
