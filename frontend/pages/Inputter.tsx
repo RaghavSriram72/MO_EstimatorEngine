@@ -709,7 +709,6 @@ const savedCounts =
           ? [doc.num_standees]
           : [];
 setStandeeCounts(Array.from({ length: 5 }, (_, index) => savedCounts[index] ?? ""));
-setStandeeCount(typeof doc.num_standees === "number" ? doc.num_standees : "");
             const rows = Array.isArray(doc.elements) ? doc.elements : [];
             setElements(
                 rows.map((row: ApiPersistedElement & { description?: string | null }, i: number) => ({
@@ -1132,43 +1131,10 @@ const persistedState = quantityVariants[String(num)]!;
         setActiveQuotePayload((prev) => (prev ? { ...prev, num_standees: quantity } : prev));
     }
 
-// Fired after a successful recalculate changed the standee count — sync the
-// estimator form and persist it to the project so the sidebar stays accurate.
-async function handleActiveQuoteNumStandeesCommitted(numStandees: number) {
-    setStandeeCount(numStandees);
-    const owner = activeProjectOwner ?? authUsername;
-    if (!owner?.trim() || !authUsername?.trim() || !activeProjectId) return;
-    try {
-        const res = await fetch(
-            `${API_BASE}/projects/${encodeURIComponent(activeProjectId)}?owner=${encodeURIComponent(owner)}&changed_by=${encodeURIComponent(authUsername)}`,
-            {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    project_name: projectName.trim() || "Untitled project",
-                    num_standees: numStandees,
-                    standee_type: standeeType,
-                    elements: elementsForApi(elements),
-                    include_print_sides: includePrintSides,
-                }),
-            },
-        );
-        if (res.ok) {
-            setSavedIncludePrintSides(includePrintSides);
-            setProjectListRefreshKey((v) => v + 1);
-        } else {
-            console.error("Could not sync standee count to project:", await res.json().catch(() => ({})));
-        }
-    } catch (e) {
-        console.error("Could not sync standee count to project:", e);
-    }
-}
-
 function handleQuantityVariantSaved(quantity: number, state: PersistedQuoteState) {
     setActiveQuantityVariants((prev) => ({ ...prev, [String(quantity)]: state }));
     if (activeQuoteQuantity === quantity) setActivePersistedQuoteState(state);
 }
-    }
 
     // Called when vision processing completes and returns detected elements
     function handleVisionElementsLoaded(raw: { id: number; width: number; height: number; mask_b64?: string }[]) {
