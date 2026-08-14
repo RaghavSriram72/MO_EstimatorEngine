@@ -4,7 +4,7 @@
  2. owner
  3. project_name
  4. num_standees — first/primary quantity, retained for backward compatibility
- 5. standee_counts — the five quantities quoted for this project
+ 5. standee_counts — one to five quantities quoted for this project
  6. standee_type
  7. elements list
  8. short_id — sequential estimate ID shown in the UI (starts at 10100);
@@ -83,11 +83,9 @@ class PersistedProjectCreate(BaseModel):
     @field_validator("standee_counts")
     @classmethod
     def validate_standee_counts(cls, counts: list[int]) -> list[int]:
-        """Accept legacy empty lists or exactly five unique positive quote quantities."""
+        """Accept legacy empty lists or one to five unique positive quote quantities."""
         if not counts:
             return counts
-        if len(counts) != 5:
-            raise ValueError("standee_counts must contain exactly five quantities")
         if any(count < 1 for count in counts):
             raise ValueError("standee_counts quantities must be positive")
         if len(set(counts)) != len(counts):
@@ -112,7 +110,7 @@ class PersistedProjectUpdateBody(BaseModel):
     @field_validator("standee_counts")
     @classmethod
     def validate_standee_counts(cls, counts: list[int] | None) -> list[int] | None:
-        """Accept legacy empty lists or exactly five unique positive quote quantities."""
+        """Accept legacy empty lists or one to five unique positive quote quantities."""
         return None if counts is None else PersistedProjectCreate.validate_standee_counts(counts)
 
 

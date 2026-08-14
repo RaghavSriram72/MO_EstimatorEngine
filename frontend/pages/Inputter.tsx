@@ -607,7 +607,7 @@ export default function Inputter() {
         const owner = authUsername;
         if (!owner?.trim()) return { success: false, errorMessage: "Not signed in" };
         if (!canCalculate) {
-            return { success: false, errorMessage: "Enter five unique standee quantities and add at least one element" };
+            return { success: false, errorMessage: "Enter 1–5 unique positive quantities and add at least one element" };
         }
         const counts = standeeCounts.filter((count): count is number => typeof count === "number" && count > 0);
         const num = counts[0]!;
@@ -769,12 +769,15 @@ setStandeeCounts(Array.from({ length: 5 }, (_, index) => savedCounts[index] ?? "
 
     // ── Quote actions ──────────────────────────────────────────────────────
 
-    const validStandeeCounts = standeeCounts.filter(
+    const enteredStandeeCounts = standeeCounts.filter((count) => count !== "");
+    const validStandeeCounts = enteredStandeeCounts.filter(
         (count): count is number => typeof count === "number" && Number.isInteger(count) && count > 0,
     );
-    const hasFiveUniqueStandeeCounts =
-        validStandeeCounts.length === 5 && new Set(validStandeeCounts).size === 5;
-    const canCalculate = hasFiveUniqueStandeeCounts && elements.length > 0;
+    const hasValidStandeeCounts =
+        validStandeeCounts.length >= 1 &&
+        validStandeeCounts.length === enteredStandeeCounts.length &&
+        new Set(validStandeeCounts).size === validStandeeCounts.length;
+    const canCalculate = hasValidStandeeCounts && elements.length > 0;
 
     // Wrap setElements for ElementsManager so any user-driven element change marks the project dirty
     const dirtySetElements = useCallback(
@@ -1313,9 +1316,9 @@ function handleQuantityVariantSaved(quantity: number, state: PersistedQuoteState
                         </div>
                         <div>
                             <div className="flex items-center justify-between gap-3 mb-2">
-                                <div className="text-[10px] font-bold uppercase tracking-wider text-[#B1B3B6]">Quote Quantities</div>
-                                {!hasFiveUniqueStandeeCounts && (
-                                    <span className="text-[9px] font-bold text-red-600">Enter five unique positive quantities</span>
+                                <div className="text-[10px] font-bold uppercase tracking-wider text-[#B1B3B6]">Quote Quantities (1–5)</div>
+                                {!hasValidStandeeCounts && (
+                                    <span className="text-[9px] font-bold text-red-600">Enter 1–5 unique positive quantities</span>
                                 )}
                             </div>
                             <div className="grid grid-cols-5 gap-3">
