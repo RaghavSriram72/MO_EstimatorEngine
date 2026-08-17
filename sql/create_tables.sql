@@ -24,6 +24,7 @@ BEGIN
         username      NVARCHAR(256)      NOT NULL,
         password_hash NVARCHAR(512)      NOT NULL,
         role          NVARCHAR(20)       NOT NULL CONSTRAINT DF_users_role DEFAULT N'user',
+        is_active     BIT                NOT NULL CONSTRAINT DF_users_is_active DEFAULT 1,
         created_at    DATETIME2(3)       NOT NULL CONSTRAINT DF_users_created_at DEFAULT SYSUTCDATETIME(),
         CONSTRAINT UQ_users_username UNIQUE (username),
         CONSTRAINT CK_users_role CHECK (role IN (N'admin', N'user'))
@@ -40,6 +41,13 @@ BEGIN
     -- EXEC defers compilation to runtime so this sees the column ADD TABLE just committed above —
     -- referencing it directly here would fail since the whole batch is bound together at compile time.
     EXEC('ALTER TABLE dbo.users ADD CONSTRAINT CK_users_role CHECK (role IN (N''admin'', N''user''))');
+END;
+GO
+
+-- Upgrade path: deactivated accounts can no longer sign in, but their projects/quotes stay.
+IF COL_LENGTH(N'dbo.users', N'is_active') IS NULL
+BEGIN
+    ALTER TABLE dbo.users ADD is_active BIT NOT NULL CONSTRAINT DF_users_is_active DEFAULT 1 WITH VALUES;
 END;
 GO
 

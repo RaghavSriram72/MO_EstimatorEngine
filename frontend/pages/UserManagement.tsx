@@ -8,6 +8,7 @@ type Role = "admin" | "user";
 type UserRow = {
     username: string;
     role: Role;
+    is_active: boolean;
     created_at?: string;
 };
 
@@ -36,6 +37,7 @@ export default function UserManagement() {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [updatingUsername, setUpdatingUsername] = useState<string | null>(null);
+    const [togglingActiveUsername, setTogglingActiveUsername] = useState<string | null>(null);
     const [resettingUsername, setResettingUsername] = useState<string | null>(null);
     const [newPassword, setNewPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
@@ -84,6 +86,29 @@ export default function UserManagement() {
             setError("Could not update role");
         } finally {
             setUpdatingUsername(null);
+        }
+    }
+
+    async function toggleActive(username: string, isActive: boolean) {
+        if (!requester) return;
+        setTogglingActiveUsername(username);
+        setError(null);
+        try {
+            const res = await fetch(
+                `${API_BASE}/users/${encodeURIComponent(username)}/active?requester=${encodeURIComponent(requester)}`,
+                {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ is_active: isActive }),
+                },
+            );
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) { setError(apiErrorMessage(data) ?? "Could not update account"); return; }
+            setUsers((prev) => prev.map((u) => (u.username === username ? { ...u, is_active: isActive } : u)));
+        } catch {
+            setError("Could not update account");
+        } finally {
+            setTogglingActiveUsername(null);
         }
     }
 
@@ -168,13 +193,14 @@ export default function UserManagement() {
                             <tr>
                                 <th className="text-[10px] font-black uppercase tracking-widest text-[#B1B3B6] px-4 py-3">Username</th>
                                 <th className="text-[10px] font-black uppercase tracking-widest text-[#B1B3B6] px-4 py-3">Role</th>
+                                <th className="text-[10px] font-black uppercase tracking-widest text-[#B1B3B6] px-4 py-3">Status</th>
                                 <th className="text-[10px] font-black uppercase tracking-widest text-[#B1B3B6] px-4 py-3">Action</th>
                             </tr>
                         </thead>
                         <tbody>
                             {filteredUsers.length === 0 && (
                                 <tr>
-                                    <td colSpan={3} className="px-4 py-6 text-center text-[12px] text-[#B1B3B6] font-semibold">
+                                    <td colSpan={4} className="px-4 py-6 text-center text-[12px] text-[#B1B3B6] font-semibold">
                                         {search.trim() ? <>No users match &ldquo;{search.trim()}&rdquo;</> : "No users found"}
                                     </td>
                                 </tr>
@@ -182,10 +208,11 @@ export default function UserManagement() {
                             {filteredUsers.map((u) => {
                                 const isSelf = u.username === requester;
                                 const isUpdating = updatingUsername === u.username;
+                                const isTogglingActive = togglingActiveUsername === u.username;
                                 const isResettingThisRow = resettingUsername === u.username;
                                 return (
                                     <Fragment key={u.username}>
-                                    <tr className="border-t border-[#F0F0F0] transition-colors duration-150 hover:bg-[#FFFBEE]">
+                                    <tr className={`border-t border-[#F0F0F0] transition-colors duration-150 hover:bg-[#FFFBEE] ${!u.is_active ? "opacity-50" : ""}`}>
                                         <td className="px-4 py-3 text-[13px] font-bold text-[#000005]">
                                             {u.username}{isSelf && <span className="ml-1.5 text-[9px] font-black uppercase text-[#B1B3B6]">(you)</span>}
                                         </td>
@@ -197,15 +224,36 @@ export default function UserManagement() {
                                             </span>
                                         </td>
                                         <td className="px-4 py-3">
+                                            <span className={`text-[9px] font-black uppercase tracking-wide px-2 py-1 rounded-full ${
+                                                u.is_active ? "bg-[#E8F5E9] text-[#2E7D32]" : "bg-[#FDECEA] text-[#B3261E]"
+                                            }`}>
+                                                {u.is_active ? "Active" : "Inactive"}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-3">
                                             <div className="flex items-center justify-between gap-2">
-                                                <button
-                                                    type="button"
-                                                    disabled={isUpdating}
-                                                    onClick={() => changeRole(u.username, u.role === "admin" ? "user" : "admin")}
-                                                    className="cursor-pointer text-[10px] font-black uppercase tracking-widest py-1.5 px-3 rounded-sm border-2 border-[#000005] text-[#000005] hover:bg-[#FFC843] hover:border-[#FFC843] hover:text-[#000005] transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
-                                                >
-                                                    {isUpdating ? "Updating…" : u.role === "admin" ? "Make User" : "Make Admin"}
-                                                </button>
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <button
+                                                        type="button"
+                                                        disabled={isUpdating}
+                                                        onClick={() => changeRole(u.username, u.role === "admin" ? "user" : "admin")}
+                                                        className="cursor-pointer text-[10px] font-black uppercase tracking-widest py-1.5 px-3 rounded-sm border-2 border-[#000005] text-[#000005] hover:bg-[#FFC843] hover:border-[#FFC843] hover:text-[#000005] transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                                                    >
+                                                        {isUpdating ? "Updating…" : u.role === "admin" ? "Make User" : "Make Admin"}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        disabled={isTogglingActive}
+                                                        onClick={() => toggleActive(u.username, !u.is_active)}
+                                                        className={`cursor-pointer text-[10px] font-black uppercase tracking-widest py-1.5 px-3 rounded-sm border-2 transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed ${
+                                                            u.is_active
+                                                                ? "border-[#B3261E] text-[#B3261E] hover:bg-[#B3261E] hover:text-white"
+                                                                : "border-[#2E7D32] text-[#2E7D32] hover:bg-[#2E7D32] hover:text-white"
+                                                        }`}
+                                                    >
+                                                        {isTogglingActive ? "Updating…" : u.is_active ? "Deactivate" : "Activate"}
+                                                    </button>
+                                                </div>
                                                 <button
                                                     type="button"
                                                     onClick={() => (isResettingThisRow ? closeReset() : openReset(u.username))}
@@ -220,7 +268,7 @@ export default function UserManagement() {
                                         </td>
                                     </tr>
                                     <tr>
-                                        <td colSpan={3} className="p-0">
+                                        <td colSpan={4} className="p-0">
                                             <div
                                                 style={{
                                                     display: "grid",

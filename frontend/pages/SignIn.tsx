@@ -45,13 +45,13 @@ export default function SignIn() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ username, password }),
         }).then(async (response) => {
+            const data = await response.json().catch(() => ({}));
             if (response.ok) {
-                const data = await response.json().catch(() => ({}));
                 triggerAlert("Sign-in successful!", 0);
                 signIn(username, data.role === "admin" ? "admin" : "user");
                 setTimeout(() => router.push("/quoteEngine"), ALERT_DURATION_MS + 800);
             } else {
-                triggerAlert("Invalid username or password", 1);
+                triggerAlert(typeof data.error === "string" ? data.error : "Invalid username or password", 1);
             }
         });
     }

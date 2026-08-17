@@ -1074,8 +1074,9 @@ async def sign_in(payload: AccountRequest):
 
     if not user or not _verify_password(password, user["password_hash"]):
         return JSONResponse(status_code=400, content={"error": "Invalid username or password"})
-    else:
-        return JSONResponse(status_code=200, content={"message": "Sign-in successful", "role": user["role"]})
+    if not user["is_active"]:
+        return JSONResponse(status_code=403, content={"error": "This account has been deactivated"})
+    return JSONResponse(status_code=200, content={"message": "Sign-in successful", "role": user["role"]})
 
 
 @app.get("/users")
@@ -1130,6 +1131,29 @@ async def reset_user_password(
     if not db.set_user_password(username, payload.password):
         return JSONResponse(status_code=404, content={"error": "Unknown user"})
     return {"message": "Password reset successfully", "username": username}
+
+
+class UpdateUserActiveRequest(BaseModel):
+    is_active: bool = Field(..., description="False deactivates the account (blocks sign-in); True reactivates it")
+
+
+@app.patch("/users/{username}/active")
+async def update_user_active(
+    username: str,
+    payload: UpdateUserActiveRequest,
+    requester: str = Query(..., description="Username of the admin making this change"),
+):
+    """Admin-only: deactivate or reactivate an account. Deactivated users can't sign in,
+    but their projects and quotes are untouched."""
+    db = _ensure_db()
+    if err := _require_admin(db, requester):
+        return err
+    if not db.check_username_exists(username):
+        return JSONResponse(status_code=404, content={"error": "Unknown user"})
+    if not payload.is_active and db.get_user_role(username) == "admin" and db.count_active_admins() <= 1:
+        return JSONResponse(status_code=400, content={"error": "Cannot deactivate the last active admin"})
+    db.set_user_active(username, payload.is_active)
+    return {"message": "Account updated", "username": username, "is_active": payload.is_active}
 
 
 _MAX_HIGHLIGHT_WIDTH = 800
