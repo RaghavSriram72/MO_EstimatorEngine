@@ -47,6 +47,7 @@ from lib.persisted_quote import (
     persisted_quote_insert_document,
     persisted_quote_update_to_set,
 )
+from lib.budget_calc import optimize_budget
 from lib.print_form_calculator import print_form_calculator
 from vision.functions import process_image as vision_process_image
 
@@ -326,6 +327,74 @@ async def generate_quote(payload: QuoteRequest):
 
     out["cost_tables_version"] = db.get_cost_tables_version()
     return out
+
+
+class SolveBudgetRequest(BaseModel):
+    """Payload for /solve-budget-quantities."""
+
+    elements: list[ElementType]
+    budget: float
+    standee_type: int = 1
+    include_print_sides: bool = False
+
+
+class BudgetScenarioResult(BaseModel):
+    scenario: int
+    quantity: int
+    price: float
+
+
+class SolveBudgetResponse(BaseModel):
+    results: list[BudgetScenarioResult]
+
+
+# Same scenario id order optimize_budget() loops over internally (SCENARIOS in lib/budget_calc.py).
+_BUDGET_SCENARIO_ORDER = [1, 3, 4, 5]
+
+
+@app.post("/solve-budget-quantities")
+async def solve_budget_quantities(payload: SolveBudgetRequest):
+    """Given a budget, ask the (in-progress) budget optimizer for the max standee quantity each
+    scenario can afford. Thin wrapper around lib.budget_calc.optimize_budget — the search
+    algorithm itself is owned elsewhere and may still be under development, so failures there
+    are surfaced as a clean API error rather than a crash.
+    """
+    try:
+        elements = _elements_from_element_types(payload.elements)
+        if not elements:
+            return JSONResponse(status_code=400, content={"detail": "At least one element is required"})
+
+        _, busmark_bins = print_form_calculator(
+            elements,
+            form_width=BUSMARK_FORM_WIDTH,
+            form_length=BUSMARK_FORM_LENGTH,
+            padding=PADDING,
+        )
+        busmark_forms = list(busmark_bins.values())
+        if payload.include_print_sides:
+            busmark_forms.append(
+                Form(id="print-sides", elements=[], complexity=Complexity(payload.standee_type))
+            )
+
+        # optimize_budget() only accepts one print_forms list shared across all 4 scenarios
+        # today (scenarios 4/5 normally use 95" forms elsewhere) — a known limitation of the
+        # current algorithm, not something addressed by this wrapper.
+        final_quantities, final_prices = optimize_budget(
+            name="Budget solve",
+            budget=payload.budget,
+            print_forms=busmark_forms,
+            standee_type=complexity_to_str(Complexity(payload.standee_type)),
+        )
+    except ValueError as exc:
+        return JSONResponse(status_code=400, content={"detail": str(exc)})
+    except Exception as exc:
+        return JSONResponse(status_code=500, content={"detail": str(exc)})
+
+    results = [
+        BudgetScenarioResult(scenario=sid, quantity=int(qty), price=float(price))
+        for sid, qty, price in zip(_BUDGET_SCENARIO_ORDER, final_quantities, final_prices)
+    ]
+    return SolveBudgetResponse(results=results)
 
 
 @app.get("/cost-tables-version")

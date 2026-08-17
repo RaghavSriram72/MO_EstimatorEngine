@@ -98,6 +98,9 @@ export type RequestPayload = {
     scenario?: number;
 };
 
+// One scenario's result from POST /solve-budget-quantities
+type BudgetScenarioResult = { scenario: number; quantity: number; price: number };
+
 
 // Shape of an element as stored in the database (uses "length" not "height")
 type ApiPersistedElement = {
@@ -382,6 +385,11 @@ export default function Inputter() {
     const [includePrintSides, setIncludePrintSides] = useState(false);
     // Last persisted value — a toggle that lands back on this doesn't dirty the project.
     const [savedIncludePrintSides, setSavedIncludePrintSides] = useState(false);
+    const [budgetSolveOpen, setBudgetSolveOpen] = useState(false);
+    const [budgetInput, setBudgetInput]         = useState("");
+    const [budgetSolving, setBudgetSolving]     = useState(false);
+    const [budgetResults, setBudgetResults]     = useState<BudgetScenarioResult[] | null>(null);
+    const [budgetError, setBudgetError]         = useState<string | null>(null);
     const [elements, setElements]           = useState<Element[]>([]);
     const [elementListKey, setElementListKey] = useState(0); // bumped to force ElementsManager reset
     const [projectName, setProjectName]     = useState("Untitled project");
@@ -804,6 +812,60 @@ setStandeeCounts(Array.from({ length: 5 }, (_, index) => savedCounts[index] ?? "
             })),
             num_standees: numStandees,
         };
+    }
+
+    // POST /solve-budget-quantities → for a target budget, ask each scenario's max affordable
+    // quantity and drop the results into empty Quote Quantities slots (doesn't touch filled ones).
+    async function handleSolveByBudget() {
+        const budget = Number(budgetInput);
+        if (!Number.isFinite(budget) || budget <= 0 || elements.length === 0) return;
+        setBudgetSolving(true);
+        setBudgetError(null);
+        setBudgetResults(null);
+        try {
+            const standeeTypeMap: Record<StandeeType, number> = { Simple: 1, Moderate: 2, Complex: 3 };
+            const body = {
+                elements: elements.map(({ height, width, complexity, linear_inches, description }) => ({
+                    name: "",
+                    height: height === "" ? 0 : height,
+                    width: width === "" ? 0 : width,
+                    complexity,
+                    linear_inches: linear_inches === "" ? null : linear_inches,
+                    description: description || "",
+                })),
+                budget,
+                standee_type: standeeTypeMap[standeeType],
+                include_print_sides: includePrintSides,
+            };
+            const res = await fetch(`${API_BASE}/solve-budget-quantities`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) { setBudgetError(apiErrorMessage(data) ?? "Could not solve for a quantity"); return; }
+            const results: BudgetScenarioResult[] = Array.isArray(data.results) ? data.results : [];
+            if (results.length === 0) { setBudgetError("No results returned"); return; }
+            setBudgetResults(results);
+
+            const next = [...standeeCounts];
+            let placed = 0;
+            for (const r of results) {
+                const emptyIndex = next.findIndex((c) => c === "");
+                if (emptyIndex === -1) break;
+                next[emptyIndex] = r.quantity;
+                placed += 1;
+            }
+            setStandeeCounts(next);
+            if (placed < results.length) {
+                setBudgetError(`Only ${placed} of ${results.length} results fit — clear a Quantity slot to see the rest.`);
+            }
+            if (activeProjectId) setIsDirty(true);
+        } catch {
+            setBudgetError("Could not reach the server");
+        } finally {
+            setBudgetSolving(false);
+        }
     }
 
     // GET /projects/:id/quotes → opens the newest saved quote (with its manual edits).
@@ -1259,7 +1321,7 @@ function handleQuantityVariantSaved(quantity: number, state: PersistedQuoteState
             />
 
             {/* Main estimator form */}
-            <div className="flex flex-col items-center flex-1 min-w-0 min-h-0 overflow-hidden px-8 py-6 bg-white">
+            <div className="flex flex-col items-center flex-1 min-w-0 min-h-0 overflow-x-hidden overflow-y-auto px-8 py-6 bg-white">
                 <div className="w-full max-w-3xl mb-4 shrink-0">
                     <div className="text-xs font-bold text-[#FFC843] tracking-widest uppercase mb-1">// ESTIMATOR</div>
                     <div className="flex items-center gap-3 flex-wrap">
@@ -1284,7 +1346,7 @@ function handleQuantityVariantSaved(quantity: number, state: PersistedQuoteState
                     <p className="text-xs text-[#B1B3B6] mt-1 font-semibold">Configure parameters to generate a cost estimate</p>
                 </div>
 
-                <div className="flex flex-col w-full max-w-4xl flex-1 min-h-0 border-2 bg-white border-[#E0E0E0] rounded-md text-[#B1B3B6] overflow-hidden">
+                <div className="flex flex-col w-full max-w-4xl shrink-0 border-2 bg-white border-[#E0E0E0] rounded-md text-[#B1B3B6] overflow-hidden">
 
                     {/* 01 — project config */}
                     <div className="flex flex-col justify-center items-start w-full p-5 border-b-2 border-[#E0E0E0] shrink-0">
@@ -1342,6 +1404,58 @@ function handleQuantityVariantSaved(quantity: number, state: PersistedQuoteState
                                 />
                                     </label>
                                 ))}
+                            </div>
+                        </div>
+                        <div className="group border-2 border-[#E0E0E0] rounded-sm bg-white p-3 mt-3">
+                            <div
+                                className="w-full flex items-center justify-between gap-3 cursor-pointer"
+                                onClick={() => setBudgetSolveOpen((v) => !v)}
+                            >
+                                <span className="text-[10px] font-black text-[#000005] uppercase tracking-widest">
+                                    <span className="text-[#FFC843]">// </span>Solve by Budget
+                                </span>
+                                <span
+                                    className={`text-[#000005] group-hover:text-[#FFC843] transition-all duration-300 select-none ${budgetSolveOpen ? "rotate-180" : "rotate-0"}`}
+                                    aria-hidden
+                                >
+                                    ▾
+                                </span>
+                            </div>
+                            <div className={`grid transition-all duration-300 ease-in-out ${budgetSolveOpen ? "grid-rows-[1fr] mt-3" : "grid-rows-[0fr]"}`}>
+                                <div className="overflow-hidden">
+                                    <div className="flex items-end gap-3">
+                                        <div className="flex-1 min-w-0">
+                                            <span className="text-[9px] font-bold uppercase tracking-wider text-[#B1B3B6]">Budget ($)</span>
+                                            <input
+                                                type="number"
+                                                min={0}
+                                                step={1}
+                                                value={budgetInput}
+                                                onChange={(e) => setBudgetInput(e.target.value)}
+                                                placeholder="e.g. 5000"
+                                                className="mt-1 border-2 bg-white border-[#E0E0E0] rounded-sm p-1.5 outline-none text-[#000005] text-xs w-full bg-[#F8F8F8] focus:border-[#FFC843] font-semibold transition-colors"
+                                            />
+                                        </div>
+                                        <button
+                                            type="button"
+                                            disabled={budgetSolving || !budgetInput || elements.length === 0}
+                                            onClick={() => void handleSolveByBudget()}
+                                            className="text-xs text-center font-black py-2 px-4 rounded-sm uppercase tracking-widest transition-all duration-200 border-2 border-[#000005] text-[#000005] bg-white hover:bg-[#F4F4F4] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white"
+                                        >
+                                            {budgetSolving ? "Solving…" : "Solve"}
+                                        </button>
+                                    </div>
+                                    {budgetResults && (
+                                        <div className="mt-2 text-[10px] font-semibold text-[#2E7D32]">
+                                            {budgetResults
+                                                .map((r) => `Scenario ${r.scenario}: ${r.quantity} standees ≈ $${r.price.toFixed(2)}`)
+                                                .join(" · ")}
+                                        </div>
+                                    )}
+                                    {budgetError && (
+                                        <div className="mt-1 text-[10px] font-bold text-red-600">{budgetError}</div>
+                                    )}
+                                </div>
                             </div>
                         </div>
                         </div>

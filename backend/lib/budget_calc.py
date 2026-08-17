@@ -18,7 +18,8 @@ def optimize_budget(
     for scenario in SCENARIOS:
         current_quantity = first_guess(budget)
         iteration = 0
-        low = 0, high = current_quantity * 2 # this times 2 multiplier is subject to change
+        low = 0
+        high = current_quantity * 2 # this times 2 multiplier is subject to change
         last_under = 0
         last_price_under = 0
         while iteration < iteration_limit or iteration_limit == 0: # pass 0 as the iteration limit to run until solution
@@ -40,7 +41,8 @@ def optimize_budget(
                         high = high * 2 #expand search if high is actually below budget
                     else: #if not, then last under is just this one and move on
                         break
-        final_quantities[index] = last_under, final_prices[index] = last_price_under
+        final_quantities[index] = last_under
+        final_prices[index] = last_price_under
     return final_quantities, final_prices
             
 
