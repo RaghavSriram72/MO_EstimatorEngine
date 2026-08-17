@@ -9,6 +9,7 @@ def optimize_budget(
                     print_forms: list[Form], 
                     standee_type: str, 
                     iteration_limit = 100,
+                    debug = False,
                     **kwargs) -> int:
     """First iteration of budget optimization, just a binary search based on the static_cost_calculator code"""
 
@@ -41,6 +42,7 @@ def optimize_budget(
                         high = high * 2 #expand search if high is actually below budget
                     else: #if not, then last under is just this one and move on
                         break
+            current_quantity = (high + low) // 2
         final_quantities[index] = last_under
         final_prices[index] = last_price_under
     return final_quantities, final_prices
