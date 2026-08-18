@@ -1,9 +1,10 @@
-from lib.classes import Form, Project, Scenario1, Scenario3, Scenario4, Scenario5
+from lib.classes import Form, Project, Scenario1, Scenario3, Scenario4, Scenario5, MidnightOilDB
 
 #change scenarios list as needed based on future changes
 SCENARIOS = [Scenario1, Scenario3, Scenario4, Scenario5]
 
 def optimize_budget(
+                    db: MidnightOilDB,
                     name: str,
                     budget: int, 
                     print_forms: list[Form], 
@@ -25,7 +26,7 @@ def optimize_budget(
         last_price_under = 0
         while iteration < iteration_limit or iteration_limit == 0: # pass 0 as the iteration limit to run until solution
             iteration = iteration + 1
-            found_cost = scenario(name, print_forms, current_quantity, standee_type, **kwargs)
+            found_cost = scenario(db, name, print_forms, current_quantity, standee_type, **kwargs)
             # binary search if else tree
             if found_cost > budget:
                 high = current_quantity - 1
