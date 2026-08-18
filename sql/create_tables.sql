@@ -215,8 +215,8 @@ END;
 GO
 
 -- ───────────────────────────── quote_notes ─────────────────────────
--- Append-only notes attached to a quote. Author and timestamp are stored as
--- first-class columns so ordinary quote snapshot saves cannot overwrite them.
+-- Notes attached to a quote. Author and timestamp are stored as first-class
+-- columns; authors may edit the body or delete their own notes.
 IF OBJECT_ID(N'dbo.quote_notes', N'U') IS NULL
 BEGIN
     CREATE TABLE dbo.quote_notes (
