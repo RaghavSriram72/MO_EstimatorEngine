@@ -1000,7 +1000,7 @@ class MidnightOilDB:
         return self._quote_rows_to_docs(rows)
 
     def list_quote_notes(self, quote_id: str, owner: str) -> list[dict[str, Any]] | None:
-        """Return a quote's notes oldest-first, or ``None`` when the owned quote does not exist."""
+        """Return a quote's notes newest-first, or ``None`` when the owned quote does not exist."""
         row_id = _parse_id(quote_id)
         if row_id is None:
             return None
@@ -1011,7 +1011,7 @@ class MidnightOilDB:
             return None
         rows = self._fetchall(
             "SELECT note_id, author, body, created_at FROM quote_notes "
-            "WHERE quote_id = ? ORDER BY created_at ASC, note_id ASC",
+            "WHERE quote_id = ? ORDER BY created_at DESC, note_id DESC",
             (row_id,),
         )
         notes: list[dict[str, Any]] = []
@@ -1050,6 +1050,47 @@ class MidnightOilDB:
             "body": body,
             "created_at": created_at.isoformat(),
         }
+
+    def update_quote_note(
+        self, quote_id: str, note_id: str, owner: str, author: str, body: str
+    ) -> dict[str, Any] | None:
+        """Update a note when it belongs to the owned quote and requesting author."""
+        quote_row_id = _parse_id(quote_id)
+        note_row_id = _parse_id(note_id)
+        if quote_row_id is None or note_row_id is None:
+            return None
+        row = self._fetchone(
+            "SELECT n.created_at FROM quote_notes n "
+            "INNER JOIN quotes q ON q.quote_id = n.quote_id "
+            "WHERE n.note_id = ? AND n.quote_id = ? AND n.author = ? AND q.owner = ?",
+            (note_row_id, quote_row_id, author, owner),
+        )
+        if row is None:
+            return None
+        self._execute("UPDATE quote_notes SET body = ? WHERE note_id = ?", (body, note_row_id))
+        self.conn.commit()
+        created_at = _from_db_datetime(row["created_at"])
+        return {
+            "note_id": str(note_row_id),
+            "author": author,
+            "body": body,
+            "created_at": created_at.isoformat() if isinstance(created_at, datetime) else created_at,
+        }
+
+    def delete_quote_note(self, quote_id: str, note_id: str, owner: str, author: str) -> bool:
+        """Delete a note when it belongs to the owned quote and requesting author."""
+        quote_row_id = _parse_id(quote_id)
+        note_row_id = _parse_id(note_id)
+        if quote_row_id is None or note_row_id is None:
+            return False
+        deleted = self._execute(
+            "DELETE n FROM quote_notes n "
+            "INNER JOIN quotes q ON q.quote_id = n.quote_id "
+            "WHERE n.note_id = ? AND n.quote_id = ? AND n.author = ? AND q.owner = ?",
+            (note_row_id, quote_row_id, author, owner),
+        )
+        self.conn.commit()
+        return deleted > 0
 
     def _apply_quote_fields(self, row_id: int, fields: dict[str, Any], updated_at: datetime) -> None:
         """Write allowed quote fields (scalars + JSON blobs + elements) without recording history."""

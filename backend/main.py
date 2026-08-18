@@ -816,12 +816,18 @@ class CreateQuoteNoteBody(BaseModel):
     body: str = Field(..., min_length=1, max_length=2000)
 
 
+class UpdateQuoteNoteBody(BaseModel):
+    """Request body for editing a quote note."""
+
+    body: str = Field(..., min_length=1, max_length=2000)
+
+
 @app.get("/quotes/{quote_id}/notes")
 async def list_quote_notes(
     quote_id: str,
     owner: str = Query(..., description="Must match the quote's owner field"),
 ):
-    """List a quote's notes in chronological order."""
+    """List a quote's notes newest-first."""
     db = _ensure_db()
     if not db.check_username_exists(owner):
         return JSONResponse(status_code=404, content={"error": "Unknown owner"})
@@ -853,6 +859,39 @@ async def create_quote_note(
     if note is None:
         return JSONResponse(status_code=404, content={"error": "Quote not found"})
     return JSONResponse(status_code=201, content=note)
+
+
+@app.patch("/quotes/{quote_id}/notes/{note_id}")
+async def update_quote_note(
+    quote_id: str,
+    note_id: str,
+    payload: UpdateQuoteNoteBody,
+    owner: str = Query(..., description="Must match the quote's owner field"),
+    author: str = Query(..., description="Must match the note's author"),
+):
+    """Edit a note authored by the requesting user."""
+    db = _ensure_db()
+    body = payload.body.strip()
+    if not body:
+        return JSONResponse(status_code=400, content={"error": "Note cannot be blank"})
+    note = db.update_quote_note(quote_id, note_id, owner, author, body)
+    if note is None:
+        return JSONResponse(status_code=404, content={"error": "Note not found or cannot be edited"})
+    return note
+
+
+@app.delete("/quotes/{quote_id}/notes/{note_id}")
+async def delete_quote_note(
+    quote_id: str,
+    note_id: str,
+    owner: str = Query(..., description="Must match the quote's owner field"),
+    author: str = Query(..., description="Must match the note's author"),
+):
+    """Delete a note authored by the requesting user."""
+    db = _ensure_db()
+    if not db.delete_quote_note(quote_id, note_id, owner, author):
+        return JSONResponse(status_code=404, content={"error": "Note not found or cannot be deleted"})
+    return {"message": "Note deleted", "note_id": note_id}
 
 
 @app.patch("/quotes/{quote_id}")

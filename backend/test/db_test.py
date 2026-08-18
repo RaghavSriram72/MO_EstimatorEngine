@@ -483,7 +483,7 @@ class TestDbQuoteMethods(_DbTestCase):
         self.assertEqual(db.delete_quotes_for_project("bad-id", "alice"), 0)
 
     def test_quote_notes_are_ordered_owned_and_deleted_with_quote(self):
-        """Verify append-only note persistence, attribution, ownership checks, and cascading deletes."""
+        """Verify note ordering, author edits/deletes, ownership checks, and cascading deletes."""
         db: Any = self.db
         quote_id = db.insert_persisted_quote(
             {
@@ -508,10 +508,20 @@ class TestDbQuoteMethods(_DbTestCase):
         self.assertIn("+00:00", first["created_at"])
         self.assertEqual(
             [(note["author"], note["body"]) for note in db.list_quote_notes(quote_id, "alice")],
-            [("alice", "First note"), ("existing", "Second note")],
+            [("existing", "Second note"), ("alice", "First note")],
         )
         self.assertIsNone(db.list_quote_notes(quote_id, "existing"))
         self.assertIsNone(db.insert_quote_note("bad-id", "alice", "alice", "Missing quote"))
+
+        updated = db.update_quote_note(quote_id, first["note_id"], "alice", "alice", "Edited first note")
+        self.assertEqual(updated["body"], "Edited first note")
+        self.assertIsNone(db.update_quote_note(quote_id, first["note_id"], "alice", "existing", "Not allowed"))
+        self.assertFalse(db.delete_quote_note(quote_id, first["note_id"], "alice", "existing"))
+        self.assertTrue(db.delete_quote_note(quote_id, first["note_id"], "alice", "alice"))
+        self.assertEqual(
+            [(note["author"], note["body"]) for note in db.list_quote_notes(quote_id, "alice")],
+            [("existing", "Second note")],
+        )
 
         self.assertTrue(db.delete_persisted_quote(quote_id, "alice"))
         remaining = db._fetchone("SELECT COUNT(*) AS n FROM quote_notes WHERE quote_id = ?", (int(quote_id),))

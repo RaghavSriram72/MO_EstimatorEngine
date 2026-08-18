@@ -15,6 +15,7 @@ import {
 import { API_BASE } from "@/lib/config";
 import { COST_LINE_TOOLTIPS } from "@/lib/costLineTooltips";
 import { COST_DEBUG_ENABLED, extractDebugExplanations, debugExplanationsFromQuoteResponse, hasDebugExplanations, type CostDebugExplanations } from "@/lib/costDebugConfig";
+import ConfirmAlert from "./ConfirmAlert";
 
 export type ScenarioId = 1 | 2 | 3 | 4 | 5;
 
@@ -655,6 +656,18 @@ type QuoteNote = {
     created_at: string;
 };
 
+const IconTrash = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+    </svg>
+);
+
+const IconPencil = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+    </svg>
+);
+
 function formatNoteTimestamp(value: string): string {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return value;
@@ -680,6 +693,10 @@ function QuoteNotes({
     const [draft, setDraft] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+    const [editDraft, setEditDraft] = useState("");
+    const [pendingDelete, setPendingDelete] = useState<QuoteNote | null>(null);
+    const [isMutating, setIsMutating] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
@@ -725,7 +742,7 @@ function QuoteNotes({
             );
             const data = (await res.json().catch(() => ({}))) as QuoteNote & { error?: string };
             if (!res.ok) throw new Error(data.error || "Could not add note");
-            setNotes((prev) => [...prev, data]);
+            setNotes((prev) => [data, ...prev]);
             setDraft("");
         } catch (err) {
             setError(err instanceof Error ? err.message : "Could not add note");
@@ -734,10 +751,73 @@ function QuoteNotes({
         }
     }
 
+    function beginEditing(note: QuoteNote) {
+        setEditingNoteId(note.note_id);
+        setEditDraft(note.body);
+        setError(null);
+    }
+
+    async function saveEditedNote() {
+        const body = editDraft.trim();
+        if (!body || !editingNoteId || !quoteId?.trim() || !owner?.trim() || !author?.trim() || isMutating) return;
+        setIsMutating(true);
+        setError(null);
+        try {
+            const res = await fetch(
+                `${API_BASE}/quotes/${encodeURIComponent(quoteId)}/notes/${encodeURIComponent(editingNoteId)}?owner=${encodeURIComponent(owner)}&author=${encodeURIComponent(author)}`,
+                {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ body }),
+                },
+            );
+            const data = (await res.json().catch(() => ({}))) as QuoteNote & { error?: string };
+            if (!res.ok) throw new Error(data.error || "Could not edit note");
+            setNotes((prev) => prev.map((note) => (note.note_id === data.note_id ? data : note)));
+            setEditingNoteId(null);
+            setEditDraft("");
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Could not edit note");
+        } finally {
+            setIsMutating(false);
+        }
+    }
+
+    async function confirmDeleteNote() {
+        const note = pendingDelete;
+        if (!note || !quoteId?.trim() || !owner?.trim() || !author?.trim() || isMutating) return;
+        setIsMutating(true);
+        setError(null);
+        try {
+            const res = await fetch(
+                `${API_BASE}/quotes/${encodeURIComponent(quoteId)}/notes/${encodeURIComponent(note.note_id)}?owner=${encodeURIComponent(owner)}&author=${encodeURIComponent(author)}`,
+                { method: "DELETE" },
+            );
+            const data = (await res.json().catch(() => ({}))) as { error?: string };
+            if (!res.ok) throw new Error(data.error || "Could not delete note");
+            setNotes((prev) => prev.filter((item) => item.note_id !== note.note_id));
+            if (editingNoteId === note.note_id) {
+                setEditingNoteId(null);
+                setEditDraft("");
+            }
+            setPendingDelete(null);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Could not delete note");
+        } finally {
+            setIsMutating(false);
+        }
+    }
+
     const canAdd = Boolean(quoteId?.trim() && owner?.trim() && author?.trim());
 
     return (
-        <section className="flex flex-col min-h-0 gap-1.5 pt-2 border-t-2 border-[#F0F0F0]">
+        <section className="flex flex-1 flex-col min-h-0 gap-1.5 pt-2 border-t-2 border-[#F0F0F0]">
+            <ConfirmAlert
+                visible={pendingDelete !== null}
+                message="Are you sure you want to delete this note?"
+                onConfirm={() => void confirmDeleteNote()}
+                onCancel={() => setPendingDelete(null)}
+            />
             <span className="text-[10px] font-black text-[#B1B3B6] uppercase tracking-widest">Notes</span>
             {canAdd ? (
                 <textarea
@@ -765,21 +845,90 @@ function QuoteNotes({
             {error && (
                 <span role="alert" className="text-[9px] font-semibold leading-snug text-red-600">{error}</span>
             )}
-            <div className="flex max-h-52 min-h-0 flex-col gap-1.5 overflow-y-auto" aria-live="polite">
+            <div className="flex flex-1 min-h-0 flex-col gap-1.5 overflow-y-auto" aria-live="polite">
                 {isLoading && <span className="text-[10px] font-semibold text-[#B1B3B6]">Loading notes…</span>}
                 {!isLoading && notes.length === 0 && canAdd && !error && (
                     <span className="text-[10px] font-semibold text-[#B1B3B6]">No notes yet.</span>
                 )}
-                {notes.map((note) => (
-                    <article key={note.note_id} className="rounded-sm border border-[#E0E0E0] bg-[#F8F8F8] px-2 py-1.5">
-                        <p className="whitespace-pre-wrap break-words text-[10px] font-semibold leading-snug text-[#000005]">
-                            {note.body}
-                        </p>
-                        <p className="mt-1 text-[8px] font-bold uppercase tracking-wide text-[#B1B3B6]">
-                            {note.author} · {formatNoteTimestamp(note.created_at)}
-                        </p>
-                    </article>
-                ))}
+                {notes.map((note) => {
+                    const canModify = note.author === author;
+                    const isEditing = editingNoteId === note.note_id;
+                    return (
+                        <article key={note.note_id} className="group relative shrink-0 rounded-sm border border-[#E0E0E0] bg-[#F8F8F8] px-2 py-1.5">
+                            {isEditing ? (
+                                <>
+                                    <textarea
+                                        value={editDraft}
+                                        onChange={(e) => setEditDraft(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                                                e.preventDefault();
+                                                void saveEditedNote();
+                                            }
+                                            if (e.key === "Escape") {
+                                                setEditingNoteId(null);
+                                                setEditDraft("");
+                                            }
+                                        }}
+                                        maxLength={2000}
+                                        disabled={isMutating}
+                                        aria-label="Edit quote note"
+                                        className="w-full resize-none rounded-sm border border-[#FFC843] bg-white px-1.5 py-1 text-[10px] font-semibold text-[#000005] outline-none"
+                                        autoFocus
+                                    />
+                                    <div className="mt-1 flex justify-end gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => { setEditingNoteId(null); setEditDraft(""); }}
+                                            className="text-[8px] font-black uppercase text-[#B1B3B6] hover:text-[#000005]"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => void saveEditedNote()}
+                                            disabled={!editDraft.trim() || isMutating}
+                                            className="text-[8px] font-black uppercase text-[#8a6d1f] hover:text-[#000005] disabled:opacity-40"
+                                        >
+                                            Save
+                                        </button>
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    {canModify && (
+                                        <div className="absolute right-1.5 top-1 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                                            <button
+                                                type="button"
+                                                onClick={() => beginEditing(note)}
+                                                title="Edit Note"
+                                                className="flex h-6 w-6 items-center justify-center rounded-sm bg-white text-[#DEDEDE] shadow-sm transition-colors hover:bg-[#F1F5F9] hover:text-[#64748B]"
+                                                aria-label={`Edit note by ${note.author}`}
+                                            >
+                                                <IconPencil />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setPendingDelete(note)}
+                                                title="Delete Note"
+                                                className="flex h-6 w-6 items-center justify-center rounded-sm bg-white text-[#DEDEDE] shadow-sm transition-colors hover:bg-red-50 hover:text-red-400"
+                                                aria-label={`Delete note by ${note.author}`}
+                                            >
+                                                <IconTrash />
+                                            </button>
+                                        </div>
+                                    )}
+                                    <p className={`whitespace-pre-wrap break-words text-[10px] font-semibold leading-snug text-[#000005] ${canModify ? "pr-16" : ""}`}>
+                                        {note.body}
+                                    </p>
+                                    <p className="mt-1 text-[8px] font-bold uppercase tracking-wide text-[#B1B3B6]">
+                                        {note.author} · {formatNoteTimestamp(note.created_at)}
+                                    </p>
+                                </>
+                            )}
+                        </article>
+                    );
+                })}
             </div>
         </section>
     );
@@ -1330,7 +1479,7 @@ export default function QuoteBreakdown({
             )}
 
             {/* Left sidebar — scenario selector + back */}
-            <aside className="flex flex-col w-[220px] shrink-0 bg-white border-r-2 border-[#E0E0E0] px-3 py-5 gap-4 min-h-0 h-full overflow-y-auto">
+            <aside className="flex flex-col w-[220px] shrink-0 bg-white border-r-2 border-[#E0E0E0] px-3 py-5 gap-4 min-h-0 h-full overflow-hidden">
                 <div>
                     <div className="text-[10px] font-black uppercase tracking-widest text-[#000005] mb-1">
                         <span className="text-[#FFC843]">// </span>QUOTE
