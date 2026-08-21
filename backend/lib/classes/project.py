@@ -244,7 +244,13 @@ class Project[T: BaseInput]:
             raise ValueError(
                 f"No pricing data found for supplier={supplier!r} material={material!r} type={material_type!r}"
             )
-        cost_per_unit = params["a"] * num_forms ** params["b"] + params["c"]
+        # The curve is only fit over the observed price breaks — below the smallest one
+        # (e.g. num_forms == 0, which a budget search's binary search can pass in) it's
+        # extrapolating outside its domain, and a negative exponent blows up at 0. Clamp to
+        # the smallest known price break instead of evaluating the curve there.
+        known_amounts = [pb["amount"] for pb in record.get("price_breaks", []) if pb.get("amount") is not None]
+        floor = min(known_amounts) if known_amounts else 1
+        cost_per_unit = params["a"] * max(num_forms, floor) ** params["b"] + params["c"]
         return cost_per_unit * UNIT_MAP[unit]
 
     def _get_supplier_litho_buyout_cost(

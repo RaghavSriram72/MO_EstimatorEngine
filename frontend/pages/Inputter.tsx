@@ -119,6 +119,14 @@ export type RequestPayload = {
 // One scenario's result from POST /solve-budget-quantities
 type BudgetScenarioResult = { scenario: number; quantity: number; price: number };
 
+// Points up toward Quote Quantities (which sit above this panel) — applying a result sends
+// its value upward into those boxes.
+const IconApplyUp = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 8 12 3 17 8" /><line x1="12" y1="3" x2="12" y2="15" />
+    </svg>
+);
+
 
 // Shape of an element as stored in the database (uses "length" not "height")
 type ApiPersistedElement = {
@@ -928,7 +936,8 @@ setStandeeCounts(Array.from({ length: 5 }, (_, index) => savedCounts[index] ?? "
     }
 
     // POST /solve-budget-quantities → for a target budget, ask each scenario's max affordable
-    // quantity and drop the results into empty Quote Quantities slots (doesn't touch filled ones).
+    // quantity. Only computes/displays results — does not touch Quote Quantities until the
+    // user explicitly applies them (see handleApplyBudgetResults).
     async function handleSolveByBudget() {
         const budget = Number(budgetInput);
         if (!Number.isFinite(budget) || budget <= 0 || elements.length === 0) return;
@@ -960,25 +969,21 @@ setStandeeCounts(Array.from({ length: 5 }, (_, index) => savedCounts[index] ?? "
             const results: BudgetScenarioResult[] = Array.isArray(data.results) ? data.results : [];
             if (results.length === 0) { setBudgetError("No results returned"); return; }
             setBudgetResults(results);
-
-            const next = [...standeeCounts];
-            let placed = 0;
-            for (const r of results) {
-                const emptyIndex = next.findIndex((c) => c === "");
-                if (emptyIndex === -1) break;
-                next[emptyIndex] = r.quantity;
-                placed += 1;
-            }
-            setStandeeCounts(next);
-            if (placed < results.length) {
-                setBudgetError(`Only ${placed} of ${results.length} results fit — clear a Quantity slot to see the rest.`);
-            }
-            if (activeProjectId) setIsDirty(true);
         } catch {
             setBudgetError("Could not reach the server");
         } finally {
             setBudgetSolving(false);
         }
+    }
+
+    // Explicitly requested by the user (icon button) — fills Quote Quantities 1–4 with the
+    // solved results, replacing whatever is already in those slots.
+    function handleApplyBudgetResults() {
+        if (!budgetResults || budgetResults.length === 0) return;
+        const next = [...standeeCounts];
+        budgetResults.slice(0, 4).forEach((r, i) => { next[i] = r.quantity; });
+        setStandeeCounts(next);
+        if (activeProjectId) setIsDirty(true);
     }
 
     // GET /projects/:id/quotes → opens the newest saved quote (with its manual edits).
@@ -1611,6 +1616,18 @@ function handleQuantityVariantSaved(quantity: number, state: PersistedQuoteState
                                                 </div>
                                                 {budgetResults && (
                                                     <div className="mt-3 flex flex-col gap-1.5">
+                                                        <div className="flex items-center justify-between gap-2">
+                                                            <span className="text-[9px] font-bold uppercase tracking-wider text-[#B1B3B6]">Results</span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={handleApplyBudgetResults}
+                                                                title="Apply to Quote Quantities 1–4"
+                                                                aria-label="Apply solved quantities to Quote Quantities 1–4"
+                                                                className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-sm border-2 border-[#000005] text-[#000005] transition-colors hover:bg-[#000005] hover:text-white"
+                                                            >
+                                                                <IconApplyUp />
+                                                            </button>
+                                                        </div>
                                                         {budgetResults.map((r) => (
                                                             <div
                                                                 key={r.scenario}

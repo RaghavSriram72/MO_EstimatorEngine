@@ -1915,7 +1915,7 @@ class MidnightOilDB:
     # ------------------------------------------------------------------
 
     def get_overs(self, quantity: int) -> int:
-        """Return the over cost for a given quantity."""
+        """Return the over cost for a given quantity, or the nearest tier across a gap."""
         record = next(
             (
                 entry
@@ -1925,6 +1925,18 @@ class MidnightOilDB:
             ),
             None,
         )
+        if record is None and self._cache["overs"]:
+            # Quantity falls in a tier gap (e.g. 0, below the smallest lower_bound, which a
+            # budget search's binary search can pass in) — use the tier whose range edge is
+            # closest instead of failing an otherwise valid lookup (mirrors get_packout).
+            def distance(entry: dict) -> float:
+                if quantity < entry["lower_bound"]:
+                    return entry["lower_bound"] - quantity
+                if entry["upper_bound"] is not None and quantity > entry["upper_bound"]:
+                    return quantity - entry["upper_bound"]
+                return 0
+
+            record = min(self._cache["overs"], key=lambda e: (distance(e), e["lower_bound"]))
         if record and "overs" in record:
             return record["overs"]
         else:
