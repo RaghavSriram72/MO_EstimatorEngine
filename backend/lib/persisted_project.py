@@ -20,11 +20,11 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from lib.classes import Complexity, Element
 
-PROJECT_SCHEMA_VERSION = 2
+PROJECT_SCHEMA_VERSION = 3
 
 ComplexityStr = Literal["Simple", "Moderate", "Complex"]
 
@@ -74,11 +74,33 @@ class PersistedProjectCreate(BaseModel):
     schema_version: int = Field(default=PROJECT_SCHEMA_VERSION, ge=1)
     owner: str = Field(..., min_length=1, max_length=256, description="Username of the account that owns this project")
     project_name: str = Field(..., min_length=1, max_length=512)
-    num_standees: int = Field(..., ge=1)
+    project_type: Literal["custom", "template"] = "custom"
+    project_description: str = ""
+    template_id: int | None = Field(default=None, ge=1)
+    template_key: str | None = Field(default=None, min_length=1, max_length=64)
+    num_standees: int | None = Field(default=None, ge=1)
     standee_counts: list[int] = Field(default_factory=list, max_length=5)
-    standee_type: ComplexityStr
-    elements: list[PersistedElement] = Field(..., min_length=1)
+    standee_type: ComplexityStr | None = None
+    elements: list[PersistedElement] = Field(default_factory=list)
     include_print_sides: bool = False
+
+    @model_validator(mode="after")
+    def validate_project_type(self):
+        if self.project_type == "custom":
+            if self.num_standees is None:
+                raise ValueError("num_standees is required for custom projects")
+            if self.standee_type is None:
+                raise ValueError("standee_type is required for custom projects")
+            if not self.elements:
+                raise ValueError("at least one element is required for custom projects")
+            if self.template_id is not None or self.template_key is not None:
+                raise ValueError("custom projects cannot reference a template")
+        else:
+            if self.template_id is None and self.template_key is None:
+                raise ValueError("template_id or template_key is required for template projects")
+            if self.elements or self.standee_counts:
+                raise ValueError("template projects cannot contain custom elements or quote quantities")
+        return self
 
     @field_validator("standee_counts")
     @classmethod
@@ -101,11 +123,30 @@ class PersistedProjectUpdateBody(BaseModel):
     # allows you to edit fields when updating an existing project record
 
     project_name: str = Field(..., min_length=1, max_length=512)
-    num_standees: int = Field(..., ge=1)
+    project_type: Literal["custom", "template"] = "custom"
+    project_description: str = ""
+    template_id: int | None = Field(default=None, ge=1)
+    template_key: str | None = Field(default=None, min_length=1, max_length=64)
+    num_standees: int | None = Field(default=None, ge=1)
     standee_counts: list[int] | None = Field(default=None, max_length=5)
-    standee_type: ComplexityStr
-    elements: list[PersistedElement] = Field(..., min_length=1)
+    standee_type: ComplexityStr | None = None
+    elements: list[PersistedElement] = Field(default_factory=list)
     include_print_sides: bool = False
+
+    @model_validator(mode="after")
+    def validate_project_type(self):
+        counts = self.standee_counts or []
+        if self.project_type == "custom":
+            if self.num_standees is None or self.standee_type is None or not self.elements:
+                raise ValueError("custom projects require num_standees, standee_type, and at least one element")
+            if self.template_id is not None or self.template_key is not None:
+                raise ValueError("custom projects cannot reference a template")
+        else:
+            if self.template_id is None and self.template_key is None:
+                raise ValueError("template_id or template_key is required for template projects")
+            if self.elements or counts:
+                raise ValueError("template projects cannot contain custom elements or quote quantities")
+        return self
 
     @field_validator("standee_counts")
     @classmethod

@@ -5,12 +5,13 @@ import StandeeModule    from "@/components/datacollector/StandeeModule";
 import OversModule      from "@/components/datacollector/OversModule";
 import SuppliersModule  from "@/components/datacollector/SuppliersModule";
 import PackoutModule    from "@/components/datacollector/PackoutModule";
+import TemplatePricingModule from "@/components/datacollector/TemplatePricingModule";
 
 // Each module tab maps to a self-contained component that owns its own state and API calls.
-type ModuleId = 0 | 1 | 2 | 3 | 4;
+type ModuleId = 0 | 1 | 2 | 3 | 4 | 5;
 
-const MODULE_NAV_LABELS   = ["Unit Costs", "Standee Static Costs", "Overs", "Suppliers", "Packout"] as const;
-const MODULE_TITLE_LABELS = ["Unit", "Standee Static", "Overs", "Supplier", "Packout"] as const;
+const MODULE_NAV_LABELS   = ["Unit Costs", "Standee Static Costs", "Overs", "Suppliers", "Packout", "Template Pricing"] as const;
+const MODULE_TITLE_LABELS = ["Unit", "Standee Static", "Overs", "Supplier", "Packout", "Template Pricing"] as const;
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const MODULE_ICONS = [
@@ -47,7 +48,7 @@ export default function DataCollector() {
 
                 {/* Nav items */}
                 <ul className="flex flex-col gap-1 w-full">
-                    {([0, 1, 2, 3, 4] as ModuleId[]).map((id) => (
+                    {([0, 1, 2, 3, 4, 5] as ModuleId[]).map((id) => (
                         <li
                             key={id}
                             onClick={() => setActiveModule(id)}
@@ -94,6 +95,7 @@ export default function DataCollector() {
                     {activeModule === 2 && <OversModule />}
                     {activeModule === 3 && <SuppliersModule />}
                     {activeModule === 4 && <PackoutModule />}
+                    {activeModule === 5 && <TemplatePricingModule />}
                 </div>
             </div>
         </div>

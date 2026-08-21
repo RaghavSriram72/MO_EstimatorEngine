@@ -200,8 +200,22 @@ type DisplayRow =
 /** A project snapshot only has these fields — no scenarios/params, so a flat compare suffices. */
 function computeProjectChangeRows(before: Record<string, unknown>, after: Record<string, unknown>): DisplayRow[] {
     const rows: DisplayRow[] = [];
+    if (!deepEqual(before.project_type, after.project_type)) {
+        rows.push({ kind: "scalar", label: "Project Type", before: before.project_type, after: after.project_type });
+    }
     if (!deepEqual(before.project_name, after.project_name)) {
         rows.push({ kind: "scalar", label: "Project Name", before: before.project_name, after: after.project_name });
+    }
+    if (!deepEqual(before.project_description, after.project_description)) {
+        rows.push({
+            kind: "scalar",
+            label: "Project Description",
+            before: before.project_description,
+            after: after.project_description,
+        });
+    }
+    if (!deepEqual(before.template_id, after.template_id)) {
+        rows.push({ kind: "scalar", label: "Standee Template", before: before.template_id, after: after.template_id });
     }
     if (!deepEqual(before.num_standees, after.num_standees)) {
         rows.push({ kind: "scalar", label: "Num Standees", before: before.num_standees, after: after.num_standees });

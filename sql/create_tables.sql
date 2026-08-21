@@ -51,26 +51,163 @@ BEGIN
 END;
 GO
 
+-- ─────────────────────── standee templates ─────────────────────────
+IF OBJECT_ID(N'dbo.standee_templates', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.standee_templates (
+        template_id  INT IDENTITY(1, 1) NOT NULL CONSTRAINT PK_standee_templates PRIMARY KEY,
+        template_key NVARCHAR(64)       NOT NULL,
+        name         NVARCHAR(256)      NOT NULL,
+        description  NVARCHAR(MAX)      NOT NULL CONSTRAINT DF_standee_templates_description DEFAULT N'',
+        is_active    BIT                NOT NULL CONSTRAINT DF_standee_templates_is_active DEFAULT 1,
+        created_at   DATETIME2(3)       NOT NULL CONSTRAINT DF_standee_templates_created_at DEFAULT SYSUTCDATETIME(),
+        updated_at   DATETIME2(3)       NOT NULL CONSTRAINT DF_standee_templates_updated_at DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT UQ_standee_templates_key UNIQUE (template_key)
+    );
+END;
+GO
+
+IF OBJECT_ID(N'dbo.standee_template_prices', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.standee_template_prices (
+        template_price_id BIGINT IDENTITY(1, 1) NOT NULL CONSTRAINT PK_standee_template_prices PRIMARY KEY,
+        template_id       INT                   NOT NULL,
+        quantity          INT                   NOT NULL,
+        unit_sell_price   DECIMAL(24, 15)       NOT NULL,
+        created_at        DATETIME2(3)          NOT NULL CONSTRAINT DF_standee_template_prices_created_at DEFAULT SYSUTCDATETIME(),
+        updated_at        DATETIME2(3)          NOT NULL CONSTRAINT DF_standee_template_prices_updated_at DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT FK_standee_template_prices_template FOREIGN KEY (template_id)
+            REFERENCES dbo.standee_templates (template_id) ON DELETE CASCADE,
+        CONSTRAINT UQ_standee_template_prices_quantity UNIQUE (template_id, quantity),
+        CONSTRAINT CK_standee_template_prices_quantity CHECK (quantity > 0),
+        CONSTRAINT CK_standee_template_prices_price CHECK (unit_sell_price >= 0)
+    );
+    CREATE INDEX IX_standee_template_prices_template
+        ON dbo.standee_template_prices (template_id, quantity);
+END;
+GO
+
+-- Spreadsheet defaults are deliberately insert-only. Each template and all of its
+-- initial tiers are inserted as one unit only when its key does not exist, so rerunning
+-- this script never restores deleted tiers or overwrites admin edits.
+IF NOT EXISTS (SELECT 1 FROM dbo.standee_templates WHERE template_key = N'flat_card')
+BEGIN
+    INSERT INTO dbo.standee_templates (template_key, name, description, is_active)
+    VALUES (N'flat_card', N'Flat Card Standee', N'Flat Card with turned edges and easel back
+Size - 8ft 6in Tall x 5ft 9in Wide x 1ft 6in Deep', 1);
+    DECLARE @flat_card INT = SCOPE_IDENTITY();
+    INSERT INTO dbo.standee_template_prices (template_id, quantity, unit_sell_price) VALUES
+        (@flat_card,25,1055.88),(@flat_card,50,663.9),(@flat_card,75,567.8266666666667),
+        (@flat_card,100,430.27),(@flat_card,250,239.496),(@flat_card,500,189.95);
+END;
+GO
+IF NOT EXISTS (SELECT 1 FROM dbo.standee_templates WHERE template_key = N'box')
+BEGIN
+    INSERT INTO dbo.standee_templates (template_key, name, description, is_active)
+    VALUES (N'box', N'Box Standee', N'Glass Onion Footprint
+Size - 8ft Tall x 5ft 6in Wide x 1ft 6in Deep', 1);
+    DECLARE @box INT = SCOPE_IDENTITY();
+    INSERT INTO dbo.standee_template_prices (template_id, quantity, unit_sell_price) VALUES
+        (@box,25,1094.2),(@box,50,766.3),(@box,75,625),(@box,100,470.35),(@box,250,319.06),(@box,500,248.9);
+END;
+GO
+IF NOT EXISTS (SELECT 1 FROM dbo.standee_templates WHERE template_key = N'totem')
+BEGIN
+    INSERT INTO dbo.standee_templates (template_key, name, description, is_active)
+    VALUES (N'totem', N'Totem', N'4-sided standee
+Size: 7ft 6in Tall x 3ft 4in Wide x 3ft 4in Deep', 1);
+    DECLARE @totem INT = SCOPE_IDENTITY();
+    INSERT INTO dbo.standee_template_prices (template_id, quantity, unit_sell_price) VALUES
+        (@totem,50,853),(@totem,100,544.63),(@totem,150,431.34),(@totem,200,375.34);
+END;
+GO
+IF NOT EXISTS (SELECT 1 FROM dbo.standee_templates WHERE template_key = N'double_wide_lug')
+BEGIN
+    INSERT INTO dbo.standee_templates (template_key, name, description, is_active)
+    VALUES (N'double_wide_lug', N'Double Wide with Lug', N'BALLPARK PRICING
+Approx size - 8ft 6in Tall x 14ft Wide x 5ft Deep', 1);
+    DECLARE @double_wide_lug INT = SCOPE_IDENTITY();
+    INSERT INTO dbo.standee_template_prices (template_id, quantity, unit_sell_price) VALUES
+        (@double_wide_lug,25,6037.04),(@double_wide_lug,50,3390.8),(@double_wide_lug,100,2150.2);
+END;
+GO
+IF NOT EXISTS (SELECT 1 FROM dbo.standee_templates WHERE template_key = N'photo_op_bench')
+BEGIN
+    INSERT INTO dbo.standee_templates (template_key, name, description, is_active)
+    VALUES (N'photo_op_bench', N'Photo Op with Bench', N'BALLPARK PRICING
+Approx size - 8ft 6in Tall x 9ft 6in Wide x 5ft Deep', 0);
+END;
+GO
+IF NOT EXISTS (SELECT 1 FROM dbo.standee_templates WHERE template_key = N'bells_whistles')
+BEGIN
+    INSERT INTO dbo.standee_templates (template_key, name, description, is_active)
+    VALUES (N'bells_whistles', N'Bells & Whistles', N'BALLPARK PRICING
+Approx size - 8ft Tall x 13ft Wide x 4ft Deep', 1);
+    DECLARE @bells_whistles INT = SCOPE_IDENTITY();
+    INSERT INTO dbo.standee_template_prices (template_id, quantity, unit_sell_price) VALUES
+        (@bells_whistles,25,7102.4),(@bells_whistles,50,3911.8),(@bells_whistles,100,2175.1);
+END;
+GO
+
 -- ───────────────────────────── projects ────────────────────────────
 IF OBJECT_ID(N'dbo.projects', N'U') IS NULL
 BEGIN
     CREATE TABLE dbo.projects (
         project_id     BIGINT IDENTITY(1, 1) NOT NULL CONSTRAINT PK_projects PRIMARY KEY,
         owner          NVARCHAR(256)         NOT NULL,
-        schema_version INT                   NOT NULL CONSTRAINT DF_projects_schema_version DEFAULT 1,
+        schema_version INT                   NOT NULL CONSTRAINT DF_projects_schema_version DEFAULT 3,
         project_name   NVARCHAR(512)         NOT NULL,
-        num_standees   INT                   NOT NULL,
+        project_type   NVARCHAR(16)          NOT NULL CONSTRAINT DF_projects_project_type DEFAULT N'custom',
+        project_description NVARCHAR(MAX)     NOT NULL CONSTRAINT DF_projects_project_description DEFAULT N'',
+        template_id    INT                   NULL,
+        num_standees   INT                   NULL,
         standee_counts JSON                  NOT NULL CONSTRAINT DF_projects_standee_counts DEFAULT N'[]',
-        standee_type   NVARCHAR(16)          NOT NULL,
+        standee_type   NVARCHAR(16)          NULL,
         short_id       NVARCHAR(16)          NULL,  -- sequential estimate ID shown in the UI (10100, 10101, …); backfilled on read if NULL
         include_print_sides BIT             NOT NULL CONSTRAINT DF_projects_include_print_sides DEFAULT 0,
         created_at     DATETIME2(3)          NOT NULL CONSTRAINT DF_projects_created_at DEFAULT SYSUTCDATETIME(),
         CONSTRAINT FK_projects_owner FOREIGN KEY (owner) REFERENCES dbo.users (username),
-        CONSTRAINT CK_projects_standee_type CHECK (standee_type IN (N'Simple', N'Moderate', N'Complex'))
+        CONSTRAINT FK_projects_template FOREIGN KEY (template_id) REFERENCES dbo.standee_templates (template_id),
+        CONSTRAINT CK_projects_project_type CHECK (project_type IN (N'custom', N'template')),
+        CONSTRAINT CK_projects_standee_type CHECK (standee_type IN (N'Simple', N'Moderate', N'Complex')),
+        CONSTRAINT CK_projects_template_link CHECK (
+            (project_type = N'custom' AND template_id IS NULL AND num_standees IS NOT NULL AND standee_type IS NOT NULL)
+            OR (project_type = N'template' AND template_id IS NOT NULL)
+        )
     );
 
     CREATE INDEX IX_projects_owner ON dbo.projects (owner, project_id DESC);
 END;
+GO
+
+-- Upgrade existing projects in place. Defaults preserve every prior row as custom.
+IF COL_LENGTH(N'dbo.projects', N'project_type') IS NULL
+    ALTER TABLE dbo.projects ADD project_type NVARCHAR(16) NOT NULL
+        CONSTRAINT DF_projects_project_type DEFAULT N'custom' WITH VALUES;
+GO
+IF COL_LENGTH(N'dbo.projects', N'project_description') IS NULL
+    ALTER TABLE dbo.projects ADD project_description NVARCHAR(MAX) NOT NULL
+        CONSTRAINT DF_projects_project_description DEFAULT N'' WITH VALUES;
+GO
+IF COL_LENGTH(N'dbo.projects', N'template_id') IS NULL
+    ALTER TABLE dbo.projects ADD template_id INT NULL;
+GO
+ALTER TABLE dbo.projects ALTER COLUMN num_standees INT NULL;
+ALTER TABLE dbo.projects ALTER COLUMN standee_type NVARCHAR(16) NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_projects_template')
+    ALTER TABLE dbo.projects ADD CONSTRAINT FK_projects_template
+        FOREIGN KEY (template_id) REFERENCES dbo.standee_templates (template_id);
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = N'CK_projects_project_type')
+    ALTER TABLE dbo.projects ADD CONSTRAINT CK_projects_project_type
+        CHECK (project_type IN (N'custom', N'template'));
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = N'CK_projects_template_link')
+    ALTER TABLE dbo.projects ADD CONSTRAINT CK_projects_template_link CHECK (
+        (project_type = N'custom' AND template_id IS NULL AND num_standees IS NOT NULL AND standee_type IS NOT NULL)
+        OR (project_type = N'template' AND template_id IS NOT NULL)
+    );
 GO
 
 -- Upgrade path: projects originally stored one quote quantity in num_standees.

@@ -313,6 +313,12 @@ async def generate_quote(payload: QuoteRequest):
             updatable_keys = ("project_name", "num_standees", "standee_type", "elements", "include_print_sides")
 
             if persisted_project_id:
+                existing = db.get_project_by_owner(persisted_project_id, owner)
+                if existing is not None and existing.get("project_type") == "template":
+                    return JSONResponse(
+                        status_code=400,
+                        content={"error": "Generated custom quotes cannot be saved to template projects"},
+                    )
                 update_fields = {}
                 for key, value in full_doc.items():
                     if key in updatable_keys:
@@ -412,6 +418,119 @@ async def get_standee_data(standee_type: int, data_type: str):
     standee_data = db.get_standee_data(type_mapping[standee_type], data_type.strip())
     print(f"Retrieved standee data for type {type_mapping[standee_type]} and field '{data_type}': {standee_data}")
     return {"data": standee_data}
+
+
+class StandeeTemplateBody(BaseModel):
+    template_key: str = Field(..., min_length=1, max_length=64)
+    name: str = Field(..., min_length=1, max_length=256)
+    description: str = ""
+    is_active: bool = True
+    changed_by: str = Field(..., min_length=1)
+
+
+class StandeeTemplatePriceBody(BaseModel):
+    quantity: int = Field(..., ge=1)
+    unit_sell_price: float = Field(..., ge=0)
+    changed_by: str = Field(..., min_length=1)
+
+
+@app.get("/standee-templates")
+async def get_standee_templates(include_inactive: bool = Query(False)):
+    """Public live template metadata and per-unit sell-price tiers."""
+    return {"data": _ensure_db().list_standee_templates(include_inactive=include_inactive)}
+
+
+@app.post("/standee-templates")
+async def create_standee_template(payload: StandeeTemplateBody):
+    db = _ensure_db()
+    if err := _require_admin(db, payload.changed_by):
+        return err
+    try:
+        template_id = db.upsert_standee_template(
+            None, payload.template_key, payload.name, payload.description,
+            payload.is_active, payload.changed_by,
+        )
+        return JSONResponse(status_code=201, content={"template_id": template_id})
+    except Exception as exc:
+        return JSONResponse(status_code=400, content={"error": str(exc)})
+
+
+@app.patch("/standee-templates/{template_id}")
+async def update_standee_template(template_id: str, payload: StandeeTemplateBody):
+    db = _ensure_db()
+    if err := _require_admin(db, payload.changed_by):
+        return err
+    try:
+        db.upsert_standee_template(
+            template_id, payload.template_key, payload.name, payload.description,
+            payload.is_active, payload.changed_by,
+        )
+        return {"message": "Template updated", "template_id": template_id}
+    except Exception as exc:
+        return JSONResponse(status_code=400, content={"error": str(exc)})
+
+
+@app.delete("/standee-templates/{template_id}")
+async def delete_standee_template(
+    template_id: str, changed_by: str = Query(..., min_length=1)
+):
+    db = _ensure_db()
+    if err := _require_admin(db, changed_by):
+        return err
+    try:
+        db.delete_standee_template(template_id, changed_by)
+        return {"message": "Template deleted", "template_id": template_id}
+    except ValueError as exc:
+        return JSONResponse(status_code=400, content={"error": str(exc)})
+
+
+@app.post("/standee-templates/{template_id}/prices")
+async def create_standee_template_price(template_id: str, payload: StandeeTemplatePriceBody):
+    db = _ensure_db()
+    if err := _require_admin(db, payload.changed_by):
+        return err
+    try:
+        price_id = db.upsert_standee_template_price(
+            template_id, None, payload.quantity, payload.unit_sell_price, payload.changed_by
+        )
+        return JSONResponse(status_code=201, content={"template_price_id": price_id})
+    except Exception as exc:
+        return JSONResponse(status_code=400, content={"error": str(exc)})
+
+
+@app.patch("/standee-templates/{template_id}/prices/{price_id}")
+async def update_standee_template_price(
+    template_id: str, price_id: str, payload: StandeeTemplatePriceBody
+):
+    db = _ensure_db()
+    if err := _require_admin(db, payload.changed_by):
+        return err
+    try:
+        db.upsert_standee_template_price(
+            template_id, price_id, payload.quantity, payload.unit_sell_price, payload.changed_by
+        )
+        return {"message": "Template price updated", "template_price_id": price_id}
+    except Exception as exc:
+        return JSONResponse(status_code=400, content={"error": str(exc)})
+
+
+@app.delete("/standee-templates/{template_id}/prices/{price_id}")
+async def delete_standee_template_price(
+    template_id: str, price_id: str, changed_by: str = Query(..., min_length=1)
+):
+    db = _ensure_db()
+    if err := _require_admin(db, changed_by):
+        return err
+    try:
+        db.delete_standee_template_price(template_id, price_id, changed_by)
+        return {"message": "Template price deleted", "template_price_id": price_id}
+    except ValueError as exc:
+        return JSONResponse(status_code=400, content={"error": str(exc)})
+
+
+@app.get("/standee-templates/history")
+async def get_standee_templates_history(template_id: str | None = Query(None)):
+    return {"data": _ensure_db().get_standee_template_history(template_id)}
 
 
 @app.get("/unit-costs")
@@ -764,8 +883,14 @@ async def create_project_quote(project_id: str, payload: PersistedQuoteCreateBod
         return JSONResponse(status_code=404, content={"error": "Unknown owner"})
     if payload.changed_by and not db.check_username_exists(payload.changed_by):
         return JSONResponse(status_code=404, content={"error": "Unknown changed_by user"})
-    if db.get_project_by_owner(project_id, payload.owner) is None:
+    project = db.get_project_by_owner(project_id, payload.owner)
+    if project is None:
         return JSONResponse(status_code=404, content={"error": "Project not found"})
+    if project.get("project_type") == "template":
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Saved quotes cannot be attached to template projects"},
+        )
     create = persisted_quote_create_from_path(project_id, payload)
     doc = persisted_quote_insert_document(create, created_at=datetime.now(UTC), updated_at=datetime.now(UTC))
     quote_id = db.insert_persisted_quote(doc, changed_by=payload.changed_by or payload.owner)
@@ -1040,9 +1165,12 @@ async def duplicate_project(
         return JSONResponse(status_code=404, content={"error": "Project not found"})
 
     new_project_doc = {
-        "schema_version": source.get("schema_version", 2),
+        "schema_version": max(source.get("schema_version", 3), 3),
         "owner": payload.new_owner,
         "project_name": payload.project_name or f"{source.get('project_name', 'Untitled project')} (Copy)",
+        "project_type": source.get("project_type", "custom"),
+        "project_description": source.get("project_description", ""),
+        "template_id": source.get("template_id"),
         "num_standees": source["num_standees"],
         "standee_counts": source.get("standee_counts", []),
         "standee_type": source["standee_type"],
@@ -1052,7 +1180,8 @@ async def duplicate_project(
     new_project_id, short_id = db.insert_persisted_project(new_project_doc)
 
     quote_ids: list[str] = []
-    for quote in db.list_quotes_for_project(project_id, owner):
+    source_quotes = [] if source.get("project_type") == "template" else db.list_quotes_for_project(project_id, owner)
+    for quote in source_quotes:
         new_quote_doc = {
             "schema_version": quote.get("schema_version", 2),
             "owner": payload.new_owner,

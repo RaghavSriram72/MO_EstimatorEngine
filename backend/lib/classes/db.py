@@ -16,7 +16,10 @@ from lib.globals import PROJECT_SHORT_ID_START
 
 # Fields a caller may set via update_persisted_project / update_persisted_quote — also
 # the field set snapshotted into a history entry's "snapshot" and restored on revert.
-_PROJECT_UPDATE_ALLOWED_FIELDS = {"project_name", "num_standees", "standee_counts", "standee_type", "elements", "include_print_sides"}
+_PROJECT_UPDATE_ALLOWED_FIELDS = {
+    "project_name", "project_type", "project_description", "template_id", "template_key",
+    "num_standees", "standee_counts", "standee_type", "elements", "include_print_sides",
+}
 _QUOTE_UPDATE_ALLOWED_FIELDS = {
     "quote_name",
     "breakdown",
@@ -39,7 +42,10 @@ _QUOTE_HISTORY_SIGNIFICANT_FIELDS = _QUOTE_UPDATE_ALLOWED_FIELDS - {"scenario", 
 
 # Scalar (single-column) subsets of the allowed fields; "elements" lives in its own
 # child table and the quote JSON blobs are serialized before hitting their columns.
-_PROJECT_SCALAR_FIELDS = ("project_name", "num_standees", "standee_type", "include_print_sides")
+_PROJECT_SCALAR_FIELDS = (
+    "project_name", "project_type", "project_description", "template_id",
+    "num_standees", "standee_type", "include_print_sides",
+)
 _PROJECT_JSON_FIELDS = ("standee_counts",)
 _QUOTE_SCALAR_FIELDS = (
     "quote_name",
@@ -700,11 +706,229 @@ class MidnightOilDB:
         return out
 
     # ------------------------------------------------------------------
+    # Standee templates
+    # ------------------------------------------------------------------
+
+    def list_standee_templates(self, include_inactive: bool = False) -> list[dict[str, Any]]:
+        """Return live template metadata with ordered per-unit sell-price tiers."""
+        where = "" if include_inactive else " WHERE t.is_active = 1"
+        rows = self._fetchall(
+            "SELECT t.template_id, t.template_key, t.name, t.description, t.is_active, "
+            "t.created_at, t.updated_at, p.template_price_id, p.quantity, p.unit_sell_price "
+            "FROM standee_templates t LEFT JOIN standee_template_prices p ON p.template_id = t.template_id"
+            f"{where} ORDER BY t.name, p.quantity"
+        )
+        docs: dict[int, dict[str, Any]] = {}
+        for row in rows:
+            template_id = int(row["template_id"])
+            if template_id not in docs:
+                docs[template_id] = {
+                    "template_id": template_id,
+                    "template_key": row["template_key"],
+                    "name": row["name"],
+                    "description": row["description"],
+                    "is_active": bool(row["is_active"]),
+                    "created_at": _from_db_datetime(row["created_at"]).isoformat(),
+                    "updated_at": _from_db_datetime(row["updated_at"]).isoformat(),
+                    "prices": [],
+                }
+            if row["template_price_id"] is not None:
+                docs[template_id]["prices"].append(
+                    {
+                        "template_price_id": str(row["template_price_id"]),
+                        "quantity": int(row["quantity"]),
+                        "unit_sell_price": float(row["unit_sell_price"]),
+                    }
+                )
+        return list(docs.values())
+
+    def _resolve_template_id(self, template_id: Any = None, template_key: str | None = None) -> int | None:
+        if template_id is None and not template_key:
+            return None
+        row = None
+        if template_id is not None:
+            parsed = _parse_id(template_id)
+            if parsed is None:
+                raise ValueError("Invalid template_id")
+            row = self._fetchone(
+                "SELECT template_id, template_key FROM standee_templates WHERE template_id = ?", (parsed,)
+            )
+        elif template_key:
+            row = self._fetchone(
+                "SELECT template_id, template_key FROM standee_templates WHERE template_key = ?", (template_key,)
+            )
+        if row is None:
+            raise ValueError("Standee template not found")
+        if template_key and row["template_key"] != template_key:
+            raise ValueError("template_id and template_key refer to different templates")
+        return int(row["template_id"])
+
+    def upsert_standee_template(
+        self,
+        template_id: str | None,
+        template_key: str,
+        name: str,
+        description: str,
+        is_active: bool,
+        changed_by: str,
+    ) -> str:
+        new_fields = {
+            "template_key": template_key,
+            "name": name,
+            "description": description,
+            "is_active": bool(is_active),
+        }
+        now = _to_db_datetime(datetime.now(UTC))
+        if template_id is None:
+            row_id = self._insert_returning_id(
+                "INSERT INTO standee_templates (template_key, name, description, is_active, created_at, updated_at) "
+                "OUTPUT INSERTED.template_id VALUES (?, ?, ?, ?, ?, ?)",
+                (template_key, name, description, is_active, now, now),
+            )
+            diff = {key: {"old": None, "new": value} for key, value in new_fields.items()}
+            change_type = "create"
+        else:
+            row_id = _parse_id(template_id)
+            if row_id is None:
+                raise ValueError("Invalid template id")
+            before = self._fetchone(
+                "SELECT template_key, name, description, is_active FROM standee_templates WHERE template_id = ?",
+                (row_id,),
+            )
+            if before is None:
+                raise ValueError("Standee template not found")
+            updated = self._execute(
+                "UPDATE standee_templates SET template_key = ?, name = ?, description = ?, "
+                "is_active = ?, updated_at = ? WHERE template_id = ?",
+                (template_key, name, description, is_active, now, row_id),
+            )
+            if updated == 0:
+                raise ValueError("Standee template not found")
+            before["is_active"] = bool(before["is_active"])
+            diff = self._diff_fields(before, new_fields, list(new_fields))
+            change_type = "update"
+        self._log_data_collector_change(
+            "standee_templates", str(row_id), name, change_type, changed_by, diff
+        )
+        self.conn.commit()
+        return str(row_id)
+
+    def delete_standee_template(self, template_id: str, changed_by: str) -> None:
+        row_id = _parse_id(template_id)
+        if row_id is None:
+            raise ValueError("Invalid template id")
+        before = self._fetchone(
+            "SELECT template_key, name, description, is_active FROM standee_templates WHERE template_id = ?",
+            (row_id,),
+        )
+        if before is None:
+            raise ValueError("Standee template not found")
+        try:
+            deleted = self._execute("DELETE FROM standee_templates WHERE template_id = ?", (row_id,))
+        except pyodbc.IntegrityError as exc:
+            raise ValueError("Template is in use by a project; deactivate it instead") from exc
+        if deleted == 0:
+            raise ValueError("Standee template not found")
+        before["is_active"] = bool(before["is_active"])
+        self._log_data_collector_change(
+            "standee_templates", str(row_id), before["name"], "delete", changed_by,
+            {key: {"old": value, "new": None} for key, value in before.items()},
+        )
+        self.conn.commit()
+
+    def get_standee_template_history(self, template_id: str | None = None) -> list[dict[str, Any]]:
+        """Return metadata and tier audit entries, optionally scoped to one template."""
+        metadata = self.get_data_collector_history("standee_templates", template_id)
+        prices = self.get_data_collector_history("standee_template_prices")
+        if template_id is not None:
+            prices = [row for row in prices if row["record_key"].startswith(f"{template_id}|")]
+        rows = metadata + prices
+        rows.sort(key=lambda row: (row.get("created_at", ""), int(row.get("_id", 0))), reverse=True)
+        return rows
+
+    def upsert_standee_template_price(
+        self,
+        template_id: str,
+        price_id: str | None,
+        quantity: int,
+        unit_sell_price: float,
+        changed_by: str,
+    ) -> str:
+        tid = self._resolve_template_id(template_id)
+        template = self._fetchone("SELECT name FROM standee_templates WHERE template_id = ?", (tid,))
+        new_fields = {"quantity": quantity, "unit_sell_price": unit_sell_price}
+        now = _to_db_datetime(datetime.now(UTC))
+        if price_id is None:
+            row_id = self._insert_returning_id(
+                "INSERT INTO standee_template_prices (template_id, quantity, unit_sell_price, created_at, updated_at) "
+                "OUTPUT INSERTED.template_price_id VALUES (?, ?, ?, ?, ?)",
+                (tid, quantity, unit_sell_price, now, now),
+            )
+            diff = {key: {"old": None, "new": value} for key, value in new_fields.items()}
+            change_type = "create"
+        else:
+            row_id = _parse_id(price_id)
+            if row_id is None:
+                raise ValueError("Invalid template price id")
+            before = self._fetchone(
+                "SELECT quantity, unit_sell_price FROM standee_template_prices "
+                "WHERE template_price_id = ? AND template_id = ?",
+                (row_id, tid),
+            )
+            if before is None:
+                raise ValueError("Template price not found")
+            before["unit_sell_price"] = float(before["unit_sell_price"])
+            updated = self._execute(
+                "UPDATE standee_template_prices SET quantity = ?, unit_sell_price = ?, updated_at = ? "
+                "WHERE template_price_id = ? AND template_id = ?",
+                (quantity, unit_sell_price, now, row_id, tid),
+            )
+            if updated == 0:
+                raise ValueError("Template price not found")
+            diff = self._diff_fields(before, new_fields, list(new_fields))
+            change_type = "update"
+        self._execute("UPDATE standee_templates SET updated_at = ? WHERE template_id = ?", (now, tid))
+        self._log_data_collector_change(
+            "standee_template_prices", f"{tid}|{row_id}", f"{template['name']} · {quantity}", change_type,
+            changed_by, diff,
+        )
+        self.conn.commit()
+        return str(row_id)
+
+    def delete_standee_template_price(
+        self, template_id: str, price_id: str, changed_by: str
+    ) -> None:
+        tid = self._resolve_template_id(template_id)
+        row_id = _parse_id(price_id)
+        if row_id is None:
+            raise ValueError("Invalid template price id")
+        before = self._fetchone(
+            "SELECT quantity, unit_sell_price FROM standee_template_prices "
+            "WHERE template_price_id = ? AND template_id = ?",
+            (row_id, tid),
+        )
+        if before is None:
+            raise ValueError("Template price not found")
+        deleted = self._execute(
+            "DELETE FROM standee_template_prices WHERE template_price_id = ? AND template_id = ?",
+            (row_id, tid),
+        )
+        if deleted == 0:
+            raise ValueError("Template price not found")
+        before["unit_sell_price"] = float(before["unit_sell_price"])
+        self._log_data_collector_change(
+            "standee_template_prices", f"{tid}|{row_id}", f"Quantity {before['quantity']}", "delete",
+            changed_by, {key: {"old": value, "new": None} for key, value in before.items()},
+        )
+        self.conn.commit()
+
+    # ------------------------------------------------------------------
     # Projects
     # ------------------------------------------------------------------
 
     def _project_rows_to_docs(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         elements = self._elements_by_parent("project_elements", "project_id", [r["project_id"] for r in rows])
+        templates = {int(t["template_id"]): t for t in self.list_standee_templates(include_inactive=True)}
         docs = []
         for row in rows:
             project_id = row["project_id"]
@@ -714,6 +938,10 @@ class MidnightOilDB:
                     "schema_version": row["schema_version"],
                     "owner": row["owner"],
                     "project_name": row["project_name"],
+                    "project_type": row.get("project_type") or "custom",
+                    "project_description": row.get("project_description") or "",
+                    "template_id": str(row["template_id"]) if row.get("template_id") is not None else None,
+                    "template": templates.get(int(row["template_id"])) if row.get("template_id") is not None else None,
                     "num_standees": row["num_standees"],
                     "standee_counts": json.loads(row["standee_counts"]) if row.get("standee_counts") else [],
                     "standee_type": row["standee_type"],
@@ -731,17 +959,22 @@ class MidnightOilDB:
         where you can only create your own projects) but can be overridden — e.g. duplicating
         someone else's project creates a row owned by the duplicator, which already matches.
         """
+        template_id = self._resolve_template_id(doc.get("template_id"), doc.get("template_key"))
         short_id = self._allocate_project_short_id()
         new_id = self._insert_returning_id(
-"INSERT INTO projects (owner, schema_version, project_name, num_standees, standee_counts, standee_type, short_id, include_print_sides) "
-"OUTPUT INSERTED.project_id VALUES (?, ?, ?, ?, CAST(? AS NVARCHAR(MAX)), ?, ?, ?)",
+        "INSERT INTO projects (owner, schema_version, project_name, project_type, project_description, "
+        "template_id, num_standees, standee_counts, standee_type, short_id, include_print_sides) "
+        "OUTPUT INSERTED.project_id VALUES (?, ?, ?, ?, ?, ?, ?, CAST(? AS NVARCHAR(MAX)), ?, ?, ?)",
             (
                 doc["owner"],
-                doc.get("schema_version", 1),
+                doc.get("schema_version", 3),
                 doc.get("project_name", "Untitled project"),
-                doc["num_standees"],
+                doc.get("project_type", "custom"),
+                doc.get("project_description", ""),
+                template_id,
+                doc.get("num_standees"),
                 json.dumps(doc.get("standee_counts") or []),
-                doc["standee_type"],
+                doc.get("standee_type"),
                 short_id,
                 bool(doc.get("include_print_sides", False)),
             ),
@@ -778,7 +1011,7 @@ class MidnightOilDB:
     def list_projects_by_owner(self, owner: str) -> list[dict[str, Any]]:
         """Return all project rows for an owner, newest ``_id`` first."""
         rows = self._fetchall(
-"SELECT project_id, owner, schema_version, project_name, num_standees, "
+        "SELECT project_id, owner, schema_version, project_name, project_type, project_description, template_id, num_standees, "
 "CAST(standee_counts AS NVARCHAR(MAX)) AS standee_counts, standee_type, short_id, include_print_sides "
             "FROM projects WHERE owner = ? ORDER BY project_id DESC",
             (owner,),
@@ -788,7 +1021,7 @@ class MidnightOilDB:
     def list_all_projects(self) -> list[dict[str, Any]]:
         """Return every project row across all owners, newest ``_id`` first."""
         rows = self._fetchall(
-"SELECT project_id, owner, schema_version, project_name, num_standees, "
+        "SELECT project_id, owner, schema_version, project_name, project_type, project_description, template_id, num_standees, "
 "CAST(standee_counts AS NVARCHAR(MAX)) AS standee_counts, standee_type, short_id, include_print_sides "
             "FROM projects ORDER BY project_id DESC"
         )
@@ -800,7 +1033,7 @@ class MidnightOilDB:
         if row_id is None:
             return None
         row = self._fetchone(
-"SELECT project_id, owner, schema_version, project_name, num_standees, "
+        "SELECT project_id, owner, schema_version, project_name, project_type, project_description, template_id, num_standees, "
 "CAST(standee_counts AS NVARCHAR(MAX)) AS standee_counts, standee_type, short_id, include_print_sides "
             "FROM projects WHERE project_id = ? AND owner = ?",
             (row_id, owner),
@@ -811,6 +1044,9 @@ class MidnightOilDB:
 
     def _apply_project_fields(self, row_id: int, fields: dict[str, Any]) -> None:
         """Write allowed project fields (scalars + elements) without recording history."""
+        fields = dict(fields)
+        if "template_key" in fields:
+            fields["template_id"] = self._resolve_template_id(fields.get("template_id"), fields.pop("template_key"))
         scalars = {k: fields[k] for k in _PROJECT_SCALAR_FIELDS if k in fields}
         if scalars:
             set_clause = ", ".join(f"{col} = ?" for col in scalars)
@@ -923,6 +1159,12 @@ class MidnightOilDB:
         on someone else's project should attribute "Created" to the person who actually
         triggered it, not the project owner.
         """
+        project = self._fetchone(
+            "SELECT project_type FROM projects WHERE project_id = ? AND owner = ?",
+            (int(doc["project_id"]), doc["owner"]),
+        )
+        if project is not None and project["project_type"] == "template":
+            raise ValueError("Saved quotes cannot be attached to template projects")
         created_at = _to_db_datetime(doc.get("created_at") or datetime.now(UTC))
         updated_at = _to_db_datetime(doc.get("updated_at") or datetime.now(UTC))
         new_id = self._insert_returning_id(

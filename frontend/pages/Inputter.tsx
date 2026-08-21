@@ -14,6 +14,24 @@ import { useAuth } from "@/contexts/AuthContext";
 // ── Types ──────────────────────────────────────────────────────────────────
 
 type StandeeType = "Simple" | "Moderate" | "Complex";
+type ProjectType = "custom" | "template";
+
+type TemplatePriceTier = {
+    _id: string;
+    quantity: number;
+    unit_price: number;
+    last_updated?: string;
+};
+
+type StandeeTemplate = {
+    _id: string;
+    key: string;
+    name: string;
+    description: string;
+    is_active: boolean;
+    sort_order: number;
+    tiers: TemplatePriceTier[];
+};
 
 type Element = {
     id: number;
@@ -338,7 +356,7 @@ function searchMatches(query: string, text: string): boolean {
 
 /** Searchable text for a project row in the sidebar. */
 function projectSearchBlob(p: ProjectSummary): string {
-    return `${p.project_name || ""} ${(p.standee_counts ?? [p.num_standees]).join(" ")} ${p.standee_type} ${p._id} ${p.short_id ?? ""} #${p.short_id ?? ""} ${p.owner ?? ""}`;
+    return `${p.project_name || ""} ${p.project_description ?? ""} ${p.template_name ?? ""} ${p.template_key ?? ""} ${p.project_type ?? "custom"} ${(p.standee_counts ?? [p.num_standees]).join(" ")} ${p.standee_type ?? ""} ${p._id} ${p.short_id ?? ""} #${p.short_id ?? ""} ${p.owner ?? ""}`;
 }
 
 type QuoteSearchSummary = {
@@ -393,6 +411,12 @@ export default function Inputter() {
     const [elements, setElements]           = useState<Element[]>([]);
     const [elementListKey, setElementListKey] = useState(0); // bumped to force ElementsManager reset
     const [projectName, setProjectName]     = useState("Untitled project");
+    const [projectType, setProjectType] = useState<ProjectType>("custom");
+    const [projectDescription, setProjectDescription] = useState("");
+    const [selectedTemplateId, setSelectedTemplateId] = useState("");
+    const [standeeTemplates, setStandeeTemplates] = useState<StandeeTemplate[]>([]);
+    const [templatesLoading, setTemplatesLoading] = useState(false);
+    const [templatesError, setTemplatesError] = useState<string | null>(null);
 
     // ── Saved project state ────────────────────────────────────────────────
     const [activeProjectId, setActiveProjectId]     = useState<string | null>(null);
@@ -472,7 +496,20 @@ export default function Inputter() {
                 setQuoteList([]);
                 return;
             }
-            setProjectList(Array.isArray(projectsData.projects) ? projectsData.projects : []);
+            const projects = Array.isArray(projectsData.projects)
+                ? projectsData.projects.map((project: Record<string, unknown>) => {
+                    const template =
+                        project.template && typeof project.template === "object"
+                            ? project.template as Record<string, unknown>
+                            : null;
+                    return {
+                        ...project,
+                        template_name: project.template_name ?? template?.name ?? null,
+                        template_key: project.template_key ?? template?.key ?? template?.template_key ?? null,
+                    } as ProjectSummary;
+                })
+                : [];
+            setProjectList(projects);
             setQuoteList(quotesRes.ok && Array.isArray(quotesData.quotes) ? quotesData.quotes : []);
             const version =
                 versionRes.ok && typeof versionData.version === "string" ? versionData.version : "";
@@ -488,6 +525,52 @@ export default function Inputter() {
 
 
     useEffect(() => { void refreshProjectList(); }, [refreshProjectList, projectListRefreshKey]);
+
+    useEffect(() => {
+        const controller = new AbortController();
+        void (async () => {
+            await Promise.resolve();
+            setTemplatesLoading(true);
+            setTemplatesError(null);
+            try {
+                const res = await fetch(`${API_BASE}/standee-templates?include_inactive=true`, { signal: controller.signal });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(apiErrorMessage(data) ?? "Could not load template pricing");
+                const rawTemplates = Array.isArray(data.data) ? data.data : [];
+                const templates: StandeeTemplate[] = rawTemplates.map((raw: Record<string, unknown>) => ({
+                    _id: String(raw._id ?? raw.template_id ?? ""),
+                    key: String(raw.key ?? raw.template_key ?? ""),
+                    name: String(raw.name ?? raw.display_name ?? "Unnamed template"),
+                    description: String(raw.description ?? ""),
+                    is_active: Boolean(raw.is_active),
+                    sort_order: Number(raw.sort_order ?? 0),
+                    tiers: (Array.isArray(raw.tiers) ? raw.tiers : Array.isArray(raw.prices) ? raw.prices : []).map((tier: Record<string, unknown>) => ({
+                        _id: String(tier._id ?? tier.template_price_id ?? ""),
+                        quantity: Number(tier.quantity ?? 0),
+                        unit_price: Number(tier.unit_price ?? tier.unit_sell_price ?? 0),
+                        last_updated:
+                            typeof tier.last_updated === "string"
+                                ? tier.last_updated
+                                : typeof tier.updated_at === "string"
+                                  ? tier.updated_at
+                                  : undefined,
+                    })),
+                }));
+                templates.sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
+                setStandeeTemplates(templates);
+            } catch (err) {
+                const aborted =
+                    controller.signal.aborted
+                    || (err instanceof DOMException && err.name === "AbortError")
+                    || (err instanceof Error && err.name === "AbortError");
+                if (aborted) return;
+                setTemplatesError(err instanceof Error ? err.message : "Could not load template pricing");
+            } finally {
+                if (!controller.signal.aborted) setTemplatesLoading(false);
+            }
+        })();
+        return () => controller.abort();
+    }, [projectListRefreshKey, projectType]);
 
     // Re-check cost-table version when returning from Data Collector (or another tab).
     useEffect(() => {
@@ -561,15 +644,16 @@ export default function Inputter() {
         return matched.map((p) => {
             const quotes = quotesByProjectId.get(p._id) ?? [];
             // Newest quote first (GET /quotes sorts by _id desc).
-            return { ...p, costsStale: isQuoteCostsStale(quotes[0]) };
+            return { ...p, costsStale: p.project_type === "template" ? false : isQuoteCostsStale(quotes[0]) };
         });
     }, [projectList, projectSearchQuery, quotesByProjectId, costTablesVersion]);
 
     const activeProjectCostsStale = useMemo(() => {
         if (!activeProjectId) return false;
+        if (projectType === "template") return false;
         const quotes = quotesByProjectId.get(activeProjectId) ?? [];
         return isQuoteCostsStale(quotes[0]);
-    }, [activeProjectId, quotesByProjectId, costTablesVersion]);
+    }, [activeProjectId, projectType, quotesByProjectId, costTablesVersion]);
 
     // Owner of a project in the sidebar list (needed for owner-scoped API calls on
     // projects that belong to other users).
@@ -583,6 +667,9 @@ export default function Inputter() {
     // ── Project actions ────────────────────────────────────────────────────
 
     function resetEstimatorForm() {
+        setProjectType("custom");
+        setProjectDescription("");
+        setSelectedTemplateId("");
         setStandeeCounts([...DEFAULT_STANDEE_COUNTS]);
         setStandeeType("Simple");
         setIncludePrintSides(false);
@@ -614,12 +701,35 @@ export default function Inputter() {
     async function saveCurrentProject(): Promise<{ success: boolean; projectId?: string; shortId?: string; errorMessage?: string }> {
         const owner = authUsername;
         if (!owner?.trim()) return { success: false, errorMessage: "Not signed in" };
-        if (!canCalculate) {
-            return { success: false, errorMessage: "Enter 1–5 unique positive quantities and add at least one element" };
+        if (!canSaveProject) {
+            return {
+                success: false,
+                errorMessage: projectType === "template"
+                    ? "Enter a project description and select an available standee template"
+                    : "Enter 1–5 unique positive quantities and add at least one element",
+            };
         }
         const counts = standeeCounts.filter((count): count is number => typeof count === "number" && count > 0);
-        const num = counts[0]!;
+        const num = counts[0];
         const apiElems   = elementsForApi(elements);
+        const projectFields = projectType === "template"
+            ? {
+                project_type: "template" as const,
+                project_name: projectName.trim() || "Untitled project",
+                project_description: projectDescription.trim(),
+                template_id: Number(selectedTemplateId),
+            }
+            : {
+                project_type: "custom" as const,
+                project_name: projectName.trim() || "Untitled project",
+                project_description: "",
+                template_id: null,
+                num_standees: num,
+                standee_counts: counts,
+                standee_type: standeeType,
+                elements: apiElems,
+                include_print_sides: includePrintSides,
+            };
         try {
             if (activeProjectId) {
                 // PATCH /projects/:id → update existing project (scoped to its own owner,
@@ -630,14 +740,7 @@ export default function Inputter() {
                     {
                         method: "PATCH",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            project_name: projectName.trim() || "Untitled project",
-                            num_standees: num,
-                            standee_counts: counts,
-                            standee_type: standeeType,
-                            elements: apiElems,
-                            include_print_sides: includePrintSides,
-                        }),
+                        body: JSON.stringify(projectFields),
                     },
                 );
                 const data = await res.json().catch(() => ({}));
@@ -663,14 +766,9 @@ export default function Inputter() {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    schema_version: 2,
+                    schema_version: 3,
                     owner: owner.trim(),
-                    project_name: projectName.trim() || "Untitled project",
-                    num_standees: num,
-                    standee_counts: counts,
-                    standee_type: standeeType,
-                    elements: apiElems,
-                    include_print_sides: includePrintSides,
+                    ...projectFields,
                 }),
             });
             const data = await res.json().catch(() => ({}));
@@ -707,6 +805,16 @@ export default function Inputter() {
             setActiveProjectShortId(typeof doc.short_id === "string" ? doc.short_id : null);
             setActiveProjectOwner(typeof doc.owner === "string" ? doc.owner : owner);
             setProjectName(typeof doc.project_name === "string" ? doc.project_name : "Untitled project");
+            const loadedProjectType: ProjectType = doc.project_type === "template" ? "template" : "custom";
+            setProjectType(loadedProjectType);
+            setProjectDescription(typeof doc.project_description === "string" ? doc.project_description : "");
+            setSelectedTemplateId(
+                doc.template_id !== null && doc.template_id !== undefined
+                    ? String(doc.template_id)
+                    : doc.template && typeof doc.template === "object" && doc.template._id !== undefined
+                      ? String(doc.template._id)
+                      : "",
+            );
             setStandeeType((doc.standee_type as StandeeType) || "Simple");
 setIncludePrintSides(Boolean(doc.include_print_sides));
 setSavedIncludePrintSides(Boolean(doc.include_print_sides));
@@ -786,6 +894,11 @@ setStandeeCounts(Array.from({ length: 5 }, (_, index) => savedCounts[index] ?? "
         validStandeeCounts.length === enteredStandeeCounts.length &&
         new Set(validStandeeCounts).size === validStandeeCounts.length;
     const canCalculate = hasValidStandeeCounts && elements.length > 0;
+    const selectedTemplate = standeeTemplates.find((template) => template._id === selectedTemplateId) ?? null;
+    const canSaveTemplate =
+        projectDescription.trim().length > 0 &&
+        Boolean(selectedTemplate?.is_active && selectedTemplate.tiers.length > 0);
+    const canSaveProject = projectType === "template" ? canSaveTemplate : canCalculate;
 
     // Wrap setElements for ElementsManager so any user-driven element change marks the project dirty
     const dirtySetElements = useCallback(
@@ -1043,11 +1156,14 @@ const persistedState = quantityVariants[String(num)]!;
 
     // "Save" button — saves without generating a quote
     async function handleSave() {
-        if (!canCalculate) return;
+        if (!canSaveProject) return;
         if (!authUsername?.trim()) return;
         const r = await saveCurrentProject();
         if (r.success) {
-            if (isDirty) { setIsDirty(false); setNeedsRecalc(true); }
+            if (isDirty) {
+                setIsDirty(false);
+                if (projectType === "custom") setNeedsRecalc(true);
+            }
             setProjectListRefreshKey((v) => v + 1);
             showToast(r.shortId ? `Project saved — ID #${r.shortId}` : "Project saved", "save");
         } else if (r.errorMessage) console.error(r.errorMessage);
@@ -1254,7 +1370,7 @@ function handleQuantityVariantSaved(quantity: number, state: PersistedQuoteState
     }
 
     // ── Quote breakdown view (shown after generating or loading a saved quote) ─
-    if (activeQuoteData && activeQuotePayload && activeQuoteQuantity !== null) {
+    if (projectType === "custom" && activeQuoteData && activeQuotePayload && activeQuoteQuantity !== null) {
         return (
             <>
                 <QuoteBreakdown
@@ -1323,9 +1439,13 @@ function handleQuantityVariantSaved(quantity: number, state: PersistedQuoteState
             {/* Main estimator form */}
             <div className="flex flex-col items-center flex-1 min-w-0 min-h-0 overflow-x-hidden overflow-y-auto px-8 py-6 bg-white">
                 <div className="w-full max-w-3xl mb-4 shrink-0">
-                    <div className="text-xs font-bold text-[#FFC843] tracking-widest uppercase mb-1">// ESTIMATOR</div>
+                    <div className="text-xs font-bold text-[#FFC843] tracking-widest uppercase mb-1">
+                        {projectType === "template" ? "// TEMPLATE PROJECT" : "// ESTIMATOR"}
+                    </div>
                     <div className="flex items-center gap-3 flex-wrap">
-                        <div className="text-3xl font-black text-[#000005] uppercase tracking-tight">Quote Estimate</div>
+                        <div className="text-3xl font-black text-[#000005] uppercase tracking-tight">
+                            {projectType === "template" ? "Template Pricing" : "Quote Estimate"}
+                        </div>
                         {activeProjectShortId && (
                             <span
                                 title="Project ID"
@@ -1343,7 +1463,11 @@ function handleQuantityVariantSaved(quantity: number, state: PersistedQuoteState
                             </span>
                         )}
                     </div>
-                    <p className="text-xs text-[#B1B3B6] mt-1 font-semibold">Configure parameters to generate a cost estimate</p>
+                    <p className="text-xs text-[#B1B3B6] mt-1 font-semibold">
+                        {projectType === "template"
+                            ? "Select a standard standee format and review live pricing"
+                            : "Configure parameters to generate a cost estimate"}
+                    </p>
                 </div>
 
                 <div className="flex flex-col w-full max-w-4xl shrink-0 border-2 bg-white border-[#E0E0E0] rounded-md text-[#B1B3B6] overflow-hidden">
@@ -1354,152 +1478,241 @@ function handleQuantityVariantSaved(quantity: number, state: PersistedQuoteState
                             <span className="text-[#FFC843]">// </span>01 — PROJECT DETAILS
                         </div>
                         <div className="flex flex-col gap-4 w-full">
-                        <div className="flex flex-row gap-4 w-full">
-                            <div className="flex-1 min-w-0">
-                                <div className="text-[10px] font-bold mb-2 uppercase tracking-wider text-[#B1B3B6]">Project name</div>
-                                <input
-                                    type="text"
-                                    value={projectName}
-                                    onChange={(e) => { setProjectName(e.target.value); if (activeProjectId) setIsDirty(true); }}
-                                    placeholder="Untitled project"
-                                    className="border-2 bg-white border-[#E0E0E0] rounded-sm p-1.5 outline-none text-[#000005] text-xs w-full bg-[#F8F8F8] focus:border-[#FFC843] font-semibold transition-colors"
-                                />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <div className="text-[10px] font-bold mb-2 uppercase tracking-wider text-[#B1B3B6]">Standee Type</div>
-                                <Dropdown
-                                    key={elementListKey}
-                                    options={["Simple", "Moderate", "Complex"]}
-                                    currOption={standeeType}
-                                    onSelect={(val: StandeeType) => { setStandeeType(val); if (activeProjectId) setIsDirty(true); }}
-                                    width="w-full"
-                                />
-                            </div>
-                        </div>
-                        <div>
-                            <div className="flex items-center justify-between gap-3 mb-2">
-                                <div className="text-[10px] font-bold uppercase tracking-wider text-[#B1B3B6]">Quote Quantities (1–5)</div>
-                                {!hasValidStandeeCounts && (
-                                    <span className="text-[9px] font-bold text-red-600">Enter 1–5 unique positive quantities</span>
+                            <div>
+                                <div className="text-[10px] font-bold mb-2 uppercase tracking-wider text-[#B1B3B6]">Project Type</div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {(["custom", "template"] as ProjectType[]).map((type) => (
+                                        <button
+                                            key={type}
+                                            type="button"
+                                            disabled={Boolean(activeProjectId)}
+                                            onClick={() => {
+                                                setProjectType(type);
+                                                setActiveQuoteData(null);
+                                                setActiveQuotePayload(null);
+                                                setProjectDescription("");
+                                                setSelectedTemplateId("");
+                                            }}
+                                            className={`rounded-sm border-2 px-3 py-2 text-xs font-black uppercase tracking-wider transition-colors ${
+                                                projectType === type
+                                                    ? "border-[#FFC843] bg-[#FFF8E1] text-[#000005]"
+                                                    : "border-[#E0E0E0] bg-white text-[#B1B3B6] hover:border-[#B1B3B6]"
+                                            } disabled:cursor-not-allowed disabled:opacity-70`}
+                                        >
+                                            {type === "custom" ? "Custom Project" : "Template Project"}
+                                        </button>
+                                    ))}
+                                </div>
+                                {activeProjectId && (
+                                    <p className="mt-1 text-[9px] font-semibold text-[#B1B3B6]">Project type cannot be changed after creation.</p>
                                 )}
                             </div>
-                            <div className="grid grid-cols-5 gap-3">
-                                {standeeCounts.map((count, index) => (
-                                    <label key={index} className="flex flex-col gap-1">
-                                        <span className="text-[9px] font-bold uppercase tracking-wider text-[#B1B3B6]">
-                                            Quantity {index + 1}
-                                        </span>
-                                <input
-                                    type="number"
-                                            min={1}
-                                            step={1}
-                                            value={count}
+
+                            <div className="flex flex-row gap-4 w-full">
+                                <div className="flex-1 min-w-0">
+                                    <div className="text-[10px] font-bold mb-2 uppercase tracking-wider text-[#B1B3B6]">Project name</div>
+                                    <input
+                                        type="text"
+                                        value={projectName}
+                                        onChange={(e) => { setProjectName(e.target.value); if (activeProjectId) setIsDirty(true); }}
+                                        placeholder="Untitled project"
+                                        className="border-2 bg-white border-[#E0E0E0] rounded-sm p-1.5 outline-none text-[#000005] text-xs w-full focus:border-[#FFC843] font-semibold transition-colors"
+                                    />
+                                </div>
+                                {projectType === "custom" ? (
+                                    <div className="flex-1 min-w-0">
+                                        <div className="text-[10px] font-bold mb-2 uppercase tracking-wider text-[#B1B3B6]">Standee Type</div>
+                                        <Dropdown
+                                            key={elementListKey}
+                                            options={["Simple", "Moderate", "Complex"]}
+                                            currOption={standeeType}
+                                            onSelect={(val: StandeeType) => { setStandeeType(val); if (activeProjectId) setIsDirty(true); }}
+                                            width="w-full"
+                                        />
+                                    </div>
+                                ) : (
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-1.5 mb-2">
+                                            <span className="text-[10px] font-bold uppercase tracking-wider text-[#B1B3B6]">Standee Template</span>
+                                            {selectedTemplate && (
+                                                <span
+                                                    title={selectedTemplate.description}
+                                                    className="flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-[#B1B3B6] text-[9px] font-black text-[#64748B]"
+                                                >
+                                                    i
+                                                </span>
+                                            )}
+                                        </div>
+                                        <select
+                                            value={selectedTemplateId}
                                             onChange={(e) => {
-                                                const value = e.target.value === "" ? "" : Number(e.target.value);
-                                                setStandeeCounts((prev) => prev.map((item, i) => (i === index ? value : item)));
+                                                setSelectedTemplateId(e.target.value);
                                                 if (activeProjectId) setIsDirty(true);
                                             }}
-                                            placeholder={String(DEFAULT_STANDEE_COUNTS[index])}
-                                    className="border-2 bg-white border-[#E0E0E0] rounded-sm p-1.5 outline-none text-[#000005] text-xs w-full bg-[#F8F8F8] focus:border-[#FFC843] font-semibold transition-colors"
-                                />
-                                    </label>
-                                ))}
-                            </div>
-                        </div>
-                        <div className="group border-2 border-[#E0E0E0] rounded-sm bg-white p-3 mt-3">
-                            <div
-                                className="w-full flex items-center justify-between gap-3 cursor-pointer"
-                                onClick={() => setBudgetSolveOpen((v) => !v)}
-                            >
-                                <span className="text-[10px] font-black text-[#000005] uppercase tracking-widest">
-                                    <span className="text-[#FFC843]">// </span>Solve by Budget
-                                </span>
-                                <span
-                                    className={`text-[#000005] group-hover:text-[#FFC843] transition-all duration-300 select-none ${budgetSolveOpen ? "rotate-180" : "rotate-0"}`}
-                                    aria-hidden
-                                >
-                                    ▾
-                                </span>
-                            </div>
-                            <div className={`grid transition-all duration-300 ease-in-out ${budgetSolveOpen ? "grid-rows-[1fr] mt-3" : "grid-rows-[0fr]"}`}>
-                                <div className="overflow-hidden">
-                                    <div className="flex items-end gap-3">
-                                        <div className="flex-1 min-w-0">
-                                            <span className="text-[9px] font-bold uppercase tracking-wider text-[#B1B3B6]">Budget ($)</span>
-                                            <input
-                                                type="number"
-                                                min={0}
-                                                step={1}
-                                                value={budgetInput}
-                                                onChange={(e) => setBudgetInput(e.target.value)}
-                                                placeholder="e.g. 5000"
-                                                className="mt-1 border-2 bg-white border-[#E0E0E0] rounded-sm p-1.5 outline-none text-[#000005] text-xs w-full bg-[#F8F8F8] focus:border-[#FFC843] font-semibold transition-colors"
-                                            />
-                                        </div>
-                                        <button
-                                            type="button"
-                                            disabled={budgetSolving || !budgetInput || elements.length === 0}
-                                            onClick={() => void handleSolveByBudget()}
-                                            className="text-xs text-center font-black py-2 px-4 rounded-sm uppercase tracking-widest transition-all duration-200 border-2 border-[#000005] text-[#000005] bg-white hover:bg-[#F4F4F4] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white"
+                                            disabled={templatesLoading}
+                                            className="w-full rounded-sm border-2 border-[#E0E0E0] bg-white px-3 py-1.5 text-xs font-semibold text-[#000005] outline-none focus:border-[#FFC843]"
                                         >
-                                            {budgetSolving ? "Solving…" : "Solve"}
-                                        </button>
+                                            <option value="">{templatesLoading ? "Loading templates…" : "Select a template"}</option>
+                                            {standeeTemplates.map((template) => (
+                                                <option key={template._id} value={template._id} disabled={!template.is_active || template.tiers.length === 0}>
+                                                    {template.name}{!template.is_active || template.tiers.length === 0 ? " — Pricing unavailable" : ""}
+                                                </option>
+                                            ))}
+                                        </select>
                                     </div>
-                                    {budgetResults && (
-                                        <div className="mt-2 text-[10px] font-semibold text-[#2E7D32]">
-                                            {budgetResults
-                                                .map((r) => `Scenario ${r.scenario}: ${r.quantity} standees ≈ $${r.price.toFixed(2)}`)
-                                                .join(" · ")}
+                                )}
+                            </div>
+
+                            {projectType === "custom" ? (
+                                <>
+                                    <div>
+                                        <div className="flex items-center justify-between gap-3 mb-2">
+                                            <div className="text-[10px] font-bold uppercase tracking-wider text-[#B1B3B6]">Quote Quantities (1–5)</div>
+                                            {!hasValidStandeeCounts && (
+                                                <span className="text-[9px] font-bold text-red-600">Enter 1–5 unique positive quantities</span>
+                                            )}
+                                        </div>
+                                        <div className="grid grid-cols-5 gap-3">
+                                            {standeeCounts.map((count, index) => (
+                                                <label key={index} className="flex flex-col gap-1">
+                                                    <span className="text-[9px] font-bold uppercase tracking-wider text-[#B1B3B6]">Quantity {index + 1}</span>
+                                                    <input
+                                                        type="number"
+                                                        min={1}
+                                                        step={1}
+                                                        value={count}
+                                                        onChange={(e) => {
+                                                            const value = e.target.value === "" ? "" : Number(e.target.value);
+                                                            setStandeeCounts((prev) => prev.map((item, i) => (i === index ? value : item)));
+                                                            if (activeProjectId) setIsDirty(true);
+                                                        }}
+                                                        placeholder={String(DEFAULT_STANDEE_COUNTS[index])}
+                                                        className="border-2 bg-white border-[#E0E0E0] rounded-sm p-1.5 outline-none text-[#000005] text-xs w-full focus:border-[#FFC843] font-semibold transition-colors"
+                                                    />
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="group border-2 border-[#E0E0E0] rounded-sm bg-white p-3 mt-3">
+                                        <div className="w-full flex items-center justify-between gap-3 cursor-pointer" onClick={() => setBudgetSolveOpen((v) => !v)}>
+                                            <span className="text-[10px] font-black text-[#000005] uppercase tracking-widest"><span className="text-[#FFC843]">// </span>Solve by Budget</span>
+                                            <span className={`text-[#000005] group-hover:text-[#FFC843] transition-all duration-300 select-none ${budgetSolveOpen ? "rotate-180" : "rotate-0"}`} aria-hidden>▾</span>
+                                        </div>
+                                        <div className={`grid transition-all duration-300 ease-in-out ${budgetSolveOpen ? "grid-rows-[1fr] mt-3" : "grid-rows-[0fr]"}`}>
+                                            <div className="overflow-hidden">
+                                                <div className="flex items-end gap-3">
+                                                    <div className="flex-1 min-w-0">
+                                                        <span className="text-[9px] font-bold uppercase tracking-wider text-[#B1B3B6]">Budget ($)</span>
+                                                        <input type="number" min={0} step={1} value={budgetInput} onChange={(e) => setBudgetInput(e.target.value)} placeholder="e.g. 5000" className="mt-1 border-2 bg-white border-[#E0E0E0] rounded-sm p-1.5 outline-none text-[#000005] text-xs w-full focus:border-[#FFC843] font-semibold transition-colors" />
+                                                    </div>
+                                                    <button type="button" disabled={budgetSolving || !budgetInput || elements.length === 0} onClick={() => void handleSolveByBudget()} className="text-xs text-center font-black py-2 px-4 rounded-sm uppercase tracking-widest transition-all duration-200 border-2 border-[#000005] text-[#000005] bg-white hover:bg-[#F4F4F4] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white">
+                                                        {budgetSolving ? "Solving…" : "Solve"}
+                                                    </button>
+                                                </div>
+                                                {budgetResults && <div className="mt-2 text-[10px] font-semibold text-[#2E7D32]">{budgetResults.map((r) => `Scenario ${r.scenario}: ${r.quantity} standees ≈ $${r.price.toFixed(2)}`).join(" · ")}</div>}
+                                                {budgetError && <div className="mt-1 text-[10px] font-bold text-red-600">{budgetError}</div>}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <label className="flex flex-col gap-2">
+                                        <span className="text-[10px] font-bold uppercase tracking-wider text-[#B1B3B6]">Project Description</span>
+                                        <textarea
+                                            value={projectDescription}
+                                            onChange={(e) => {
+                                                setProjectDescription(e.target.value);
+                                                if (activeProjectId) setIsDirty(true);
+                                            }}
+                                            rows={3}
+                                            maxLength={2000}
+                                            placeholder="Describe this project…"
+                                            className="w-full resize-y rounded-sm border-2 border-[#E0E0E0] bg-white px-3 py-2 text-xs font-semibold text-[#000005] outline-none focus:border-[#FFC843]"
+                                        />
+                                    </label>
+                                    {templatesError && <p className="text-[10px] font-bold text-red-600">{templatesError}</p>}
+                                    {selectedTemplate && (
+                                        <div className="rounded-sm border-2 border-[#E0E0E0] bg-[#F8F8F8] p-3">
+                                            <div className="text-[10px] font-black uppercase tracking-wider text-[#000005]">{selectedTemplate.name}</div>
+                                            <p className="mt-1 whitespace-pre-line text-[10px] font-semibold leading-relaxed text-[#64748B]">{selectedTemplate.description}</p>
                                         </div>
                                     )}
-                                    {budgetError && (
-                                        <div className="mt-1 text-[10px] font-bold text-red-600">{budgetError}</div>
-                                    )}
+                                </>
+                            )}
+                        </div>
+                    </div>
+
+                    {projectType === "custom" ? (
+                        <>
+                            {/* 02 — element list */}
+                            <div className="flex flex-col flex-1 min-h-0 items-start w-full p-4 border-b-2 border-[#E0E0E0] overflow-hidden">
+                                <div className="text-[10px] font-black mb-3 uppercase tracking-widest text-[#000005]">
+                                    <span className="text-[#FFC843]">// </span>02 — ELEMENTS
+                                    <span className="ml-2 text-[#FFC843] font-bold">({elements.length} added)</span>
+                                </div>
+                                <div className="w-full flex flex-col flex-1 min-h-0 overflow-hidden">
+                                    <ElementsManager key={elementListKey} elements={elements} setElements={dirtySetElements} />
                                 </div>
                             </div>
-                        </div>
-                        </div>
-                    </div>
 
-                    {/* 02 — element list */}
-                    <div className="flex flex-col flex-1 min-h-0 items-start w-full p-4 border-b-2 border-[#E0E0E0] overflow-hidden">
-                        <div className="text-[10px] font-black mb-3 uppercase tracking-widest text-[#000005]">
-                            <span className="text-[#FFC843]">// </span>02 — ELEMENTS
-                            <span className="ml-2 text-[#FFC843] font-bold">({elements.length} added)</span>
+                            <div className="flex w-full flex-row items-center px-4 py-3 border-b-2 border-[#E0E0E0] shrink-0">
+                                <label className="flex items-center gap-2 cursor-pointer select-none">
+                                    <button
+                                        type="button"
+                                        role="checkbox"
+                                        aria-checked={includePrintSides}
+                                        onClick={() => {
+                                            setIncludePrintSides((v) => {
+                                                const next = !v;
+                                                if (activeProjectId && next !== savedIncludePrintSides) setIsDirty(true);
+                                                return next;
+                                            });
+                                        }}
+                                        className={`flex items-center justify-center w-5 h-5 rounded-sm border-2 transition-colors ${
+                                            includePrintSides ? "bg-[#FFC843] border-[#FFC843]" : "bg-white border-[#E0E0E0]"
+                                        }`}
+                                    >
+                                        {includePrintSides && (
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#000005" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                                <polyline points="20 6 9 17 4 12" />
+                                            </svg>
+                                        )}
+                                    </button>
+                                    <span className="text-xs font-bold text-[#000005]">Include Print Sides</span>
+                                </label>
+                            </div>
+                        </>
+                    ) : (
+                        <div className="flex flex-col w-full p-5 border-b-2 border-[#E0E0E0]">
+                            <div className="text-[10px] font-black mb-3 uppercase tracking-widest text-[#000005]">
+                                <span className="text-[#FFC843]">// </span>02 — TEMPLATE PRICING
+                            </div>
+                            {!selectedTemplate ? (
+                                <p className="text-xs font-semibold text-[#B1B3B6]">Select an available standee template to view pricing.</p>
+                            ) : selectedTemplate.tiers.length === 0 ? (
+                                <p className="text-xs font-bold text-red-600">Pricing is not yet available for this template.</p>
+                            ) : (
+                                <div className="overflow-hidden rounded-sm border-2 border-[#E0E0E0]">
+                                    <div className="grid grid-cols-3 bg-[#F1F5F9] px-4 py-2 text-[9px] font-black uppercase tracking-wider text-[#64748B]">
+                                        <span>Quantity</span>
+                                        <span className="text-right">Unit Price</span>
+                                        <span className="text-right">Total</span>
+                                    </div>
+                                    {[...selectedTemplate.tiers]
+                                        .sort((a, b) => a.quantity - b.quantity)
+                                        .map((tier) => (
+                                            <div key={tier._id || tier.quantity} className="grid grid-cols-3 border-t border-[#E0E0E0] bg-white px-4 py-3 text-xs font-semibold text-[#000005]">
+                                                <span>{tier.quantity.toLocaleString()}</span>
+                                                <span className="text-right">${tier.unit_price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                                <span className="text-right font-black">${(tier.quantity * tier.unit_price).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                            </div>
+                                        ))}
+                                </div>
+                            )}
+                            <p className="mt-2 text-[9px] font-semibold text-[#B1B3B6]">Pricing reflects the current values maintained in Data Collector.</p>
                         </div>
-                        <div className="w-full flex flex-col flex-1 min-h-0 overflow-hidden">
-                            <ElementsManager key={elementListKey} elements={elements} setElements={dirtySetElements} />
-                        </div>
-                    </div>
-
-                    {/* Include Print Sides */}
-                    <div className="flex w-full flex-row items-center px-4 py-3 border-b-2 border-[#E0E0E0] shrink-0">
-                        <label className="flex items-center gap-2 cursor-pointer select-none">
-                            <button
-                                type="button"
-                                role="checkbox"
-                                aria-checked={includePrintSides}
-                                onClick={() => {
-                                    setIncludePrintSides((v) => {
-                                        const next = !v;
-                                        // Toggling back to the last-saved value shouldn't dirty the project.
-                                        if (activeProjectId && next !== savedIncludePrintSides) setIsDirty(true);
-                                        return next;
-                                    });
-                                }}
-                                className={`flex items-center justify-center w-5 h-5 rounded-sm border-2 transition-colors ${
-                                    includePrintSides ? "bg-[#FFC843] border-[#FFC843]" : "bg-white border-[#E0E0E0]"
-                                }`}
-                            >
-                                {includePrintSides && (
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#000005" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                                        <polyline points="20 6 9 17 4 12" />
-                                    </svg>
-                                )}
-                            </button>
-                            <span className="text-xs font-bold text-[#000005]">Include Print Sides</span>
-                        </label>
-                    </div>
+                    )}
 
                     {/* Action buttons */}
                     <div className="flex w-full flex-row items-center px-4 py-3 gap-3 shrink-0 flex-wrap">
@@ -1509,45 +1722,49 @@ function handleQuantityVariantSaved(quantity: number, state: PersistedQuoteState
                         >
                             {activeProjectId ? "VIEW HISTORY" : "CLEAR"}
                         </div>
+                        {projectType === "custom" && (
+                            <div
+                                onClick={() => setUploadBlueOpen(true)}
+                                className="text-xs text-center font-black text-[#B1B3B6] border-2 border-[#E0E0E0] py-3 rounded-sm flex-1 min-w-[100px] cursor-pointer hover:bg-[#F4F4F4] hover:text-[#000005] hover:border-[#B1B3B6] transition-all duration-200 uppercase tracking-widest"
+                            >
+                                UPLOAD BLUE
+                            </div>
+                        )}
                         <div
-                            onClick={() => setUploadBlueOpen(true)}
-                            className="text-xs text-center font-black text-[#B1B3B6] border-2 border-[#E0E0E0] py-3 rounded-sm flex-1 min-w-[100px] cursor-pointer hover:bg-[#F4F4F4] hover:text-[#000005] hover:border-[#B1B3B6] transition-all duration-200 uppercase tracking-widest"
-                        >
-                            UPLOAD BLUE
-                        </div>
-                        <div
-                            onClick={canCalculate ? () => void handleSave() : undefined}
+                            onClick={canSaveProject ? () => void handleSave() : undefined}
                             className={`text-xs text-center font-black py-3 rounded-sm flex-1 min-w-[100px] transition-all duration-200 uppercase tracking-widest ${
-                                canCalculate
+                                canSaveProject
                                     ? "border-2 border-[#000005] text-[#000005] bg-white hover:bg-[#F4F4F4] cursor-pointer"
                                     : "border-2 border-[#E0E0E0] text-[#B1B3B6] cursor-not-allowed"
                             }`}
                         >
                             SAVE
                         </div>
-                        <div
-                            onClick={canCalculate && !isSavingBeforeContinue && !(activeProjectId && isDirty) ? () => void handleContinue() : undefined}
-                            className={`group flex flex-row justify-center gap-4 text-xs font-black py-3 rounded-sm flex-[2] min-w-[180px] transition-all duration-200 ease-in-out uppercase tracking-widest ${
-                                canCalculate && !isSavingBeforeContinue && !(activeProjectId && isDirty)
-                                    ? "bg-[#FFC843] text-[#000005] hover:bg-[#000005] hover:text-white cursor-pointer"
-                                    : "bg-[#E0E0E0] text-[#B1B3B6] cursor-not-allowed"
-                            }`}
-                        >
-                            {isSavingBeforeContinue ? "SAVING…"
-                                : activeProjectId && isDirty ? "VIEW QUOTE"
-                                : activeProjectId && needsRecalc ? "RE-CALCULATE QUOTE"
-                                : activeProjectId ? "VIEW QUOTE"
-                                : "BUILD QUOTE"}{" "}
-                            <img
-                                src="/submitarrow.svg"
-                                alt=""
-                                className={`transition-all duration-300 ease-in-out ${
+                        {projectType === "custom" && (
+                            <div
+                                onClick={canCalculate && !isSavingBeforeContinue && !(activeProjectId && isDirty) ? () => void handleContinue() : undefined}
+                                className={`group flex flex-row justify-center gap-4 text-xs font-black py-3 rounded-sm flex-[2] min-w-[180px] transition-all duration-200 ease-in-out uppercase tracking-widest ${
                                     canCalculate && !isSavingBeforeContinue && !(activeProjectId && isDirty)
-                                        ? "group-hover:translate-x-1 group-hover:invert"
-                                        : "opacity-40"
+                                        ? "bg-[#FFC843] text-[#000005] hover:bg-[#000005] hover:text-white cursor-pointer"
+                                        : "bg-[#E0E0E0] text-[#B1B3B6] cursor-not-allowed"
                                 }`}
-                            />
-                        </div>
+                            >
+                                {isSavingBeforeContinue ? "SAVING…"
+                                    : activeProjectId && isDirty ? "VIEW QUOTE"
+                                    : activeProjectId && needsRecalc ? "RE-CALCULATE QUOTE"
+                                    : activeProjectId ? "VIEW QUOTE"
+                                    : "BUILD QUOTE"}{" "}
+                                <img
+                                    src="/submitarrow.svg"
+                                    alt=""
+                                    className={`transition-all duration-300 ease-in-out ${
+                                        canCalculate && !isSavingBeforeContinue && !(activeProjectId && isDirty)
+                                            ? "group-hover:translate-x-1 group-hover:invert"
+                                            : "opacity-40"
+                                    }`}
+                                />
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

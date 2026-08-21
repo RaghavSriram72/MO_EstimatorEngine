@@ -7,9 +7,14 @@ export type ProjectSummary = {
     short_id?: string;
     owner?: string;
     project_name: string;
-    num_standees: number;
+    project_type?: "custom" | "template";
+    project_description?: string;
+    template_id?: string | null;
+    template_key?: string | null;
+    template_name?: string | null;
+    num_standees: number | null;
     standee_counts?: number[];
-    standee_type: "Simple" | "Moderate" | "Complex";
+    standee_type: "Simple" | "Moderate" | "Complex" | null;
     /** True when saved quote costs may be out of date vs data-collector tables. */
     costsStale?: boolean;
 };
@@ -214,17 +219,33 @@ export default function ProjectSidebar({
                                             #{p.short_id}
                                         </span>
                                     )}
-                                    <span
-                                        title={`${p.standee_counts?.length ? p.standee_counts.join(", ") : p.num_standees} standees`}
-                                        className="shrink-0 text-[9px] text-[#B1B3B6] font-semibold"
-                                    >
-                                        {(p.standee_counts?.length ?? 0) > 1
-                                            ? `${p.standee_counts?.length} quantities`
-                                            : `${p.standee_counts?.[0] ?? p.num_standees} standees`}
-                                    </span>
-                                    <span className={`shrink-0 text-[8.5px] font-bold px-1.5 py-0.5 rounded-full ${STANDEE_BADGE[p.standee_type] ?? "bg-[#F0F0F0] text-[#888]"}`}>
-                                        {p.standee_type}
-                                    </span>
+                                    {p.project_type === "template" ? (
+                                        <>
+                                            <span className="shrink-0 rounded-sm bg-[#FFF8E1] px-1.5 py-0.5 text-[8.5px] font-black uppercase tracking-wide text-[#8a6d1f]">
+                                                Template
+                                            </span>
+                                            <span
+                                                title={p.project_description || p.template_name || "Template project"}
+                                                className="truncate text-[9px] font-semibold text-[#64748B]"
+                                            >
+                                                {p.template_name || "Standee template"}
+                                            </span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <span
+                                                title={`${p.standee_counts?.length ? p.standee_counts.join(", ") : p.num_standees} standees`}
+                                                className="shrink-0 text-[9px] text-[#B1B3B6] font-semibold"
+                                            >
+                                                {(p.standee_counts?.length ?? 0) > 1
+                                                    ? `${p.standee_counts?.length} quantities`
+                                                    : `${p.standee_counts?.[0] ?? p.num_standees} standees`}
+                                            </span>
+                                            <span className={`shrink-0 text-[8.5px] font-bold px-1.5 py-0.5 rounded-full ${STANDEE_BADGE[p.standee_type ?? ""] ?? "bg-[#F0F0F0] text-[#888]"}`}>
+                                                {p.standee_type}
+                                            </span>
+                                        </>
+                                    )}
                                 </div>
                             </button>
 

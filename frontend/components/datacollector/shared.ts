@@ -126,6 +126,42 @@ export type SupplierDocument = {
     last_updated: string;
 };
 
+// GET/PATCH /standee-templates and nested tier endpoints
+export type StandeeTemplateTier = {
+    _id: string;
+    quantity: number;
+    unit_price: number;
+    last_updated: string;
+};
+
+export type StandeeTemplate = {
+    _id: string;
+    key: string;
+    name: string;
+    description: string;
+    is_active: boolean;
+    sort_order: number;
+    last_updated: string;
+    tiers: StandeeTemplateTier[];
+};
+
+export type StandeeTemplateEditFields = {
+    name: string;
+    description: string;
+    is_active: boolean;
+    sort_order: number;
+};
+
+export type StandeeTemplateTierEditFields = {
+    quantity: number;
+    unit_price: number;
+};
+
+export type PendingStandeeTemplateTier = {
+    quantity: string;
+    unit_price: string;
+};
+
 // GET .../history — audit trail entry for a Data Collector edit
 export type DataCollectorHistoryEntry = {
     _id: string;
