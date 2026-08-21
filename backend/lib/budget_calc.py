@@ -1,7 +1,11 @@
-from lib.classes import Form, Project, Scenario1, Scenario3, Scenario4, Scenario5, MidnightOilDB
+from lib.classes import (Form, Project, Scenario1, Scenario3, Scenario4, Scenario5, Scenario1Input,
+        Scenario3Input,
+        Scenario4Input,
+        Scenario5Input, MidnightOilDB)
 
 #change scenarios list as needed based on future changes
 SCENARIOS = [Scenario1, Scenario3, Scenario4, Scenario5]
+INPUTS = [Scenario1Input, Scenario3Input, Scenario4Input, Scenario5Input]
 
 def optimize_budget(
                     db: MidnightOilDB,
@@ -17,7 +21,7 @@ def optimize_budget(
     final_quantities = [0] * len(SCENARIOS)
     final_prices = [0] * len(SCENARIOS)
     index = 0
-    for scenario in SCENARIOS:
+    for scenario, InputCls in zip(SCENARIOS, INPUTS):
         current_quantity = first_guess(budget)
         iteration = 0
         low = 0
@@ -26,7 +30,14 @@ def optimize_budget(
         last_price_under = 0
         while iteration < iteration_limit or iteration_limit == 0: # pass 0 as the iteration limit to run until solution
             iteration = iteration + 1
-            found_cost = scenario(db, name, print_forms, current_quantity, standee_type, **kwargs)
+            project = scenario(db=db,
+                                name=name, 
+                                print_forms=print_forms, 
+                                num_standees=current_quantity, 
+                                standee_type=standee_type, 
+                                **kwargs)
+            project.calculate_cost(InputCls())
+            found_cost = project.total_cost
             # binary search if else tree
             if found_cost > budget:
                 high = current_quantity - 1
@@ -39,13 +50,17 @@ def optimize_budget(
                     break
                 low = current_quantity + 1
                 if low >= high:
-                    if scenario(name, print_forms, high, standee_type, **kwargs) < budget:
+                    project = scenario(db=db, name=name, print_forms=print_forms, num_standees=current_quantity, 
+                                       standee_type=standee_type, **kwargs)
+                    project.calculate_cost(InputCls())
+                    if project.total_cost < budget:
                         high = high * 2 #expand search if high is actually below budget
                     else: #if not, then last under is just this one and move on
                         break
             current_quantity = (high + low) // 2
         final_quantities[index] = last_under
         final_prices[index] = last_price_under
+        index = index+1
     return final_quantities, final_prices
             
 
