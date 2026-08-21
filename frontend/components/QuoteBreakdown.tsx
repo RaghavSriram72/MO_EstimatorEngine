@@ -77,7 +77,7 @@ function resolveInitialActiveScenario(quoteData: QuoteData, hint?: ScenarioId): 
 // `availableScenarios`/`resolveInitialActiveScenario` below). Its entries below stay in
 // place only because `ScenarioId`/`Record<ScenarioId, …>` still cover 1–5 for older saved
 // quotes that carry a scenario_2 blob — they're unreachable from the UI otherwise.
-const SCENARIO_META: Record<ScenarioId, { short: string; sub: string }> = {
+export const SCENARIO_META: Record<ScenarioId, { short: string; sub: string }> = {
     1: { short: "Internal",  sub: "Packed Out" },
     2: { short: "Internal",  sub: "Assembled" },
     3: { short: "Hybrid",    sub: "External Assembly" },

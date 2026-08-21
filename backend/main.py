@@ -366,6 +366,7 @@ async def solve_budget_quantities(payload: SolveBudgetRequest):
     are surfaced as a clean API error rather than a crash.
     """
     try:
+        db = _ensure_db()
         elements = _elements_from_element_types(payload.elements)
         if not elements:
             return JSONResponse(status_code=400, content={"detail": "At least one element is required"})
@@ -376,20 +377,28 @@ async def solve_budget_quantities(payload: SolveBudgetRequest):
             form_length=BUSMARK_FORM_LENGTH,
             padding=PADDING,
         )
+        _, form_95_bins = print_form_calculator(
+            elements,
+            form_width=FORM_95_WIDTH,
+            form_length=FORM_95_LENGTH,
+            padding=PADDING,
+        )
         busmark_forms = list(busmark_bins.values())
+        form_95_forms = list(form_95_bins.values())
         if payload.include_print_sides:
-            busmark_forms.append(
-                Form(id="print-sides", elements=[], complexity=Complexity(payload.standee_type))
-            )
+            side_complexity = Complexity(payload.standee_type)
+            busmark_forms.append(Form(id="print-sides", elements=[], complexity=side_complexity))
+            form_95_forms.append(Form(id="print-sides", elements=[], complexity=side_complexity))
 
-        # optimize_budget() only accepts one print_forms list shared across all 4 scenarios
-        # today (scenarios 4/5 normally use 95" forms elsewhere) — a known limitation of the
-        # current algorithm, not something addressed by this wrapper.
+        # Scenario1/3 cost against the 42" busmark forms, Scenario4/5 against the 95" sheet
+        # forms — same split _compute_quote_scenarios uses for /generate_quote.
         final_quantities, final_prices = optimize_budget(
+            db,
             name="Budget solve",
             budget=payload.budget,
             print_forms=busmark_forms,
-            standee_type=complexity_to_str(Complexity(payload.standee_type)),
+            print_forms_95=form_95_forms,
+            standee_type=Complexity(payload.standee_type),
         )
     except ValueError as exc:
         return JSONResponse(status_code=400, content={"detail": str(exc)})

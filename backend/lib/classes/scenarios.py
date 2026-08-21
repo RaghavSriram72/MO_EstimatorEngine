@@ -103,7 +103,6 @@ class Scenario4[T: Scenario4Input](OutsourceProject[T]):
             + self.print_cost
             + self.pallet_cost
             + self.freight_cost
-            + self.die_cost
             + self.packout
         )
 
@@ -132,4 +131,10 @@ class Scenario5[T: Scenario5Input](OutsourceProject[T]):
     @property
     def total_cost(self) -> float:
         """Calculate the total cost of the project, including both universal and scenario-specific costs."""
-        return super().total_cost + self.pallet_cost + self.freight_cost + self.die_cost + self.packout
+        return (
+            super().total_cost
+            + self.litho_buyout_cost
+            + self.pallet_cost
+            + self.freight_cost
+            + self.packout
+        )

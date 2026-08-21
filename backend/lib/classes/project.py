@@ -391,8 +391,6 @@ class InHouseProject[T: InHouseInput](Project[T]):
 class OutsourceProject[T: OutsourceInput](Project[T]):
     """Base class for outsourced production scenarios."""
 
-    corrugate_cost: float
-    print_form_cost: float
     mount_die_buyout_cost: float
     die_cost: float
     shipping_box_cost: float
@@ -404,8 +402,6 @@ class OutsourceProject[T: OutsourceInput](Project[T]):
         """Calculate the total cost of the project, including both universal and scenario-specific costs."""
         return (
             self.total_universal_cost
-            + self.corrugate_cost
-            + self.print_form_cost
             + self.mount_die_buyout_cost
             + self.die_cost
             + self.shipping_box_cost

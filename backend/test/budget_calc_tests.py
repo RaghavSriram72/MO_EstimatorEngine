@@ -45,10 +45,11 @@ class TestBudgetCalculator(unittest.TestCase):
         _, bin_dict = print_form_calculator(elements)
 
         quantities, prices = optimize_budget(
-            TestBudgetCalculator.db,
+            db=TestBudgetCalculator.db,
             name = "Primate standee test",
             print_forms = list(bin_dict.values()),
-            standee_type = Complexity.COMPLEX
+            standee_type = Complexity.COMPLEX,
+            budget=200_000
         )
         # calculate_cost returns None and populates the project in place;
         # the rolled-up figure is the total_cost property.
@@ -148,11 +149,14 @@ if __name__ == '__main__':
     _, bin_dict = print_form_calculator(elements)
 
     quantities, prices = optimize_budget(
-                db,
+                db=db,
                 name = "Primate standee test",
                 budget=20000,
                 print_forms = list(bin_dict.values()),
-                standee_type = Complexity.COMPLEX
+                standee_type = complexity_map[Complexity.COMPLEX],
+                iteration_limit = 100,
+                debug = False
+
             )
     print('Quantities:', quantities)
     print('Prices:', prices)

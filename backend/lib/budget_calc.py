@@ -6,13 +6,16 @@ from lib.classes import (Form, Project, Scenario1, Scenario3, Scenario4, Scenari
 #change scenarios list as needed based on future changes
 SCENARIOS = [Scenario1, Scenario3, Scenario4, Scenario5]
 INPUTS = [Scenario1Input, Scenario3Input, Scenario4Input, Scenario5Input]
+# Scenario1/3 print on busmark forms, Scenario4/5 print on 95 pound forms
+BUSMARK_SCENARIOS = {Scenario1, Scenario3}
 
 def optimize_budget(
                     db: MidnightOilDB,
                     name: str,
-                    budget: int, 
-                    print_forms: list[Form], 
-                    standee_type: str, 
+                    budget: int,
+                    print_forms: list[Form],
+                    standee_type: str,
+                    print_forms_95: list[Form] | None = None, # added this for accounting for busmakr case
                     iteration_limit = 100,
                     debug = False,
                     **kwargs) -> int:
@@ -22,6 +25,7 @@ def optimize_budget(
     final_prices = [0] * len(SCENARIOS)
     index = 0
     for scenario, InputCls in zip(SCENARIOS, INPUTS):
+        scenario_forms = print_forms if scenario in BUSMARK_SCENARIOS else (print_forms_95 or print_forms)
         current_quantity = first_guess(budget)
         iteration = 0
         low = 0
@@ -31,10 +35,10 @@ def optimize_budget(
         while iteration < iteration_limit or iteration_limit == 0: # pass 0 as the iteration limit to run until solution
             iteration = iteration + 1
             project = scenario(db=db,
-                                name=name, 
-                                print_forms=print_forms, 
-                                num_standees=current_quantity, 
-                                standee_type=standee_type, 
+                                name=name,
+                                print_forms=scenario_forms,
+                                num_standees=current_quantity,
+                                standee_type=standee_type,
                                 **kwargs)
             project.calculate_cost(InputCls())
             found_cost = project.total_cost
@@ -50,7 +54,7 @@ def optimize_budget(
                     break
                 low = current_quantity + 1
                 if low >= high:
-                    project = scenario(db=db, name=name, print_forms=print_forms, num_standees=current_quantity, 
+                    project = scenario(db=db, name=name, print_forms=scenario_forms, num_standees=current_quantity,
                                        standee_type=standee_type, **kwargs)
                     project.calculate_cost(InputCls())
                     if project.total_cost < budget:

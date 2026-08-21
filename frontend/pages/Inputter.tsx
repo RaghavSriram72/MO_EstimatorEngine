@@ -1,7 +1,7 @@
 "use client";
 import ElementsManager from "@/components/ElementsManager";
 import Dropdown from "@/components/Dropdown";
-import QuoteBreakdown from "@/components/QuoteBreakdown";
+import QuoteBreakdown, { displayScenarioNumber, SCENARIO_META, type ScenarioId } from "@/components/QuoteBreakdown";
 import UploadBlueModal from "@/components/UploadBlueModal";
 import HistoryModal from "@/components/HistoryModal";
 import ProjectSidebar, { type ProjectSummary } from "@/components/inputter/ProjectSidebar";
@@ -1609,7 +1609,29 @@ function handleQuantityVariantSaved(quantity: number, state: PersistedQuoteState
                                                         {budgetSolving ? "Solving…" : "Solve"}
                                                     </button>
                                                 </div>
-                                                {budgetResults && <div className="mt-2 text-[10px] font-semibold text-[#2E7D32]">{budgetResults.map((r) => `Scenario ${r.scenario}: ${r.quantity} standees ≈ $${r.price.toFixed(2)}`).join(" · ")}</div>}
+                                                {budgetResults && (
+                                                    <div className="mt-3 flex flex-col gap-1.5">
+                                                        {budgetResults.map((r) => (
+                                                            <div
+                                                                key={r.scenario}
+                                                                className="flex items-center justify-between gap-3 rounded-sm border-2 border-[#000005] bg-[#000005] px-3 py-2"
+                                                            >
+                                                                <div className="flex flex-col min-w-0">
+                                                                    <span className="text-[10px] font-black uppercase tracking-wide text-white">
+                                                                        Scenario {displayScenarioNumber(r.scenario)}
+                                                                    </span>
+                                                                    <span className="text-[9px] font-semibold text-[#FFC843] truncate">
+                                                                        {SCENARIO_META[r.scenario as ScenarioId]?.short} — {SCENARIO_META[r.scenario as ScenarioId]?.sub}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="flex flex-col items-end shrink-0">
+                                                                    <span className="text-xs font-black text-white">{r.quantity.toLocaleString()} standees</span>
+                                                                    <span className="text-[10px] font-semibold text-[#B1B3B6]">≈ ${r.price.toFixed(2)}</span>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
                                                 {budgetError && <div className="mt-1 text-[10px] font-bold text-red-600">{budgetError}</div>}
                                             </div>
                                         </div>
