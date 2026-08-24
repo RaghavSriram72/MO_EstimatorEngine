@@ -75,4 +75,4 @@ class Scenario4Input(OutsourceInput):
 class Scenario5Input(OutsourceInput):
     """Inputs for scenario 5."""
 
-    pass
+    imposition_hours: float | None = None

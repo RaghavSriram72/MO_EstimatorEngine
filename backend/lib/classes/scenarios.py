@@ -114,6 +114,9 @@ class Scenario5[T: Scenario5Input](OutsourceProject[T]):
     def calculate_cost(self, input: T) -> None:
         input.num_overs = FOSTERS_DEFAULT_OVERS
         super().calculate_cost(input)
+        self.imposition_hours = input.imposition_hours or self.print_forms_per_standee
+        imposition_rate = self.db.get_unit_cost(UnitCostEntries.IMPOSITION_LABOR)
+        self.imposition_cost = imposition_rate * self.imposition_hours
         # sets material, supplier, and print_form_unit_cost (needs to change)
         self.litho_buyout_cost = self._get_supplier_litho_buyout_cost()
         # Pallets only carry printed forms, not blank/structure forms.
@@ -133,6 +136,7 @@ class Scenario5[T: Scenario5Input](OutsourceProject[T]):
         """Calculate the total cost of the project, including both universal and scenario-specific costs."""
         return (
             super().total_cost
+            + self.imposition_cost
             + self.litho_buyout_cost
             + self.pallet_cost
             + self.freight_cost

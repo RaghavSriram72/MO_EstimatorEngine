@@ -26,7 +26,7 @@ def optimize_budget(
     index = 0
     for scenario, InputCls in zip(SCENARIOS, INPUTS):
         scenario_forms = print_forms if scenario in BUSMARK_SCENARIOS else (print_forms_95 or print_forms)
-        current_quantity = first_guess(budget)
+        current_quantity = int(first_guess(budget))
         iteration = 0
         low = 0
         high = current_quantity * 2 # this times 2 multiplier is subject to change
@@ -70,5 +70,8 @@ def optimize_budget(
 
 def first_guess(budget: int)-> int:
     """Returns a first guess for the right number of standees to begin searching from"""
-    # Currently using an arbitrary heuristic to calculate this value
-    return budget / 1000
+    # Currently using an arbitrary heuristic to calculate this value.
+    # int(), not round(), so this always underestimates rather than overshoots the budget
+    # on the very first guess. Floored at 1 — a budget under 1000 would otherwise start the
+    # search at 0, which two iterations later resolves to num_standees=0.
+    return max(1, int(budget / 1000))

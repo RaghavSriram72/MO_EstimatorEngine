@@ -171,7 +171,7 @@ def _scenario_cost_input(sid: int, payload: QuoteRequest):
         return scenario_map[sid](**common_base, print_hours=ph, imposition_hours=ph)
 
     if sid == 5:
-        return scenario_map[sid](**common_base)
+        return scenario_map[sid](**common_base, imposition_hours=ph)
     raise ValueError(f"Unknown scenario id: {sid}")
 
 
