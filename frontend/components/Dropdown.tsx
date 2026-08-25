@@ -1,7 +1,7 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 
-export default function Dropdown({ options, currOption, onSelect, width = "w-full" }: any) {
+export default function Dropdown({ options, currOption, onSelect, width = "w-full", placeholder }: any) {
     const [isOpen, setIsOpen] = React.useState(false);
     const [search, setSearch] = React.useState("");
     const [menuPos, setMenuPos] = React.useState<{ top: number; left: number; width: number } | null>(null);
@@ -9,7 +9,7 @@ export default function Dropdown({ options, currOption, onSelect, width = "w-ful
     const searchInputRef = React.useRef<HTMLInputElement>(null);
 
     React.useEffect(() => {
-        if (!currOption && options.length > 0) {
+        if (!placeholder && !currOption && options.length > 0) {
             onSelect(options[0]);
         }
     }, [options]);
@@ -61,7 +61,7 @@ export default function Dropdown({ options, currOption, onSelect, width = "w-ful
                 className={`text-xs flex justify-between items-center gap-2 min-w-0 ${width} dropdown-button bg-white text-[#000005] px-3 py-1.5 rounded-sm cursor-pointer border-2 border-[#E0E0E0] font-semibold hover:border-[#B1B3B6] transition-colors`}
             >
                 <div className={`min-w-0 flex-1 truncate ${currOption ? "text-[#000005]" : "text-[#B1B3B6]"}`}>
-                    {currOption || "Select Option"}
+                    {currOption || placeholder || "Select Option"}
                 </div>
                 <img src="/dropdown.svg" className="ml-2 w-4 h-4 shrink-0 block" style={{ filter: 'brightness(0)' }}></img>
             </div>

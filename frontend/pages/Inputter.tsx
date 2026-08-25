@@ -903,6 +903,7 @@ setStandeeCounts(Array.from({ length: 5 }, (_, index) => savedCounts[index] ?? "
         new Set(validStandeeCounts).size === validStandeeCounts.length;
     const canCalculate = hasValidStandeeCounts && elements.length > 0;
     const selectedTemplate = standeeTemplates.find((template) => template._id === selectedTemplateId) ?? null;
+    const availableTemplates = standeeTemplates.filter((template) => template.is_active && template.tiers.length > 0);
     const canSaveTemplate =
         projectDescription.trim().length > 0 &&
         Boolean(selectedTemplate?.is_active && selectedTemplate.tiers.length > 0);
@@ -1548,22 +1549,18 @@ function handleQuantityVariantSaved(quantity: number, state: PersistedQuoteState
                                                 </span>
                                             )}
                                         </div>
-                                        <select
-                                            value={selectedTemplateId}
-                                            onChange={(e) => {
-                                                setSelectedTemplateId(e.target.value);
+                                        <Dropdown
+                                            options={availableTemplates.map((template) => template.name)}
+                                            currOption={selectedTemplate?.name ?? ""}
+                                            placeholder={templatesLoading ? "Loading templates…" : "Select a template"}
+                                            onSelect={(name: string) => {
+                                                const template = availableTemplates.find((item) => item.name === name);
+                                                if (!template) return;
+                                                setSelectedTemplateId(template._id);
                                                 if (activeProjectId) setIsDirty(true);
                                             }}
-                                            disabled={templatesLoading}
-                                            className="w-full rounded-sm border-2 border-[#E0E0E0] bg-white px-3 py-1.5 text-xs font-semibold text-[#000005] outline-none focus:border-[#FFC843]"
-                                        >
-                                            <option value="">{templatesLoading ? "Loading templates…" : "Select a template"}</option>
-                                            {standeeTemplates.map((template) => (
-                                                <option key={template._id} value={template._id} disabled={!template.is_active || template.tiers.length === 0}>
-                                                    {template.name}{!template.is_active || template.tiers.length === 0 ? " — Pricing unavailable" : ""}
-                                                </option>
-                                            ))}
-                                        </select>
+                                            width="w-full"
+                                        />
                                     </div>
                                 )}
                             </div>
