@@ -98,7 +98,6 @@ export function displayScenarioNumber(id: number): number {
 export type LineDef = { label: string; unit: string; readonlyQty?: boolean };
 
 export const UNIVERSAL_LINE_DEFS: Record<string, LineDef> = {
-    imposition_cost:         { label: "Imposition Labor",     unit: "hrs"      },
     blank_comp_cost:         { label: "Blank Comp",           unit: "qty"      },
     color_comp_cost:         { label: "Color Comp",           unit: "qty"      },
     engineering_design_cost: { label: "Engineering & Design", unit: "flat"     },
@@ -106,6 +105,11 @@ export const UNIVERSAL_LINE_DEFS: Record<string, LineDef> = {
 };
 
 export const SCENARIO_LINE_DEFS: Record<string, LineDef> = {
+    // Each scenario computes its own imposition_cost from its own print_forms_per_standee
+    // (busmark forms for 1/2/3, 95" sheet forms for 4/5) — it is NOT shared across scenarios,
+    // so it must stay scenario-specific, not universal (was previously wrongly sourced from
+    // scenario 1's value alone and applied to every tab's grand total).
+    imposition_cost:        { label: "Imposition Labor",     unit: "hrs"       },
     corrugate_cost:         { label: "Corrugate",            unit: "forms",    readonlyQty: true },
     print_form_cost:        { label: "Print Form Material",  unit: "forms",    readonlyQty: true },
     print_cost:             { label: "Rho Print",            unit: "hrs",      readonlyQty: true },
@@ -127,11 +131,11 @@ export const SCENARIO_LINE_DEFS: Record<string, LineDef> = {
 // Scenario 2 entry kept only for `Record<ScenarioId, …>` completeness / older saved quotes —
 // see the note above `SCENARIO_META`. It's never a selectable tab.
 export const SCENARIO_KEYS: Record<ScenarioId, string[]> = {
-    1: ["corrugate_cost", "print_form_cost", "print_cost", "rollx_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "kitting_and_assembly_cost"],
-    2: ["corrugate_cost", "print_form_cost", "print_cost", "rollx_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "kitting_and_assembly_cost"],
-    3: ["corrugate_cost", "print_form_cost", "print_cost", "rollx_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "pallet_material_cost", "pallet_labor_cost", "freight_cost", "packout"],
-    4: ["print_form_cost", "print_cost", "mount_die_buyout_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "pallet_material_cost", "pallet_labor_cost", "freight_cost", "die_cost", "packout"],
-    5: ["litho_buyout_cost", "mount_die_buyout_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "pallet_material_cost", "pallet_labor_cost", "freight_cost", "die_cost", "packout"],
+    1: ["imposition_cost", "corrugate_cost", "print_form_cost", "print_cost", "rollx_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "kitting_and_assembly_cost"],
+    2: ["imposition_cost", "corrugate_cost", "print_form_cost", "print_cost", "rollx_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "kitting_and_assembly_cost"],
+    3: ["imposition_cost", "corrugate_cost", "print_form_cost", "print_cost", "rollx_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "pallet_material_cost", "pallet_labor_cost", "freight_cost", "packout"],
+    4: ["imposition_cost", "print_form_cost", "print_cost", "mount_die_buyout_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "pallet_material_cost", "pallet_labor_cost", "freight_cost", "die_cost", "packout"],
+    5: ["imposition_cost", "litho_buyout_cost", "mount_die_buyout_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "pallet_material_cost", "pallet_labor_cost", "freight_cost", "die_cost", "packout"],
 };
 
 // Manual edits to a cost row propagate to every scenario that shares the same
@@ -139,6 +143,7 @@ export const SCENARIO_KEYS: Record<ScenarioId, string[]> = {
 // scenarios containing that key (see SCENARIO_KEYS). Engine-computed defaults
 // stay per-scenario — only user edits are synced.
 const SCENARIO_SYNC_GROUPS: Partial<Record<string, ScenarioId[]>> = {
+    imposition_cost:           [1, 2, 3, 4, 5],
     corrugate_cost:            [1, 2, 3],
     print_form_cost:           [1, 2, 3, 4],
     print_cost:                [1, 2, 3, 4],
