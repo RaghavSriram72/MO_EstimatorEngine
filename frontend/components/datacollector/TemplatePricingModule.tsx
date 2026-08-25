@@ -13,10 +13,9 @@ import {
     formatDate,
 } from "./shared";
 
-type TierDeleteTarget = {
-    templateId: string;
-    tierId: string;
-};
+type DeleteTarget =
+    | { kind: "tier"; templateId: string; tierId: string }
+    | { kind: "template"; templateId: string; name: string };
 
 function templateFields(template: StandeeTemplate): StandeeTemplateEditFields {
     return {
@@ -52,6 +51,13 @@ async function apiRequest(url: string, init?: RequestInit): Promise<Response> {
         try {
             const body = await response.json();
             message = body.error ?? body.detail ?? body.message ?? message;
+            if (Array.isArray(message)) {
+                message = message.map((item) => (
+                    typeof item === "string" ? item : item?.msg ?? JSON.stringify(item)
+                )).join("; ");
+            } else if (message && typeof message !== "string") {
+                message = JSON.stringify(message);
+            }
         } catch {
             // Keep the status-based fallback for non-JSON responses.
         }
@@ -87,7 +93,9 @@ export default function TemplatePricingModule() {
     const [edit, setEdit] = useState<StandeeTemplateEditFields | null>(null);
     const [tierEdits, setTierEdits] = useState<Record<string, StandeeTemplateTierEditFields>>({});
     const [pendingTiers, setPendingTiers] = useState<PendingStandeeTemplateTier[]>([]);
-    const [deleteTarget, setDeleteTarget] = useState<TierDeleteTarget | null>(null);
+    const [creatingNew, setCreatingNew] = useState(false);
+    const [newTemplate, setNewTemplate] = useState({ name: "", description: "", is_active: true });
+    const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -105,9 +113,21 @@ export default function TemplatePricingModule() {
     });
     const hasUnsavedChanges = metadataDirty || tiersDirty || pendingTiers.length > 0;
 
-    function selectTemplate(template: StandeeTemplate) {
-        if (template._id === selectedId) return;
+    function beginCreateTemplate() {
         if (hasUnsavedChanges && !window.confirm("Discard unsaved template pricing changes?")) return;
+        setCreatingNew(true);
+        setSelectedId(null);
+        setEdit(null);
+        setTierEdits({});
+        setPendingTiers([]);
+        setNewTemplate({ name: "", description: "", is_active: true });
+        setError(null);
+    }
+
+    function selectTemplate(template: StandeeTemplate) {
+        if (!creatingNew && template._id === selectedId) return;
+        if (hasUnsavedChanges && !window.confirm("Discard unsaved template pricing changes?")) return;
+        setCreatingNew(false);
         setSelectedId(template._id);
         setEdit(templateFields(template));
         setTierEdits(tierFields(template));
@@ -150,6 +170,39 @@ export default function TemplatePricingModule() {
         setEdit(next ? templateFields(next) : null);
         setTierEdits(next ? tierFields(next) : {});
         setPendingTiers([]);
+        setCreatingNew(false);
+    }
+
+    async function createTemplate() {
+        const name = newTemplate.name.trim();
+        if (!name) {
+            setError("Template name is required.");
+            return;
+        }
+        setIsSaving(true);
+        setError(null);
+        const changedBy = localStorage.getItem("username")?.trim() ?? "";
+        try {
+            const response = await apiRequest(`${API_BASE}/standee-templates`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    name,
+                    description: newTemplate.description,
+                    is_active: newTemplate.is_active,
+                    changed_by: changedBy,
+                }),
+            });
+            const body = await response.json().catch(() => ({}));
+            const createdId = String(body.template_id ?? "");
+            setCreatingNew(false);
+            setNewTemplate({ name: "", description: "", is_active: true });
+            await reloadTemplates(createdId);
+        } catch (reason: unknown) {
+            setError(reason instanceof Error ? reason.message : "Could not create template.");
+        } finally {
+            setIsSaving(false);
+        }
     }
 
     function updateTier(
@@ -270,10 +323,7 @@ export default function TemplatePricingModule() {
         }
     }
 
-    async function deleteTier() {
-        if (!deleteTarget) return;
-        const target = deleteTarget;
-        setDeleteTarget(null);
+    async function deleteTier(target: Extract<DeleteTarget, { kind: "tier" }>) {
         setError(null);
         const changedBy = localStorage.getItem("username")?.trim() ?? "";
         try {
@@ -287,12 +337,39 @@ export default function TemplatePricingModule() {
         }
     }
 
+    async function deleteTemplate(target: Extract<DeleteTarget, { kind: "template" }>) {
+        setError(null);
+        const changedBy = localStorage.getItem("username")?.trim() ?? "";
+        try {
+            await apiRequest(
+                `${API_BASE}/standee-templates/${target.templateId}?changed_by=${encodeURIComponent(changedBy)}`,
+                { method: "DELETE" },
+            );
+            if (creatingNew) setCreatingNew(false);
+            await reloadTemplates(selectedId === target.templateId ? "" : (selectedId ?? ""));
+        } catch (reason: unknown) {
+            setError(reason instanceof Error ? reason.message : "Could not delete the template.");
+        }
+    }
+
+    function confirmDelete() {
+        const target = deleteTarget;
+        setDeleteTarget(null);
+        if (!target) return;
+        if (target.kind === "tier") void deleteTier(target);
+        else void deleteTemplate(target);
+    }
+
     return (
         <>
             <ConfirmAlert
                 visible={deleteTarget !== null}
-                message="Delete this template pricing tier? This cannot be undone."
-                onConfirm={() => void deleteTier()}
+                message={
+                    deleteTarget?.kind === "template"
+                        ? `Are you sure you want to delete "${deleteTarget.name}"? This cannot be undone.`
+                        : "Delete this template pricing tier? This cannot be undone."
+                }
+                onConfirm={confirmDelete}
                 onCancel={() => setDeleteTarget(null)}
             />
 
@@ -302,20 +379,44 @@ export default function TemplatePricingModule() {
                     {isLoading && <span className="text-xs">Loading templates...</span>}
                     {!isLoading && templates.length === 0 && <span className="text-xs">No templates found.</span>}
                     {templates.map((template) => (
-                        <button
-                            key={template._id}
-                            type="button"
-                            onClick={() => selectTemplate(template)}
-                            className={`px-3 py-2 rounded-md border-2 text-xs font-bold transition-colors ${
-                                selectedId === template._id
-                                    ? "border-[#FFC843] bg-[#fff7dd] text-black"
-                                    : "border-[#EDEAEA] text-[#ABABAB] hover:text-black"
-                            }`}
-                        >
-                            {template.name}
-                            {!template.is_active && <span className="ml-1 text-[9px] font-normal">(inactive)</span>}
-                        </button>
+                        <div key={template._id} className="group relative">
+                            <button
+                                type="button"
+                                onClick={() => selectTemplate(template)}
+                                className={`px-3 py-2 pr-7 rounded-md border-2 text-xs font-bold transition-colors ${
+                                    selectedId === template._id && !creatingNew
+                                        ? "border-[#FFC843] bg-[#fff7dd] text-black"
+                                        : "border-[#EDEAEA] text-[#ABABAB] hover:text-black"
+                                }`}
+                            >
+                                {template.name}
+                                {!template.is_active && <span className="ml-1 text-[9px] font-normal">(inactive)</span>}
+                            </button>
+                            <button
+                                type="button"
+                                aria-label={`Delete ${template.name}`}
+                                title="Delete template"
+                                onClick={(event) => {
+                                    event.stopPropagation();
+                                    setDeleteTarget({ kind: "template", templateId: template._id, name: template.name });
+                                }}
+                                className="absolute right-1 top-1/2 z-10 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-sm text-[10px] font-black text-[#ABABAB] opacity-0 transition-opacity group-hover:opacity-100 hover:bg-red-50 hover:text-red-400"
+                            >
+                                ✕
+                            </button>
+                        </div>
                     ))}
+                    <button
+                        type="button"
+                        onClick={beginCreateTemplate}
+                        className={`px-3 py-2 rounded-md border-2 border-dashed text-xs font-bold transition-colors ${
+                            creatingNew
+                                ? "border-[#FFC843] bg-[#fff7dd] text-black"
+                                : "border-[#EDEAEA] text-[#ABABAB] hover:border-[#FFB604] hover:text-[#FFB604]"
+                        }`}
+                    >
+                        + NEW TEMPLATE
+                    </button>
                 </div>
             </div>
 
@@ -324,6 +425,46 @@ export default function TemplatePricingModule() {
                     <div role="alert" className="mx-2 px-3 py-2 border border-red-200 bg-red-50 text-red-600 text-xs rounded-md">
                         {error}
                     </div>
+                )}
+                {creatingNew && (
+                    <section className="flex flex-col gap-3">
+                        <div className="flex items-center gap-2 mx-2">
+                            <span className="text-[10px]">02 — NEW TEMPLATE TYPE</span>
+                        </div>
+                        <p className="mx-2 text-[10px] text-[#ABABAB]">
+                            Create a standee template. After saving, add quantity pricing so it can be selected on Template Project.
+                        </p>
+                        <div className="grid grid-cols-[2fr_3fr_1fr] gap-3 mx-2 items-end">
+                            <label className="text-[9px] font-bold tracking-wider">
+                                NAME
+                                <input
+                                    value={newTemplate.name}
+                                    onChange={(event) => setNewTemplate({ ...newTemplate, name: event.target.value })}
+                                    placeholder="e.g. Photo Op Kiosk"
+                                    className="mt-1 border-2 border-[#FFC843] rounded-md w-full p-2 outline-none text-black text-xs"
+                                />
+                            </label>
+                            <label className="text-[9px] font-bold tracking-wider">
+                                DESCRIPTION
+                                <textarea
+                                    rows={2}
+                                    value={newTemplate.description}
+                                    onChange={(event) => setNewTemplate({ ...newTemplate, description: event.target.value })}
+                                    placeholder="Size, construction notes, and hover-help text"
+                                    className="mt-1 border-2 border-[#FFC843] rounded-md w-full p-2 outline-none text-black text-xs resize-none"
+                                />
+                            </label>
+                            <label className="flex items-center gap-2 h-[34px] text-[10px] font-bold cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={newTemplate.is_active}
+                                    onChange={(event) => setNewTemplate({ ...newTemplate, is_active: event.target.checked })}
+                                    className="accent-[#FFC843]"
+                                />
+                                AVAILABLE
+                            </label>
+                        </div>
+                    </section>
                 )}
                 {selected && edit && (
                     <>
@@ -404,7 +545,7 @@ export default function TemplatePricingModule() {
                                         <button
                                             type="button"
                                             aria-label={`Delete ${values.quantity} quantity tier`}
-                                            onClick={() => setDeleteTarget({ templateId: selected._id, tierId: tier._id })}
+                                            onClick={() => setDeleteTarget({ kind: "tier", templateId: selected._id, tierId: tier._id })}
                                             className="h-[34px] w-[34px] text-xs font-bold border-2 border-[#EDEAEA] rounded-md hover:border-red-300 hover:text-red-400"
                                         >
                                             ✕
@@ -469,11 +610,11 @@ export default function TemplatePricingModule() {
             </div>
 
             <ModuleFooter
-                isDirty={hasUnsavedChanges}
+                isDirty={creatingNew ? newTemplate.name.trim().length > 0 : hasUnsavedChanges}
                 isSaving={isSaving}
                 secondaryLabel="HISTORY"
                 onSecondaryAction={() => setHistoryOpen(true)}
-                onSubmit={() => void saveChanges()}
+                onSubmit={() => creatingNew ? void createTemplate() : void saveChanges()}
             />
             <DataCollectorHistoryModal
                 open={historyOpen}

@@ -763,29 +763,49 @@ class MidnightOilDB:
             raise ValueError("template_id and template_key refer to different templates")
         return int(row["template_id"])
 
+    def _allocate_unique_template_key(self, source: str) -> str:
+        """Build a unique standee_templates.template_key from a name or requested key."""
+        base = re.sub(r"[^a-z0-9]+", "_", source.strip().lower()).strip("_") or "template"
+        base = base[:64]
+        candidate = base
+        n = 2
+        while self._fetchone(
+            "SELECT 1 AS present FROM standee_templates WHERE template_key = ?", (candidate,)
+        ):
+            suffix = f"_{n}"
+            candidate = f"{base[: max(1, 64 - len(suffix))]}{suffix}"
+            n += 1
+            if n > 1000:
+                raise ValueError("Could not allocate a unique template key")
+        return candidate
+
     def upsert_standee_template(
         self,
         template_id: str | None,
-        template_key: str,
+        template_key: str | None,
         name: str,
         description: str,
         is_active: bool,
         changed_by: str,
     ) -> str:
-        new_fields = {
-            "template_key": template_key,
-            "name": name,
-            "description": description,
-            "is_active": bool(is_active),
-        }
         now = _to_db_datetime(datetime.now(UTC))
         if template_id is None:
-            row_id = self._insert_returning_id(
-                "INSERT INTO standee_templates (template_key, name, description, is_active, created_at, updated_at) "
-                "OUTPUT INSERTED.template_id VALUES (?, ?, ?, ?, ?, ?)",
-                (template_key, name, description, is_active, now, now),
-            )
-            diff = {key: {"old": None, "new": value} for key, value in new_fields.items()}
+            key = self._allocate_unique_template_key(template_key or name)
+            new_fields = {
+                "template_key": key,
+                "name": name,
+                "description": description,
+                "is_active": bool(is_active),
+            }
+            try:
+                row_id = self._insert_returning_id(
+                    "INSERT INTO standee_templates (template_key, name, description, is_active, created_at, updated_at) "
+                    "OUTPUT INSERTED.template_id VALUES (?, ?, ?, ?, ?, ?)",
+                    (key, name, description, is_active, now, now),
+                )
+            except pyodbc.IntegrityError as exc:
+                raise ValueError("A template with this key already exists") from exc
+            diff = {field: {"old": None, "new": value} for field, value in new_fields.items()}
             change_type = "create"
         else:
             row_id = _parse_id(template_id)
@@ -797,11 +817,21 @@ class MidnightOilDB:
             )
             if before is None:
                 raise ValueError("Standee template not found")
-            updated = self._execute(
-                "UPDATE standee_templates SET template_key = ?, name = ?, description = ?, "
-                "is_active = ?, updated_at = ? WHERE template_id = ?",
-                (template_key, name, description, is_active, now, row_id),
-            )
+            key = template_key or before["template_key"]
+            new_fields = {
+                "template_key": key,
+                "name": name,
+                "description": description,
+                "is_active": bool(is_active),
+            }
+            try:
+                updated = self._execute(
+                    "UPDATE standee_templates SET template_key = ?, name = ?, description = ?, "
+                    "is_active = ?, updated_at = ? WHERE template_id = ?",
+                    (key, name, description, is_active, now, row_id),
+                )
+            except pyodbc.IntegrityError as exc:
+                raise ValueError("A template with this key already exists") from exc
             if updated == 0:
                 raise ValueError("Standee template not found")
             before["is_active"] = bool(before["is_active"])

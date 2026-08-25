@@ -11,7 +11,7 @@ import numpy as np
 from fastapi import FastAPI, File, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # Scenario 2 disabled — no longer offered as a quote scenario. Tabs now go 1, 3, 4, 5.
 from lib.classes import Project, Scenario1, Scenario3, Scenario4, Scenario5
@@ -430,11 +430,19 @@ async def get_standee_data(standee_type: int, data_type: str):
 
 
 class StandeeTemplateBody(BaseModel):
-    template_key: str = Field(..., min_length=1, max_length=64)
+    template_key: str | None = Field(default=None, max_length=64)
     name: str = Field(..., min_length=1, max_length=256)
     description: str = ""
     is_active: bool = True
     changed_by: str = Field(..., min_length=1)
+
+    @field_validator("template_key")
+    @classmethod
+    def clean_template_key(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
 
 
 class StandeeTemplatePriceBody(BaseModel):
