@@ -400,7 +400,7 @@ export default function TemplatePricingModule() {
                                     event.stopPropagation();
                                     setDeleteTarget({ kind: "template", templateId: template._id, name: template.name });
                                 }}
-                                className="absolute right-1 top-1/2 z-10 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-sm text-[10px] font-black text-[#ABABAB] opacity-0 transition-opacity group-hover:opacity-100 hover:bg-red-50 hover:text-red-400"
+                                className="absolute right-1 top-1/2 z-10 flex h-5 w-5 -translate-y-1/2 cursor-pointer items-center justify-center rounded-sm text-[10px] font-black text-[#ABABAB] opacity-0 transition-opacity group-hover:opacity-100 hover:bg-red-50 hover:text-red-400"
                             >
                                 ✕
                             </button>
@@ -409,7 +409,7 @@ export default function TemplatePricingModule() {
                     <button
                         type="button"
                         onClick={beginCreateTemplate}
-                        className={`px-3 py-2 rounded-md border-2 border-dashed text-xs font-bold transition-colors ${
+                        className={`cursor-pointer px-3 py-2 rounded-md border-2 border-dashed text-xs font-bold transition-colors ${
                             creatingNew
                                 ? "border-[#FFC843] bg-[#fff7dd] text-black"
                                 : "border-[#EDEAEA] text-[#ABABAB] hover:border-[#FFB604] hover:text-[#FFB604]"
@@ -434,7 +434,7 @@ export default function TemplatePricingModule() {
                         <p className="mx-2 text-[10px] text-[#ABABAB]">
                             Create a standee template. After saving, add quantity pricing so it can be selected on Template Project.
                         </p>
-                        <div className="grid grid-cols-[2fr_3fr_1fr] gap-3 mx-2 items-end">
+                        <div className="grid grid-cols-[2fr_3fr_1fr] gap-3 mx-2 items-start">
                             <label className="text-[9px] font-bold tracking-wider">
                                 NAME
                                 <input
@@ -454,7 +454,7 @@ export default function TemplatePricingModule() {
                                     className="mt-1 border-2 border-[#FFC843] rounded-md w-full p-2 outline-none text-black text-xs resize-none"
                                 />
                             </label>
-                            <label className="flex items-center gap-2 h-[34px] text-[10px] font-bold cursor-pointer">
+                            <label className="flex items-center gap-2 self-stretch text-[10px] font-bold cursor-pointer">
                                 <input
                                     type="checkbox"
                                     checked={newTemplate.is_active}
@@ -475,7 +475,7 @@ export default function TemplatePricingModule() {
                                     <span className="text-[10px] font-bold text-[#FFB604]">Unsaved Changes</span>
                                 )}
                             </div>
-                            <div className="grid grid-cols-[2fr_3fr_1fr] gap-3 mx-2 items-end">
+                            <div className="grid grid-cols-[2fr_3fr_1fr] gap-3 mx-2 items-start">
                                 <label className="text-[9px] font-bold tracking-wider">
                                     NAME
                                     <input
@@ -493,7 +493,7 @@ export default function TemplatePricingModule() {
                                         className="mt-1 border-2 border-[#EDEAEA] rounded-md w-full p-2 outline-none text-black text-xs focus:border-[#FFB604] resize-none"
                                     />
                                 </label>
-                                <label className="flex items-center gap-2 h-[34px] text-[10px] font-bold cursor-pointer">
+                                <label className="flex items-center gap-2 self-stretch text-[10px] font-bold cursor-pointer">
                                     <input
                                         type="checkbox"
                                         checked={edit.is_active}
