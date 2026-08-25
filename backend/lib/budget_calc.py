@@ -44,6 +44,14 @@ def optimize_budget(
             found_cost = project.total_cost
             # binary search if else tree
             if found_cost > budget:
+                if current_quantity == 0:
+                    # Even 0 standees is over budget (fixed/setup costs alone exceed it) —
+                    # nothing lower to try. Stop here instead of continuing into negative
+                    # quantities: the cost model was never designed for negative num_standees,
+                    # some terms go negative while others stay clamped positive, and the
+                    # resulting wildly-wrong "cost" can look like it's under budget again and
+                    # send the search into runaway expansion.
+                    break
                 high = current_quantity - 1
                 if last_under == high: #if last under budget quantity was 1 less than current, return that quantity
                     break
@@ -61,7 +69,7 @@ def optimize_budget(
                         high = high * 2 #expand search if high is actually below budget
                     else: #if not, then last under is just this one and move on
                         break
-            current_quantity = (high + low) // 2
+            current_quantity = max(0, (high + low) // 2)
         final_quantities[index] = last_under
         final_prices[index] = last_price_under
         index = index+1
