@@ -983,6 +983,10 @@ setStandeeCounts(Array.from({ length: 5 }, (_, index) => savedCounts[index] ?? "
         if (!budgetResults || budgetResults.length === 0) return;
         const next = [...standeeCounts];
         budgetResults.slice(0, 4).forEach((r, i) => { next[i] = r.quantity; });
+        // Any slot budgetResults didn't touch (typically Quantity 5) shouldn't be left blank.
+        for (let i = 0; i < next.length; i++) {
+            if (next[i] === "") next[i] = 1;
+        }
         setStandeeCounts(next);
         if (activeProjectId) setIsDirty(true);
     }
@@ -999,9 +1003,16 @@ setStandeeCounts(Array.from({ length: 5 }, (_, index) => savedCounts[index] ?? "
             const doc = data.quotes[0] as Record<string, unknown>; // list is newest-first
             const variants = quantityVariantsFromQuoteDoc(doc);
             const preferredQuantity = validStandeeCounts.find((quantity) => variants[String(quantity)]);
-            const quantity = preferredQuantity ?? Number(Object.keys(variants)[0]);
-            const state = variants[String(quantity)];
-            if (!state || !Number.isFinite(quantity)) return false;
+            // If none of the currently entered quantities match anything in this saved quote,
+            // the quote is stale relative to the project's current inputs (e.g. quantities were
+            // changed and the project was saved, but the quote itself was never regenerated).
+            // Falling back to an arbitrary variant here used to silently show unrelated old
+            // numbers — instead, treat this as "no usable saved quote" so the caller falls
+            // through to a fresh recalculation.
+            if (preferredQuantity === undefined) return false;
+            const state = variants[String(preferredQuantity)];
+            if (!state) return false;
+            const quantity = preferredQuantity;
             setActiveQuotePayload(payloadFromQuoteDoc(doc, state));
             setActiveQuoteName(typeof doc.quote_name === "string" ? doc.quote_name : "Quote");
             setActiveQuoteContributionMargin(typeof doc.contribution_margin === "number" ? doc.contribution_margin : 0);
@@ -1392,9 +1403,17 @@ function handleQuantityVariantSaved(quantity: number, state: PersistedQuoteState
                     quoteOwner={activeProjectOwner ?? authUsername}
                     noteAuthor={authUsername}
                     onBack={clearActiveQuote}
-                    availableQuantities={validStandeeCounts.filter(
-                        (quantity) => activeQuantityVariants[String(quantity)] !== undefined,
-                    )}
+                    // The quantities a user can switch between are whatever this loaded quote
+                    // actually has variants for — not whatever happens to still be typed into
+                    // the (hidden, while viewing the quote) Quote Quantity boxes. Intersecting
+                    // with the live input state made the dropdown collapse to 1-or-0 options
+                    // whenever those boxes were edited after the quote was generated/saved
+                    // (e.g. applying new Solve by Budget results, or loading a saved quote
+                    // whose quantities no longer match the project's current input fields).
+                    availableQuantities={Object.keys(activeQuantityVariants)
+                        .map(Number)
+                        .filter((quantity) => Number.isFinite(quantity))
+                        .sort((a, b) => a - b)}
                     activeQuantity={activeQuoteQuantity}
                     quantityVariants={activeQuantityVariants}
                     onQuantityChange={selectActiveQuoteQuantity}
