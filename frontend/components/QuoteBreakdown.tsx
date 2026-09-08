@@ -15,6 +15,7 @@ import {
 import { API_BASE } from "@/lib/config";
 import { COST_LINE_TOOLTIPS } from "@/lib/costLineTooltips";
 import { COST_DEBUG_ENABLED, extractDebugExplanations, debugExplanationsFromQuoteResponse, hasDebugExplanations, type CostDebugExplanations } from "@/lib/costDebugConfig";
+import { logger } from "@/lib/logger";
 import ConfirmAlert from "./ConfirmAlert";
 
 export type ScenarioId = 1 | 2 | 3 | 4 | 5;
@@ -1204,7 +1205,7 @@ export default function QuoteBreakdown({
         });
         const errBody = await res.json().catch(() => ({}));
         if (!res.ok) {
-            console.error("PATCH quote:", errBody);
+            logger.error("PATCH quote:", errBody);
             return false;
         }
         onQuantityVariantSaved(activeQuantity, variant);
@@ -1408,7 +1409,7 @@ export default function QuoteBreakdown({
                 }
             }
         } catch (err) {
-            console.error("Recalculate error:", err);
+            logger.error("Recalculate error:", err);
             setRecalculateError("Recalculate failed — network error");
         } finally {
             setIsRecalculating(false);

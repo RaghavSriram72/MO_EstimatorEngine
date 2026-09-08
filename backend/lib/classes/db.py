@@ -308,14 +308,37 @@ class MidnightOilDB:
     # Low-level helpers
     # ------------------------------------------------------------------
 
-    def _fetchall(self, sql: str, params: tuple = ()) -> list[dict[str, Any]]:
-        cursor = self.conn.cursor()
+    def _reconnect(self) -> None:
+        """Drop the (possibly dead) connection and open a fresh one."""
         try:
+            self.conn.close()
+        except pyodbc.Error:
+            pass
+        self.conn = pyodbc.connect(self.conn_str, autocommit=False)
+
+    def _run(self, fn):
+        """Run ``fn(cursor)`` on a fresh cursor, reconnecting once if the link has died."""
+        try:
+            cursor = self.conn.cursor()
+            try:
+                return fn(cursor)
+            finally:
+                cursor.close()
+        except pyodbc.OperationalError:
+            self._reconnect()
+            cursor = self.conn.cursor()
+            try:
+                return fn(cursor)
+            finally:
+                cursor.close()
+
+    def _fetchall(self, sql: str, params: tuple = ()) -> list[dict[str, Any]]:
+        def query(cursor):
             cursor.execute(sql, params)
             columns = [col[0] for col in cursor.description]
             return [dict(zip(columns, row)) for row in cursor.fetchall()]
-        finally:
-            cursor.close()
+
+        return self._run(query)
 
     def _fetchone(self, sql: str, params: tuple = ()) -> dict[str, Any] | None:
         rows = self._fetchall(sql, params)
@@ -323,21 +346,21 @@ class MidnightOilDB:
 
     def _execute(self, sql: str, params: tuple = ()) -> int:
         """Execute a statement inside the current transaction; returns affected row count."""
-        cursor = self.conn.cursor()
-        try:
+
+        def query(cursor):
             cursor.execute(sql, params)
             return cursor.rowcount
-        finally:
-            cursor.close()
+
+        return self._run(query)
 
     def _insert_returning_id(self, sql: str, params: tuple = ()) -> int:
         """Execute an ``INSERT ... OUTPUT INSERTED.<id>`` statement and return the new id."""
-        cursor = self.conn.cursor()
-        try:
+
+        def query(cursor):
             cursor.execute(sql, params)
             return int(cursor.fetchone()[0])
-        finally:
-            cursor.close()
+
+        return self._run(query)
 
     @staticmethod
     def _diff_fields(old: dict[str, Any], new: dict[str, Any], fields: list[str]) -> dict[str, Any]:
