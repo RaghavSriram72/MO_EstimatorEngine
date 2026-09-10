@@ -10,6 +10,7 @@ import ProjectSidebar, { type ProjectSummary } from "@/components/inputter/Proje
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { API_BASE } from "@/lib/config";
 import { useAuth } from "@/contexts/AuthContext";
+import { logger } from "@/lib/logger";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -789,7 +790,7 @@ export default function Inputter() {
             setSavedIncludePrintSides(includePrintSides);
             return { success: true, projectId: data.project_id, shortId };
         } catch (e) {
-            console.error("Save failed:", e);
+            logger.error("Save failed:", e);
             return { success: false, errorMessage: "Save failed" };
         }
     }
@@ -1146,7 +1147,7 @@ const persistedState = quantityVariants[String(num)]!;
                     if (patchRes.ok) {
                         setActivePersistedQuoteId(existingQuoteId);
                     } else {
-                        console.error("Could not update quote:", apiErrorMessage(patchData) ?? patchData);
+                        logger.error("Could not update quote:", apiErrorMessage(patchData) ?? patchData);
                     }
                 } else {
                     const saveRes = await fetch(`${API_BASE}/projects/${encodeURIComponent(pid)}/quotes`, {
@@ -1158,14 +1159,14 @@ const persistedState = quantityVariants[String(num)]!;
                     if (saveRes.ok && typeof saveData.quote_id === "string") {
                         setActivePersistedQuoteId(saveData.quote_id);
                     } else {
-                        console.error("Could not persist quote:", apiErrorMessage(saveData) ?? saveData);
+                        logger.error("Could not persist quote:", apiErrorMessage(saveData) ?? saveData);
                     }
                 }
                 setProjectListRefreshKey((v) => v + 1);
                 // void refreshSavedQuoteList();
             }
         } catch (err) {
-            console.error("Error generating quote:", err);
+            logger.error("Error generating quote:", err);
         } finally {
             setIsQuoteGenerating(false);
         }
@@ -1183,7 +1184,7 @@ const persistedState = quantityVariants[String(num)]!;
             }
             setProjectListRefreshKey((v) => v + 1);
             showToast(r.shortId ? `Project saved — ID #${r.shortId}` : "Project saved", "save");
-        } else if (r.errorMessage) console.error(r.errorMessage);
+        } else if (r.errorMessage) logger.error(r.errorMessage);
     }
 
     // PATCH /projects/:id/rename → rename a project

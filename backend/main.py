@@ -13,6 +13,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 
+from lib.logger import get_logger
+
 # Scenario 2 disabled — no longer offered as a quote scenario. Tabs now go 1, 3, 4, 5.
 from lib.classes import Project, Scenario1, Scenario3, Scenario4, Scenario5
 from lib.classes.cost_inputs import (
@@ -177,10 +179,11 @@ def _scenario_cost_input(sid: int, payload: QuoteRequest):
 
 def _print_form_bins(label: str, bin_dict: dict) -> None:
     """Debug print: which elements landed on which form, per print_form_calculator call."""
-    print(f"--- {label}: {len(bin_dict)} form(s) ---")
+    logger = get_logger(__name__)
+    logger.debug(f"--- {label}: {len(bin_dict)} form(s) ---")
     for bin_id, form in bin_dict.items():
         names = [element.name for element in form.elements]
-        print(f"Form {bin_id}: {names}, complexity: {form.complexity}")
+        logger.debug(f"Form {bin_id}: {names}, complexity: {form.complexity}")
 
 
 def _compute_quote_scenarios(db: MidnightOilDB, elements: list[Element], payload: QuoteRequest) -> dict[str, Any]:
@@ -425,7 +428,8 @@ async def get_standee_data(standee_type: int, data_type: str):
     type_mapping = {0: "Simple Standee", 1: "Moderate Standee", 2: "Complex Standee"}
     db = _ensure_db()
     standee_data = db.get_standee_data(type_mapping[standee_type], data_type.strip())
-    print(f"Retrieved standee data for type {type_mapping[standee_type]} and field '{data_type}': {standee_data}")
+    logger = get_logger(__name__)
+    logger.info(f"Retrieved standee data for type {type_mapping[standee_type]} and field '{data_type}': {standee_data}")
     return {"data": standee_data}
 
 
@@ -575,7 +579,8 @@ async def get_standee_static_costs(standee_type: str):
     """Return the full static cost record for a given standee type."""
     try:
         db = _ensure_db()
-        print(f"Fetching standee static costs for type: {standee_type}")
+        logger = get_logger(__name__)
+        logger.info(f"Fetching standee static costs for type: {standee_type}")
         return {"data": db.get_standee_record(standee_type)}
     except ValueError as e:
         return JSONResponse(status_code=404, content={"error": str(e)})
