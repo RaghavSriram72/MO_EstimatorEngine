@@ -114,6 +114,8 @@ export const SCENARIO_LINE_DEFS: Record<string, LineDef> = {
     corrugate_cost:         { label: "Corrugate",            unit: "forms",    readonlyQty: true },
     roll_print_form_cost:   { label: "Print Form Material",  unit: "forms",    readonlyQty: true },
     sheet_print_form_cost:  { label: "Print Form Material",  unit: "forms",    readonlyQty: true },
+    print_cost_512:         { label: "Rho Print",            unit: "hrs",      readonlyQty: true },
+    print_cost_1312:        { label: "Rho Print",            unit: "hrs",      readonlyQty: true },
     print_cost:             { label: "Rho Print",            unit: "hrs",      readonlyQty: true },
     rollx_cost:             { label: "Roll-X",               unit: "hrs",      readonlyQty: true },
     zund_cut_cost:          { label: "Zund Cutting",          unit: "hrs",     readonlyQty: true },
@@ -133,10 +135,10 @@ export const SCENARIO_LINE_DEFS: Record<string, LineDef> = {
 // Scenario 2 entry kept only for `Record<ScenarioId, …>` completeness / older saved quotes —
 // see the note above `SCENARIO_META`. It's never a selectable tab.
 export const SCENARIO_KEYS: Record<ScenarioId, string[]> = {
-    1: ["imposition_cost", "corrugate_cost", "roll_print_form_cost", "print_cost", "rollx_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "kitting_and_assembly_cost"],
-    2: ["imposition_cost", "corrugate_cost", "roll_print_form_cost", "print_cost", "rollx_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "kitting_and_assembly_cost"],
-    3: ["imposition_cost", "corrugate_cost", "roll_print_form_cost", "print_cost", "rollx_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "pallet_material_cost", "pallet_labor_cost", "freight_cost", "packout"],
-    4: ["imposition_cost", "sheet_print_form_cost", "print_cost", "mount_die_buyout_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "pallet_material_cost", "pallet_labor_cost", "freight_cost", "die_cost", "packout"],
+    1: ["imposition_cost", "corrugate_cost", "roll_print_form_cost", "print_cost_512", "rollx_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "kitting_and_assembly_cost"],
+    2: ["imposition_cost", "corrugate_cost", "roll_print_form_cost", "print_cost_512", "rollx_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "kitting_and_assembly_cost"],
+    3: ["imposition_cost", "corrugate_cost", "roll_print_form_cost", "print_cost_512", "rollx_cost", "zund_cut_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "pallet_material_cost", "pallet_labor_cost", "freight_cost", "packout"],
+    4: ["imposition_cost", "sheet_print_form_cost", "print_cost_1312", "mount_die_buyout_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "pallet_material_cost", "pallet_labor_cost", "freight_cost", "die_cost", "packout"],
     5: ["imposition_cost", "litho_buyout_cost", "mount_die_buyout_cost", "shipping_box_cost", "label_cost", "instruction_sheet_cost", "pallet_material_cost", "pallet_labor_cost", "freight_cost", "die_cost", "packout"],
 };
 
@@ -149,7 +151,8 @@ const SCENARIO_SYNC_GROUPS: Partial<Record<string, ScenarioId[]>> = {
     corrugate_cost:            [1, 2, 3],
     roll_print_form_cost:      [1, 2, 3],
     sheet_print_form_cost:     [4],
-    print_cost:                [1, 2, 3, 4],
+    print_cost_512:            [1, 2, 3],
+    print_cost_1312:           [4],
     rollx_cost:                [1, 2, 3],
     zund_cut_cost:             [1, 2, 3],
     shipping_box_cost:         [1, 2, 3, 4, 5],
@@ -191,7 +194,9 @@ const QTY_FROM_SOURCE: Partial<Record<string, (s: Record<string, number>) => num
     print_form_cost:        (s) => (s.print_forms_per_standee ?? 1) * (s.num_standees ?? 1),
     roll_print_form_cost:  (s) => (s.print_forms_per_standee ?? 1) * (s.num_standees ?? 1),
     sheet_print_form_cost: (s) => (s.print_forms_per_standee ?? 1) * (s.num_standees ?? 1),
-    print_cost:             (s) => s.print_hours           ?? 1,
+    print_cost_512:  (s) => s.print_hours ?? 1,
+    print_cost_1312: (s) => s.print_hours ?? 1,
+    print_cost:             (s) => s.print_hours           ?? 1, // legacy fallback
     rollx_cost:             (s) => s.rollx_hours           ?? 1,
     zund_cut_cost:          (s) => s.zund_hours            ?? 1,
     shipping_box_cost:      (s) => s.num_standees         ?? 1,
@@ -199,7 +204,7 @@ const QTY_FROM_SOURCE: Partial<Record<string, (s: Record<string, number>) => num
     instruction_sheet_cost:     (s) => s.num_standees ?? 1,
     kitting_and_assembly_cost:  (s) => s.num_standees ?? 1,
     packout:                    (s) => s.num_standees ?? 1,
-    litho_buyout_cost:          (s) => s.litho_sheets_per_form ?? 1,
+    litho_buyout_cost:          (s) => s.litho_total_quantity ?? 1,
     mount_die_buyout_cost:      (s) => s.num_standees ?? 1,
     pallet_material_cost:       (s) => s.pallet_count  ?? 1,
     pallet_labor_cost:          (s) => s.pallet_count  ?? 1,
@@ -225,12 +230,16 @@ function buildLines(keys: string[], defs: Record<string, LineDef>): CostLine[] {
 
 function seedLines(lines: CostLine[], source: Record<string, number>): CostLine[] {
     return lines.map((line) => {
-        const total =
+        const total = // these are poorly implemented for hard coded backwards compatibility reasons — the backend doesn't even store them consistently, so we have to check multiple keys to find the right value.
             line.key === "roll_print_form_cost"
                 ? (source.roll_print_form_cost ?? source.print_form_cost ?? 0)
                 : line.key === "sheet_print_form_cost"
                     ? (source.sheet_print_form_cost ?? source.print_form_cost ?? 0)
-                    : source[line.key] ?? 0;
+                    : line.key === "print_cost_512"
+                        ? (source.print_cost_512 ?? source.print_cost ?? 0)
+                        : line.key === "print_cost_1312"
+                            ? (source.print_cost_1312 ?? source.print_cost ?? 0)
+                            : source[line.key] ?? 0;
         const isFlat = line.unit === "flat";
         if (isFlat) return { ...line, unitCost: total };
 
@@ -363,7 +372,11 @@ function applyPersistedEdits(
             edit = edits.roll_print_form_cost ?? edits.print_form_cost;
         } else if (l.key === "sheet_print_form_cost") {
             edit = edits.sheet_print_form_cost ?? edits.print_form_cost;
-        } else {
+        } else if (l.key === "print_cost_512") {
+            edit = edits.print_cost_512 ?? edits.print_cost;
+        } else if (l.key === "print_cost_1312") {
+            edit = edits.print_cost_1312 ?? edits.print_cost;
+        }else {
             edit = edits[l.key];
         }
 

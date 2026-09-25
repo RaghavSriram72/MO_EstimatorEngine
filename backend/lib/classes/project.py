@@ -306,6 +306,8 @@ class InHouseProject[T: InHouseInput](Project[T]):
     print_form_cost: float
     imposition_cost: float
     zund_cost: float
+    print_cost_512: float
+    print_cost_1312: float
     print_cost: float
     rollx_cost: float
     shipping_box_cost: float
@@ -328,7 +330,7 @@ class InHouseProject[T: InHouseInput](Project[T]):
 
     def _get_print_form_linear_inches(self) -> float:
         forms_per_roll = math.floor((BUSMARK_ROLL_LENGTH - BUSMARK_PADDING) / BUSMARK_PRINT_FORM_LENGTH)
-        self.busmark_web_ups = math.ceil(self.print_form_total / forms_per_roll) if forms_per_roll > 0 else 1
+        self.busmark_web_ups = math.ceil((self.num_standees + self.overs) / forms_per_roll) if forms_per_roll > 0 else 1
         return BUSMARK_PRINT_FORM_LENGTH * self.print_form_total + BUSMARK_PADDING * self.busmark_web_ups
 
     @override
@@ -372,7 +374,7 @@ class InHouseProject[T: InHouseInput](Project[T]):
         super().calculate_cost(input)
         self.corrugate_cost = self._get_corrugate_cost()
         self.roll_print_form_cost = self._get_print_form_cost(UnitCostEntries.ROLL_BUSMARK)
-        self.sheet_print_form_cost = self._get_print_form_cost(UnitCostEntries.SHEET_95)
+        #self.sheet_print_form_cost = self._get_print_form_cost(UnitCostEntries.SHEET_95)
         self.print_form_cost = self.roll_print_form_cost
 
         self.imposition_hours = input.imposition_hours or self.print_forms_per_standee
@@ -387,6 +389,7 @@ class InHouseProject[T: InHouseInput](Project[T]):
             self._get_machine_time(input.print_machine, self._get_print_form_linear_inches())
         )
         self.print_cost = self._get_machine_cost(input.print_machine, self.print_hours)
+        self.print_cost_512 = self.print_cost
         self.print_machine = input.print_machine
 
         self.rollx_hours = input.rollx_hours or (

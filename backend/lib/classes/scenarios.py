@@ -82,6 +82,7 @@ class Scenario4[T: Scenario4Input](OutsourceProject[T]):
         print_linear_inches = self._get_print_form_linear_inches()
         self.print_hours = input.print_hours or self._get_machine_time(UnitCostEntries.RHO_1312, print_linear_inches)
         self.print_cost = self._get_machine_cost(UnitCostEntries.RHO_1312, self.print_hours)
+        self.print_cost_1312 = self.print_cost
         # Pallets only carry printed forms, not blank/structure forms.
         self.pallet_count = input.pallet_count or self.print_forms_per_standee
         self.pallet_material_cost = self.db.get_unit_cost(UnitCostEntries.PALLET) * self.pallet_count
@@ -113,13 +114,15 @@ class Scenario5[T: Scenario5Input](OutsourceProject[T]):
 
     @override
     def calculate_cost(self, input: T) -> None:
-        input.num_overs = FOSTERS_DEFAULT_OVERS
+        input.num_overs = FOSTERS_DEFAULT_OVERS + (input.num_overs or 0)
         super().calculate_cost(input)
         self.imposition_hours = input.imposition_hours or self.print_forms_per_standee
         imposition_rate = self.db.get_unit_cost(UnitCostEntries.IMPOSITION_LABOR)
         self.imposition_cost = imposition_rate * self.imposition_hours
         # sets material, supplier, and print_form_unit_cost (needs to change)
+        
         self.litho_buyout_cost = self._get_supplier_litho_buyout_cost()
+        self.litho_total_quantity = self.litho_sheets_per_form * self.print_forms_per_standee
         # Pallets only carry printed forms, not blank/structure forms.
         self.pallet_count = input.pallet_count or self.print_forms_per_standee
         self.pallet_material_cost = self.db.get_unit_cost(UnitCostEntries.PALLET) * self.pallet_count

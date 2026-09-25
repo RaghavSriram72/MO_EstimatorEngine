@@ -178,7 +178,10 @@ def _explain_print_form_cost(project: Any, _scenario_id: int) -> tuple[str | Non
                 f" = {forms_per_roll}"
             )
             lines.append(
-                f"web_ups = ceil(forms ({_num(total_forms, 0)}) / forms_per_roll ({forms_per_roll}))"
+                f"final qty = num_standees ({_num(project.num_standees, 0)}) + overs ({_num(project.overs, 0)}) = {_num(project.num_standees + project.overs, 0)}"
+            )
+            lines.append(
+                f"web_ups = ceil(final qty ({_num(project.num_standees + project.overs, 0)}) / forms_per_roll ({forms_per_roll}))"
                 f" = {web_ups}"
             )
             linear_in_formula = (
@@ -240,10 +243,35 @@ def _explain_machine_line(
     return cost_key, "\n".join(lines)
 
 
-def _explain_print_cost(project: Any, _scenario_id: int) -> tuple[str | None, str | None]:
-    machine_name = UnitCostEntries.RHO_1312 if _scenario_id == 4 else None
-    return _explain_machine_line(project, _scenario_id, "print_cost", "print_hours", "print_machine", "Rho print", machine_name=machine_name, include_webup=True)
+def _explain_print_cost(project: Any, scenario_id: int) -> tuple[str | None, str | None]:
+    if scenario_id in (1, 2, 3):
+        key = "print_cost_512" if _has_cost(project, "print_cost_512") else "print_cost"
+    elif scenario_id == 4:
+        key = "print_cost_1312" if _has_cost(project, "print_cost_1312") else "print_cost"
+    else:
+        key = "print_cost"
 
+    if not _has_cost(project, key):
+        if not _has_cost(project, "print_cost"):
+            return None, None
+        key = "print_cost"
+
+    machine_name = getattr(project, "print_machine", None)
+    if scenario_id == 4 and not machine_name:
+        machine_name = UnitCostEntries.RHO_1312
+    elif scenario_id in (1, 2, 3) and not machine_name:
+        machine_name = UnitCostEntries.RHO_512
+
+    return _explain_machine_line(
+        project,
+        scenario_id,
+        key,
+        "print_hours",
+        "print_machine",
+        "Rho print",
+        machine_name=machine_name,
+        include_webup=True,
+    )
 
 def _explain_rollx_cost(project: Any, _scenario_id: int) -> tuple[str | None, str | None]:
     return _explain_machine_line(project, _scenario_id, "rollx_cost", "rollx_hours", None, "Roll-X", machine_name=UnitCostEntries.ROLLX)
@@ -523,7 +551,7 @@ def _explain_litho_buyout_cost(project: Any, _scenario_id: int) -> tuple[str | N
     _, cost_detail = _supplier_unit_cost(project, supplier, material, sheets)
     return (
         "litho_buyout_cost",
-        f"sheets_per_form = num_standees ({project.num_standees}) + overs ({project.overs}) = {sheets}\n"
+        f"sheets_per_form = num_standees ({project.num_standees}) + overs ({project.overs - 100}) + foster_default_overs (100) = {sheets}\n"
         f"unit_cost: {cost_detail}\n"
         f"{_money(unit_cost)} × {sheets} sheets × {project.print_forms_per_standee} print_forms_per_standee "
         f"= {_money(project.litho_buyout_cost)}",
