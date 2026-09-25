@@ -26,6 +26,7 @@ _QUOTE_UPDATE_ALLOWED_FIELDS = {
     "scenarios",
     "universal",
     "params",
+    "quantity_variants",
     "num_standees",
     "scenario",
     "standee_type",

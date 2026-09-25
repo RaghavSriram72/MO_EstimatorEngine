@@ -17,6 +17,10 @@ export const COST_LINE_TOOLTIPS: Record<string, string> = {
         "Material cost for the corrugated sheets used to form the standee structure.",
     print_form_cost:
         "Cost of the print substrate (sheet or roll material) used to produce the printed graphic panels.",
+    roll_print_form_cost:
+        "Cost of the roll-stock print substrate used to produce the printed graphic panels.",
+    sheet_print_form_cost:
+        "Cost of the sheet-stock print substrate used to produce the printed graphic panels.",
     print_cost:
         "Machine time cost on the Rho wide-format printer for printing the graphic panels.",
     rollx_cost:

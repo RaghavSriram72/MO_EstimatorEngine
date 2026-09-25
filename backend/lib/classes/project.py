@@ -301,6 +301,8 @@ class InHouseProject[T: InHouseInput](Project[T]):
     """Base class for in-house production scenarios."""
 
     corrugate_cost: float
+    roll_print_form_cost: float
+    sheet_print_form_cost: float
     print_form_cost: float
     imposition_cost: float
     zund_cost: float
@@ -369,8 +371,9 @@ class InHouseProject[T: InHouseInput](Project[T]):
     def calculate_cost(self, input: T) -> None:
         super().calculate_cost(input)
         self.corrugate_cost = self._get_corrugate_cost()
-        self.print_form_cost = self._get_print_form_cost(UnitCostEntries.ROLL_BUSMARK)
-        self.print_material = UnitCostEntries.ROLL_BUSMARK
+        self.roll_print_form_cost = self._get_print_form_cost(UnitCostEntries.ROLL_BUSMARK)
+        self.sheet_print_form_cost = self._get_print_form_cost(UnitCostEntries.SHEET_95)
+        self.print_form_cost = self.roll_print_form_cost
 
         self.imposition_hours = input.imposition_hours or self.print_forms_per_standee
         imposition_rate = self.db.get_unit_cost(UnitCostEntries.IMPOSITION_LABOR)

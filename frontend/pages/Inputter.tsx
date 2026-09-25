@@ -1003,15 +1003,25 @@ setStandeeCounts(Array.from({ length: 5 }, (_, index) => savedCounts[index] ?? "
             if (!res.ok || !Array.isArray(data.quotes) || data.quotes.length === 0) return false;
             const doc = data.quotes[0] as Record<string, unknown>; // list is newest-first
             const variants = quantityVariantsFromQuoteDoc(doc);
-            const preferredQuantity = validStandeeCounts.find((quantity) => variants[String(quantity)]);
+            const savedQuantity =
+                typeof doc.num_standees === "number" && doc.num_standees > 0 ? doc.num_standees : null;
+          //  const preferredQuantity = validStandeeCounts.find((quantity) => variants[String(quantity)]);
             // If none of the currently entered quantities match anything in this saved quote,
             // the quote is stale relative to the project's current inputs (e.g. quantities were
             // changed and the project was saved, but the quote itself was never regenerated).
             // Falling back to an arbitrary variant here used to silently show unrelated old
             // numbers — instead, treat this as "no usable saved quote" so the caller falls
             // through to a fresh recalculation.
+
+            
+            const preferredQuantity =
+                savedQuantity && variants[String(savedQuantity)]
+                    ? savedQuantity
+                    : validStandeeCounts.find((quantity) => variants[String(quantity)]);
+
             if (preferredQuantity === undefined) return false;
-            const state = variants[String(preferredQuantity)];
+          //  const state = variants[String(preferredQuantity)];
+            const state = preferredQuantity != null ? variants[String(preferredQuantity)] : null;
             if (!state) return false;
             const quantity = preferredQuantity;
             setActiveQuotePayload(payloadFromQuoteDoc(doc, state));

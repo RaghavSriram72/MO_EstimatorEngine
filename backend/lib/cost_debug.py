@@ -144,9 +144,19 @@ def _explain_corrugate_cost(project: Any, _scenario_id: int) -> tuple[str | None
 
 
 def _explain_print_form_cost(project: Any, _scenario_id: int) -> tuple[str | None, str | None]:
-    if not _has_cost(project, "print_form_cost"):
-        return None, None
-    material = _get(project, "print_material", UnitCostEntries.ROLL_BUSMARK)
+    key = "print_form_cost"
+    if _scenario_id in (1, 2, 3) and _has_cost(project, "roll_print_form_cost"):
+        key = "roll_print_form_cost"
+    elif _scenario_id == 4 and _has_cost(project, "sheet_print_form_cost"):
+        key = "sheet_print_form_cost"
+
+    if not _has_cost(project, key):
+        if not _has_cost(project, "print_form_cost"):
+            return None, None
+        key = "print_form_cost"
+
+    material_to_get = UnitCostEntries.SHEET_95 if _scenario_id == 4 else UnitCostEntries.ROLL_BUSMARK
+    material = _get(project, "print_material", material_to_get) #IMPORTANT
     entry = _machine_entry(project.db, material)
     unit = entry["unit"]
     rate = entry["cost"]
@@ -187,7 +197,7 @@ def _explain_print_form_cost(project: Any, _scenario_id: int) -> tuple[str | Non
             lines.append(f"total = {_money(project.print_form_cost)}")
     else:
         lines.append(f"cost = rate × UNIT_MAP[{unit}] × forms = {_money(project.print_form_cost)}")
-    return "print_form_cost", "\n".join(lines)
+    return key, "\n".join(lines)
 
 
 def _explain_machine_line(

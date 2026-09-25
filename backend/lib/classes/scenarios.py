@@ -76,7 +76,8 @@ class Scenario4[T: Scenario4Input](OutsourceProject[T]):
         self.imposition_hours = input.imposition_hours or self.print_forms_per_standee
         imposition_rate = self.db.get_unit_cost(UnitCostEntries.IMPOSITION_LABOR)
         self.imposition_cost = imposition_rate * self.imposition_hours
-        self.print_form_cost = self._get_print_form_cost(UnitCostEntries.SHEET_95)
+        self.sheet_print_form_cost = self._get_print_form_cost(UnitCostEntries.SHEET_95)
+        self.print_form_cost = self.sheet_print_form_cost
         self.print_material = UnitCostEntries.SHEET_95
         print_linear_inches = self._get_print_form_linear_inches()
         self.print_hours = input.print_hours or self._get_machine_time(UnitCostEntries.RHO_1312, print_linear_inches)
