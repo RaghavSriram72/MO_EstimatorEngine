@@ -153,7 +153,7 @@
     "unit": "hour",
     "setup_time": 0,
     "throughput": 35,
-    "throughput_unit": "linear_inch"
+    "throughput_unit": "linear_foot"
   },
   {
     "name": "durst_rho_1312",
@@ -163,6 +163,6 @@
     "unit": "hour",
     "setup_time": 0,
     "throughput": 124,
-    "throughput_unit": "linear_inch"
+    "throughput_unit": "linear_foot"
   }
 ]
